@@ -1,0 +1,588 @@
+/* 
+   Portfolio View Theme Overrides 
+   Scoped strictly to .portfolio-page container to match site's black and gold theme.
+*/
+
+.portfolio-page {
+    background-color: #0b0b0b !important;
+    color: #e5e5e5 !important;
+    padding-top: 1rem;
+}
+
+/* 1. Global Color Replacements (Blue/Purple -> Gold) */
+.portfolio-page .blue,
+.portfolio-page .purple,
+.portfolio-page [style*="color: #3b82f6"],
+.portfolio-page [style*="color: #1e56a0"],
+.portfolio-page [style*="color: #a855f7"],
+.portfolio-page [style*="color: #2563eb"],
+.portfolio-page .p-card-title div[style*="color: #3b82f6"],
+.portfolio-page .p-card-title {
+    color: #d4af37 !important;
+}
+
+/* 2. Replace green highlights with Gold accent */
+.portfolio-page .green,
+.portfolio-page [style*="color: #10b981"],
+.portfolio-page [style*="color: #2dd4bf"] {
+    color: #d4af37 !important;
+}
+
+/* 3. Card Base Styles */
+.portfolio-page .p-card {
+    background: #111 !important;
+    border: 1px solid #222 !important;
+    color: #e5e5e5 !important;
+    border-radius: 12px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+    margin-bottom: 1.5rem;
+}
+
+.portfolio-page .p-card-title {
+    border-bottom: 1px solid #222 !important;
+    padding-bottom: 1rem;
+    margin-bottom: 1.5rem !important;
+}
+
+/* 4. Portfolio Left Column Styles */
+.portfolio-page .p-asset-item {
+    background: #161616 !important;
+    border: 1px solid #222 !important;
+    border-radius: 8px;
+    padding: 1rem;
+}
+
+.portfolio-page .p-asset-label {
+    color: #94a3b8 !important;
+}
+
+.portfolio-page .p-asset-val {
+    color: #ffffff !important;
+    position: relative;
+    /* Ensure mask positioning context */
+}
+
+/* Smooth Asset Visibility Toggle */
+.portfolio-page .asset-value {
+    opacity: 1;
+    transition: opacity 0.25s ease;
+}
+
+.portfolio-page .hidden-balance .asset-value {
+    opacity: 0;
+}
+
+.portfolio-page .p-asset-val::after {
+    content: '********';
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.portfolio-page .hidden-balance .p-asset-val::after {
+    opacity: 1;
+}
+
+.portfolio-page .p-asset-sub {
+    color: #64748b !important;
+}
+
+/* 5. Buttons */
+/* Deposit: gold gradient */
+.portfolio-page .p-btn.deposit,
+.portfolio-page .btn-deposit {
+    background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%) !important;
+    color: #000 !important;
+    border: none !important;
+    font-weight: 800 !important;
+    border-radius: 8px !important;
+    transition: transform 0.2s;
+}
+
+.portfolio-page .p-btn.deposit:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(212, 175, 55, 0.4) !important;
+}
+
+/* Withdraw: dark with gold border */
+.portfolio-page .p-btn.withdraw,
+.portfolio-page .btn-withdraw {
+    background: #111 !important;
+    color: #d4af37 !important;
+    border: 1px solid #d4af37 !important;
+    font-weight: 800 !important;
+    border-radius: 8px !important;
+    transition: all 0.2s;
+}
+
+.portfolio-page .p-btn.withdraw:hover {
+    background: rgba(212, 175, 55, 0.05) !important;
+    transform: translateY(-2px);
+}
+
+/* 6. Chart & Visuals */
+/* Donut Chart */
+.portfolio-page #pDonutCircle {
+    stroke: #d4af37 !important;
+}
+
+.portfolio-page svg circle[stroke="#3b82f6"],
+.portfolio-page svg circle[stroke="#f1f5f9"] {
+    stroke: #2a2a2a !important;
+}
+
+.portfolio-page #pDonutPct {
+    color: #ffffff !important;
+}
+
+.portfolio-page .donut-circle-box div[style*="background: #3b82f6"] {
+    background: #d4af37 !important;
+}
+
+.portfolio-page .donut-circle-box div[style*="background: #10b981"] {
+    background: #64748b !important;
+    /* Muted gray */
+}
+
+/* Gauge Chart */
+.portfolio-page #pGaugeNeedle {
+    background: #d4af37 !important;
+}
+
+.portfolio-page #pGaugeNeedle>div {
+    background: #d4af37 !important;
+    border-color: #111 !important;
+}
+
+.portfolio-page svg path[stroke="#f1f5f9"] {
+    stroke: #2a2a2a !important;
+}
+
+/* Gauge Chart Segments (Replacing Red/Yellow/Green with Gold/Gray) */
+.portfolio-page svg path[stroke="#f87171"] {
+    stroke: #333333 !important;
+    /* Dark Gray */
+    opacity: 1 !important;
+}
+
+.portfolio-page svg path[stroke="#fbbf24"] {
+    stroke: #64748b !important;
+    /* Muted Gray */
+    opacity: 1 !important;
+}
+
+.portfolio-page svg path[stroke="#10b981"] {
+    stroke: #d4af37 !important;
+    /* Gold */
+    opacity: 1 !important;
+}
+
+/* Bar Chart Analysis */
+.portfolio-page #chartContainer {
+    border-color: #222 !important;
+}
+
+/* Invested Bar (was blue) */
+.portfolio-page #chartContainer div[style*="background: #3b82f6"] {
+    background: #d4af37 !important;
+}
+
+/* Profit Bar (was green) */
+.portfolio-page #chartContainer div[style*="background: #10b981"] {
+    background: #444444 !important;
+    /* Muted gray */
+}
+
+/* ROI Line indicator dot (was yellow) */
+.portfolio-page #chartContainer div[style*="background: #f59e0b"] {
+    background: #d4af37 !important;
+    border: 1px solid #ffffff !important;
+}
+
+/* Chart Legend */
+.portfolio-page [style*="display: flex; gap: 1.5rem; font-size: 0.8rem;"] div[style*="background: #3b82f6"] {
+    background: #d4af37 !important;
+}
+
+.portfolio-page [style*="display: flex; gap: 1.5rem; font-size: 0.8rem;"] div[style*="background: #10b981"] {
+    background: #64748b !important;
+}
+
+/* 7. Fund Records */
+.portfolio-page .p-tab-bar {
+    border-bottom: 1px solid #222 !important;
+    margin-bottom: 1.5rem !important;
+}
+
+.portfolio-page .p-tab {
+    color: #94a3b8 !important;
+    border-bottom: 2px solid transparent !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+.portfolio-page .p-tab.active {
+    color: #d4af37 !important;
+    border-bottom: 2px solid #d4af37 !important;
+    font-weight: 700 !important;
+}
+
+/* Fund Item Card Styles */
+.portfolio-page .fund-item-card {
+    background: #161616 !important;
+    border: 1px solid #222 !important;
+    border-radius: 12px;
+    padding: 1.25rem !important;
+    margin-bottom: 0.75rem !important;
+    transition: all 0.2s;
+}
+
+.portfolio-page .fund-item-card:hover {
+    border-color: #d4af37 !important;
+    transform: scale(1.01);
+}
+
+/* Fund Records Selected Row */
+.portfolio-page .fund-item-card.selected {
+    border: 1px solid #d4af37 !important;
+    background: rgba(212, 175, 55, 0.08) !important;
+}
+
+.portfolio-page .f-item-type {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+.portfolio-page .f-item-sub {
+    color: #94a3b8 !important;
+}
+
+.portfolio-page .f-item-id {
+    color: #64748b !important;
+}
+
+.portfolio-page .f-item-amount.green {
+    color: #d4af37 !important;
+}
+
+.portfolio-page .f-item-amount.red {
+    color: #ef4444 !important;
+}
+
+/* 7.5 Fund Records Section Height & Scroll (Portfolio Page Only) */
+.portfolio-page #fundRecordsList {
+    max-height: 480px;
+    /* Aligns with chart height and approx 15 records */
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding-right: 10px;
+    scroll-behavior: smooth;
+    margin-top: 1rem;
+}
+
+/* Custom Gold Scrollbar for Fund Records inside Portfolio */
+.portfolio-page #fundRecordsList::-webkit-scrollbar {
+    width: 6px;
+}
+
+.portfolio-page #fundRecordsList::-webkit-scrollbar-track {
+    background: #0b0b0b;
+    border-radius: 10px;
+}
+
+.portfolio-page #fundRecordsList::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #d4af37, #aa8c2c);
+    border-radius: 10px;
+}
+
+.portfolio-page #fundRecordsList::-webkit-scrollbar-thumb:hover {
+    background: #f9e29b;
+}
+
+/* Custom Fund Toast Notification */
+#fundRefreshToast {
+    position: fixed;
+    top: 90px;
+    right: 20px;
+    background: #111;
+    color: #d4af37;
+    border: 1px solid #d4af37;
+    padding: 12px 24px;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    font-size: 0.9rem;
+    font-weight: 600;
+    opacity: 0;
+    transform: translateX(100%);
+    transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#fundRefreshToast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+#fundRefreshToast i {
+    color: #10b981;
+    /* Success Green for icon */
+}
+
+/* 8. Allocation & Stats Overrides */
+.portfolio-page .advances-bar {
+    background: #222 !important;
+}
+
+.portfolio-page #barAdvances {
+    background: #d4af37 !important;
+}
+
+.portfolio-page #barDeclines {
+    background: #ef4444 !important;
+}
+
+.portfolio-page div[style*="background: #f1f5f9"],
+.portfolio-page div[style*="background: #f8fafc"] {
+    background: #1a1a1a !important;
+}
+
+/* Dividers */
+.portfolio-page [style*="border-top: 1px solid #f1f5f9"],
+.portfolio-page [style*="border-bottom: 1px solid #f1f5f9"],
+.portfolio-page [style*="border-bottom: 1px solid #fda4af"] {
+    border-color: #222 !important;
+}
+
+/* Date Pickers */
+.portfolio-page .date-input-group {
+    background: #111 !important;
+    border: 1px solid #333 !important;
+    color: #ffffff !important;
+}
+
+.portfolio-page .date-input-group input {
+    color: #ffffff !important;
+    background: transparent !important;
+}
+
+.portfolio-page .date-input-group i {
+    color: #d4af37 !important;
+}
+
+.portfolio-page .clear-btn {
+    background: #222 !important;
+    color: #94a3b8 !important;
+    border: 1px solid #333 !important;
+}
+
+.portfolio-page .clear-btn:hover {
+    color: #ffffff !important;
+    border-color: #d4af37 !important;
+}
+
+/* 
+   ---------------------------------------------------------------------------------
+   ME PAGE OVERRIDES (Matched to Black-Gold Theme)
+   Scoped strictly to .me-page container
+   ---------------------------------------------------------------------------------
+*/
+
+.me-page {
+    background-color: #0b0b0b !important;
+    color: #e5e5e5 !important;
+}
+
+/* Me Components */
+
+.me-page .me-card {
+    background: #111 !important;
+    border: 1px solid #222 !important;
+    color: #e5e5e5 !important;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
+}
+
+.me-page .me-card-tag {
+    background: #1a1a1a !important;
+    color: #d4af37 !important;
+    border: 1px solid #222 !important;
+}
+
+/* Headers & Icons */
+.me-page .me-title-row {
+    color: #d4af37 !important;
+}
+
+.me-page .me-title-row i {
+    color: #d4af37 !important;
+}
+
+/* Profile Section */
+.me-page .me-p-avatar {
+    background: #1a1a1a !important;
+    color: #d4af37 !important;
+    border: 2px solid #222 !important;
+}
+
+.me-page #meUserDisplayName {
+    color: #ffffff !important;
+}
+
+.me-page .me-p-info .kyc-approved {
+    background: rgba(16, 185, 129, 0.1) !important;
+    color: #10b981 !important;
+}
+
+.me-page .me-p-info .kyc-pending {
+    background: rgba(245, 158, 11, 0.1) !important;
+    color: #f59e0b !important;
+}
+
+.me-page .me-p-info .kyc-rejected {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #ef4444 !important;
+}
+
+.me-page .me-p-info .kyc-not-verified {
+    background: rgba(148, 163, 184, 0.1) !important;
+    color: #94a3b8 !important;
+}
+
+/* VIP Stats */
+.me-page .me-stat-item {
+    background: #1a1a1a !important;
+    border: 1px solid #222 !important;
+}
+
+.me-page .me-stat-val.blue {
+    color: #d4af37 !important;
+    /* Replaced Blue with Gold */
+}
+
+.me-page .me-stat-val.gold {
+    color: #d4af37 !important;
+}
+
+/* Buttons */
+.me-page .me-btn.deposit {
+    background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%) !important;
+    color: #000 !important;
+    border: none !important;
+}
+
+.me-page .me-btn.withdraw {
+    background: #111 !important;
+    color: #d4af37 !important;
+    border: 1px solid #d4af37 !important;
+}
+
+/* Assets Grid */
+.me-page .me-as-card {
+    background: #1a1a1a !important;
+    border: 1px solid #222 !important;
+    transition: transform 0.2s;
+}
+
+.me-page .me-as-lbl {
+    color: #94a3b8 !important;
+}
+
+.me-page .me-as-val {
+    color: #ffffff !important;
+}
+
+/* Sub-label colors adaptation */
+.me-page .me-as-sub[style*="color: #3b82f6"] {
+    color: #d4af37 !important;
+}
+
+/* Invested -> Gold */
+.me-page .me-as-sub[style*="color: #db2777"] {
+    color: #d4af37 !important;
+}
+
+/* Bonus -> Gold */
+.me-page .me-as-sub[style*="color: #6366f1"] {
+    color: #64748b !important;
+}
+
+/* Loan -> Gray */
+
+/* Smooth Asset Visibility Toggle (Me Page) */
+.me-page .me-as-val {
+    position: relative;
+    /* Ensure mask positioning context */
+}
+
+.me-page .asset-value {
+    opacity: 1;
+    transition: opacity 0.25s ease;
+}
+
+.me-page .hidden-balance .asset-value {
+    opacity: 0;
+}
+
+.me-page .me-as-val::after {
+    content: '********';
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.me-page .hidden-balance .me-as-val::after {
+    opacity: 1;
+}
+
+/* Scores & Offers */
+.me-page .gauge-wrap .gauge-score-text {
+    color: #ffffff !important;
+}
+
+.me-page .gauge-svg path[stroke="#f1f5f9"] {
+    stroke: #2a2a2a !important;
+}
+
+.me-page .score-info-box {
+    background: #161616 !important;
+    color: #94a3b8 !important;
+    border-left: 3px solid #d4af37 !important;
+}
+
+.me-page .me-card [style*="background: #f8fafc"] {
+    background: #161616 !important;
+    /* Offers bg */
+    border-color: #222 !important;
+}
+
+.me-page .me-card [style*="color: #1e293b"] {
+    color: #e5e5e5 !important;
+}
+
+/* Applications Pills */
+.me-page .app-pill {
+    background: #1a1a1a !important;
+    color: #94a3b8 !important;
+    border: 1px solid #222 !important;
+}
+
+.me-page .app-pill.active {
+    background: #d4af37 !important;
+    color: #000 !important;
+    font-weight: 700 !important;
+}
+
+/* No Data State */
+.me-page .no-data-wrap {
+    color: #64748b !important;
+}

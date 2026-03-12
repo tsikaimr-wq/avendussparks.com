@@ -1,0 +1,127 @@
+/* ========================================
+   MARKET SUMMARY SECTION - BLACK & GOLD THEME
+   Add this section below Major Indices
+   ======================================== */
+
+/* Market Summary Container */
+.market-summary-section {
+    background: #000000 !important;
+    border: 1px solid #d4af37 !important;
+    border-radius: 16px !important;
+    padding: 20px !important;
+    margin: 24px 0 !important;
+}
+
+/* Section Title */
+.market-summary-title {
+    color: #d4af37 !important;
+    font-size: 1.25rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.5px !important;
+    margin-bottom: 20px !important;
+}
+
+/* Grid Layout */
+.market-summary-grid {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 24px !important;
+}
+
+/* Individual Summary Card */
+.summary-card {
+    background: #0d0d0d !important;
+    border: 1px solid #d4af37 !important;
+    border-radius: 16px !important;
+    padding: 20px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    transition: all 0.3s ease !important;
+}
+
+.summary-card:hover {
+    transform: translateY(-4px) !important;
+    box-shadow: 0 8px 16px rgba(212, 175, 55, 0.3) !important;
+}
+
+/* Card Header (Flag + Name) */
+.summary-card-header {
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+}
+
+.summary-flag {
+    width: 24px !important;
+    height: 16px !important;
+    border-radius: 2px !important;
+    background: linear-gradient(to bottom, #FF9933 33%, #FFFFFF 33%, #FFFFFF 66%, #138808 66%) !important;
+}
+
+.summary-index-name {
+    color: #d4af37 !important;
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+}
+
+/* Market Label */
+.summary-market-label {
+    color: #aaaaaa !important;
+    font-size: 0.7rem !important;
+    font-weight: 500 !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* Price Display */
+.summary-price {
+    color: #FFFFFF !important;
+    font-size: 1.75rem !important;
+    font-weight: 700 !important;
+    font-family: 'Consolas', monospace !important;
+    margin: 8px 0 !important;
+}
+
+/* Change Display */
+.summary-change {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 0.9rem !important;
+    font-weight: 600 !important;
+}
+
+.summary-change.positive {
+    color: #00ff88 !important;
+}
+
+.summary-change.negative {
+    color: #ff4d4d !important;
+}
+
+.summary-change-icon {
+    font-size: 0.8rem !important;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .market-summary-grid {
+        grid-template-columns: repeat(2, 1fr) !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .market-summary-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .summary-card {
+        padding: 16px !important;
+    }
+
+    .summary-price {
+        font-size: 1.5rem !important;
+    }
+}

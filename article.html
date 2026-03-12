@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>News Detail - Avendus Capital</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="settings-panel-fix.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="db.js"></script>
+    <style>
+        body {
+            background-color: var(--bg-orange);
+            /* Orange background from screenshot */
+            margin: 0;
+            font-family: 'Outfit', sans-serif;
+            color: #333;
+        }
+
+        /* Back Button */
+        .back-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            width: 40px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            cursor: pointer;
+            z-index: 100;
+            border: none;
+            backdrop-filter: blur(4px);
+        }
+
+        .hero-section {
+            width: 100%;
+            height: 400px;
+            background-size: cover;
+            background-position: center;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        .hero-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.8));
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 800px;
+            text-align: center;
+            /* Centered title based on screenshot layout structure */
+            padding-bottom: 60px;
+            /* Space for the overlapping card */
+        }
+
+        .hero-title {
+            color: white;
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0 1rem 1rem 1rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .hero-meta {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+        }
+
+        .badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            backdrop-filter: blur(4px);
+        }
+
+        /* Content Card */
+        .content-card {
+            background: white;
+            width: 90%;
+            max-width: 800px;
+            margin: -40px auto 40px auto;
+            /* Negative top margin to overlap */
+            border-radius: 20px;
+            padding: 2rem;
+            position: relative;
+            z-index: 20;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+        }
+
+        .author-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 1rem;
+        }
+
+        .author-avatar {
+            width: 40px;
+            height: 40px;
+            background: #1e293b;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-weight: 700;
+        }
+
+        .author-text h4 {
+            margin: 0;
+            font-size: 0.95rem;
+            color: #0f172a;
+            text-transform: uppercase;
+            font-weight: 700;
+        }
+
+        .author-text span {
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+
+        .article-body {
+            font-size: 1rem;
+            line-height: 1.7;
+            color: #334155;
+        }
+
+        .article-body p {
+            margin-bottom: 1.5rem;
+        }
+
+        /* Contact/Chat Widget Placeholder from screenshot (optional but nice) */
+        .contact-widget {
+            position: fixed;
+            bottom: 20px;
+            right: 0;
+            background: #0ea5e9;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px 0 0 8px;
+            font-weight: 600;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            cursor: pointer;
+            box-shadow: -2px 2px 10px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+
+    <button class="back-btn" onclick="history.back()"><i data-lucide="chevron-left"></i></button>
+
+    <div class="hero-section" id="heroBg">
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+            <div class="hero-meta">
+                <span class="badge">Business</span>
+                <span id="heroDate">16 minutes ago</span>
+            </div>
+            <h1 class="hero-title" id="articleTitle">Loading...</h1>
+        </div>
+    </div>
+
+    <div class="content-card">
+        <div class="author-info">
+            <div class="author-avatar" id="authorInitials">TR</div>
+            <div class="author-text">
+                <h4 id="authorName">Tristan Rich</h4>
+                <span id="fullDate">Feb 6, 2026, 09:42 PM</span>
+            </div>
+        </div>
+
+        <div class="article-body" id="articleContent">
+            Loading content...
+        </div>
+    </div>
+
+    <!-- Modals -->
+    <div id="topAlertContainer" class="top-alert-container">
+        <div class="top-alert">
+            <i data-lucide="alert-circle"></i>
+            <span>Please sign in to continue.</span>
+            <i data-lucide="x" class="close-alert" onclick="closeAlert()"></i>
+        </div>
+    </div>
+
+    <div id="messageCenterOverlay" class="message-center-overlay" onclick="toggleMessageCenter()"></div>
+    <div id="messageCenter" class="message-center-modal">
+        <div class="mc-header">
+            <div class="mc-title-row">
+                <span class="mc-title">Message Center</span>
+                <span class="mc-subtitle" id="msgCount">10 Messages</span>
+            </div>
+            <button class="mc-close" onclick="toggleMessageCenter()"><i data-lucide="x" size="24"></i></button>
+        </div>
+        <div class="mc-actions">
+            <button class="mc-btn" onclick="makeAllRead()">Make all read</button>
+            <button class="mc-btn delete-all" onclick="deleteAllMessages()">Delete all</button>
+        </div>
+        <div class="mc-list" id="mcList">
+            <div class="mc-item">
+                <div class="mc-dot unread"></div>
+                <div class="mc-content">
+                    <div class="mc-msg-title">IPO Announcement – Armour Security IPO（QIB）</div>
+                    <div class="mc-time">14-01-2026 15:10:23</div>
+                    <div class="mc-tag">IPO:NEW</div>
+                    <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
+                </div>
+            </div>
+            <div class="mc-item">
+                <div class="mc-dot unread"></div>
+                <div class="mc-content">
+                    <div class="mc-msg-title">Important Notice</div>
+                    <div class="mc-time">12-01-2026 09:32:02</div>
+                    <div class="mc-tag">TEXT</div>
+                    <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="settings-modal" onclick="if(event.target == this) closeSettings()">
+        <div class="settings-content">
+            <button class="settings-close" onclick="closeSettings()"><i data-lucide="x" size="24"></i></button>
+            <div class="settings-header">
+                <div class="avatar-circle" id="settingsAvatar">U</div>
+                <div class="settings-name" id="settingsName"
+                    style="font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-top: 0.5rem;">User Name</div>
+                <div class="settings-phone" id="settingsPhone"
+                    style="font-size: 0.9rem; color: #64748b; margin-top: 0.2rem;">+91</div>
+                <div class="badge-row">
+                    <div class="s-badge vip"><i data-lucide="shield-check" size="18"></i> VIP: 0</div>
+                    <div class="s-badge credit"><i data-lucide="crown" size="18"></i> Credit Score: 100</div>
+                </div>
+            </div>
+            <div class="settings-list">
+                <div class="settings-item" onclick="toggleUserProfile()">
+                    <div class="settings-item-icon"><i data-lucide="user" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">User Profile</div>
+                        <div class="settings-item-desc">Update your profile information.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="userProfileChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="userProfileSubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openEditNameModal()">
+                        <i data-lucide="edit-3" size="18"></i> Update Name
+                    </div>
+                    <div class="submenu-item" onclick="openAvatarModal()">
+                        <i data-lucide="image" size="18"></i> Update Avatar
+                    </div>
+                    <div class="submenu-item" onclick="openKYCModal()">
+                        <i data-lucide="file-check" size="18"></i> View KYC
+                    </div>
+                </div>
+                <div class="settings-item" onclick="toggleSecurityMenu()">
+                    <div class="settings-item-icon"><i data-lucide="lock" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Security</div>
+                        <div class="settings-item-desc">Update your system security settings.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="securityChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="securitySubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openWithdrawalPinModal()">
+                        <i data-lucide="shield-check" size="18"></i> Withdrawal PIN
+                    </div>
+                    <div class="submenu-item" onclick="openResetPassword()">
+                        <i data-lucide="key" size="18"></i> Change Login Password
+                    </div>
+                </div>
+                <div class="settings-item" onclick="window.location.href='bank_accounts.html'">
+                    <div class="settings-item-icon"><i data-lucide="landmark" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Bank Accounts</div>
+                        <div class="settings-item-desc">Manage bank accounts and info</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+                <div class="settings-item" onclick="openCS()">
+                    <div class="settings-item-icon"><i data-lucide="headset" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Customer Service</div>
+                        <div class="settings-item-desc">Contact customer service</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+            </div>
+            <div class="logout-btn-container">
+                <button class="logout-btn" onclick="DB.logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Service Modal (Fixed Bottom-Right) -->
+    <div id="csModal">
+        <!-- Maximized Content -->
+        <div class="cs-modal-content">
+            <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 8px; z-index: 100;">
+                <button onclick="minimizeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="minus" size="18"></i>
+                </button>
+                <button onclick="closeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(239, 68, 68, 0.2)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="x" size="18"></i>
+                </button>
+            </div>
+
+            <div class="settings-header"
+                style="margin-bottom: 0; padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid #222;">
+                <h2 style="font-size: 1.3rem; font-weight: 700; color: #d4af37; margin: 0;">Customer Service</h2>
+                <div style="height: 2px; width: 30px; background: #d4af37; margin-top: 5px;"></div>
+            </div>
+
+            <div id="chatBox"
+                style="flex: 1; overflow-y: auto; padding: 1.5rem; background: #0c0c0c; display: flex; flex-direction: column; gap: 1rem;">
+            </div>
+
+            <div id="csImagePreviewArea"
+                style="display: none; padding: 0.5rem 1.5rem; background: #1a1a1a; border-top: 1px solid #333; gap: 0.5rem; align-items: center;">
+            </div>
+
+            <div
+                style="display: flex; gap: 0.5rem; align-items: center; padding: 1.2rem 1.5rem; background: #111; border-top: 1px solid #222;">
+                <input type="file" id="csImageInput" accept="image/*" style="display: none;"
+                    onchange="handleCSImageUpload(this)">
+                <button onclick="document.getElementById('csImageInput').click()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="image" size="22"></i>
+                </button>
+                <button onclick="toggleEmojiPicker()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; position: relative; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="smile" size="22"></i>
+                    <div id="emojiPicker"
+                        style="display: none; position: absolute; bottom: 50px; left: -10px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 0.75rem; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 180px; z-index: 100;">
+                        <span onclick="insertEmoji('👍')" style="cursor: pointer; font-size: 1.4rem;">👍</span>
+                        <span onclick="insertEmoji('👋')" style="cursor: pointer; font-size: 1.4rem;">👋</span>
+                        <span onclick="insertEmoji('😊')" style="cursor: pointer; font-size: 1.4rem;">😊</span>
+                        <span onclick="insertEmoji('😂')" style="cursor: pointer; font-size: 1.4rem;">😂</span>
+                        <span onclick="insertEmoji('❤️')" style="cursor: pointer; font-size: 1.4rem;">❤️</span>
+                        <span onclick="insertEmoji('🔥')" style="cursor: pointer; font-size: 1.4rem;">🔥</span>
+                        <span onclick="insertEmoji('🎉')" style="cursor: pointer; font-size: 1.4rem;">🎉</span>
+                        <span onclick="insertEmoji('💰')" style="cursor: pointer; font-size: 1.4rem;">💰</span>
+                    </div>
+                </button>
+                <input type="text" id="csInput" placeholder="Type a message..."
+                    style="flex: 1; padding: 0.7rem 1rem; background: #050505; border: 1px solid #333; border-radius: 10px; color: white; outline: none; font-family: 'Outfit', sans-serif; font-size: 0.9rem;">
+                <button onclick="sendCSMessage()"
+                    style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); color: #000; border: none; padding: 0.7rem 1.2rem; border-radius: 10px; font-weight: 800; cursor: pointer; transition: opacity 0.2s;"
+                    onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Send</button>
+            </div>
+        </div>
+
+        <!-- Minimized Bar -->
+        <div id="csMinimizedBar" onclick="maximizeCS()">
+            <div
+                style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: rgba(212,175,55,0.1); border-radius: 50%;">
+                <i data-lucide="message-circle" size="14"></i>
+            </div>
+            <span style="font-size: 0.9rem;">Customer Service</span>
+            <i data-lucide="chevron-up" size="18" style="margin-left: auto; opacity: 0.7;"></i>
+        </div>
+    </div>
+
+
+    <!-- Reset Password Modal (Logged-In) -->
+    <div id="resetPasswordModal" class="settings-modal" onclick="if(event.target == this) closeResetPassword()">
+        <div class="settings-content" style="max-width: 450px;">
+            <button class="settings-close" onclick="closeResetPassword()"><i data-lucide="x" size="24"></i></button>
+            <div class="settings-header" style="margin-bottom: 1.5rem;">
+                <h2 style="font-size: 1.5rem; font-weight: 700; color: #1e293b;">Reset Password</h2>
+            </div>
+            <div style="padding: 1rem 0;">
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Current
+                        Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="currentPass" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('currentPass', this)"></i>
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                        Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="newPassInternal" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('newPassInternal', this)"></i>
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 2rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                        New Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="confirmPassInternal" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('confirmPassInternal', this)"></i>
+                    </div>
+                </div>
+                <button class="logout-btn" style="background: #3b82f6;" onclick="handleInternalReset()">Update
+                    Password</button>
+                <button class="logout-btn" style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                    onclick="closeResetPassword()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Avatar Modal -->
+    <div id="avatarModal" class="center-popup-modal">
+        <div class="center-popup-content avatar-form" style="max-width: 400px;">
+            <div class="popup-header"
+                style="width:100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="font-size: 1.25rem; font-weight: 700;">Update Avatar</h2>
+                <button class="popup-close" onclick="closeAvatarModal()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body" style="display:flex; flex-direction:column; align-items:center; width: 100%;">
+                <div class="avatar-preview-lg" id="avatarPreviewContainer"
+                    onclick="document.getElementById('avatarInput').click()">
+                    <i data-lucide="user" size="64" style="color:#cbd5e1;" id="avatarPlaceholderIcon"></i>
+                    <img id="avatarPreviewImg" src="" style="display:none;">
+                    <div class="avatar-change-overlay">Change Image</div>
+                </div>
+                <input type="file" id="avatarInput" hidden onchange="previewAvatar(this)" accept="image/*">
+                <div style="width: 100%; margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    <button class="btn-primary" onclick="uploadAvatar()">Save Changes</button>
+                    <button class="btn-secondary" onclick="closeAvatarModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KYC Modal -->
+    <div id="kycModal" class="center-popup-modal">
+        <div class="center-popup-content">
+            <div class="popup-header">
+                <h2>View KYC</h2>
+                <button class="popup-close" onclick="closeKYCModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="kyc-form-grid">
+                    <div class="kyc-field-label">Full Name</div>
+                    <input type="text" id="kycName" class="kyc-field-input" placeholder="Enter Full Name">
+                    <div class="kyc-field-label">Mobile Number</div>
+                    <input type="text" id="kycMobile" class="kyc-field-input" placeholder="Enter Mobile Number">
+                    <div class="kyc-field-label">ID Number</div>
+                    <input type="text" id="kycIdNum" class="kyc-field-input" placeholder="Enter ID Number">
+                    <div class="kyc-field-label">Submitted On</div>
+                    <input type="text" id="kycSubmitted" class="kyc-field-input" readonly style="background: #f8fafc;">
+                    <div class="kyc-field-label">Approval Status</div>
+                    <input type="text" id="kycApproved" class="kyc-field-input" readonly style="background: #f8fafc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycFrontInput').click()">
+                        <div class="plus-icon">+ Front</div>
+                        <img id="kycFrontPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycFrontInput" hidden
+                            onchange="previewKYCImage(this, 'kycFrontPreview')">
+                    </div>
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycBackInput').click()">
+                        <div class="plus-icon">+ Back</div>
+                        <img id="kycBackPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycBackInput" hidden onchange="previewKYCImage(this, 'kycBackPreview')">
+                    </div>
+                </div>
+                <button class="btn-submit" onclick="submitKYC()" style="margin-top: 1.5rem; width: 100%;">Submit
+                    Verification</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // Safe decode utility
+        function safeDecode(str) {
+            try {
+                return decodeURIComponent(str);
+            } catch (e) {
+                return str;
+            }
+        }
+
+        // News Data Repository
+        const newsData = {
+            "1": {
+                title: "Nifty 50 Hits Lifetime High of 25,600+ Amid Global Bull Run",
+                author: "Market Desk",
+                date: "2 hours ago",
+                img: "https://images.unsplash.com/photo-1611974765270-ca1258634369?auto=format&fit=crop&q=80&w=1200",
+                badge: "MARKET UPDATE",
+                content: "India's benchmark index continues its upward trajectory as institutional investors show renewed confidence in Indian equities following global easing signals. Analysts expect a period of consolidation before the next leg of the rally towards 26,000. Domestic retail participation remains at record levels, providing a strong cushion against FII outflows."
+            },
+            "2": {
+                title: "Reliance Announces ₹75,000 Cr Roadmap for Green Hydrogen",
+                author: "Business Correspondent",
+                date: "5 hours ago",
+                img: "https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&q=80&w=1200",
+                badge: "RELIANCE INC",
+                content: "The conglomerate focuses on massive energy transition aiming for net-zero emissions by 2035 with cutting-edge tech investments. Chairman Mukesh Ambani highlighted that the green hydrogen ecosystem will not only help India meet its climate goals but also position the country as a global exporter of sustainable energy solutions."
+            },
+            "3": {
+                title: "RBI Maintains Repo Rate at 6.5%, Focuses on Inflation Target",
+                author: "Monetary Desk",
+                date: "8 hours ago",
+                img: "https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&q=80&w=1200",
+                badge: "RBI POLICY",
+                content: "Governor Shaktikanta Das emphasizes price stability while supporting sustainable growth in the latest MPC meeting. The committee decided to maintain its stance on 'withdrawal of accommodation' to ensure that inflation progressively aligns with the target while supporting growth. Food inflation remains a key monitorable for the central bank."
+            },
+            "4": {
+                title: "Banking Stocks Surge as NPA Levels Hit Decade Low",
+                author: "Financial Analyst",
+                date: "10 hours ago",
+                img: "https://images.unsplash.com/photo-1501167786227-4cba60f6d58f?auto=format&fit=crop&q=80&w=1200",
+                badge: "BANKING",
+                content: "Private and public sector banks witness strong credit growth as domestic demand stays resilient across rural markets. The improvement in asset quality across the banking sector has been largely driven by lower slippages and healthy recoveries. Market experts believe the current credit cycle has more room to grow given the infrastructure push by the government."
+            },
+            "5": {
+                title: "2026 Financial Outlook: Trends to Watch",
+                author: "Wealth Management",
+                date: "1 day ago",
+                img: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=1200",
+                badge: "STRATEGY",
+                content: "Explore the latest trends and predictions for the 2026 financial markets, including interest rate projections and sector-specific growth opportunities. Experts suggest a shift towards defensive stocks in the latter half of the year, while maintaining exposure to high-growth emerging tech sectors."
+            },
+            "6": {
+                title: "Top 5 High-Yield Dividend Stocks for Passive Income",
+                author: "Income Specialist",
+                date: "2 days ago",
+                img: "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&q=80&w=1200",
+                badge: "DIVIDENDS",
+                content: "Discover the most reliable dividend-paying companies in India that provide consistent returns and long-term stability for your portfolio. This list focuses on companies with a track record of increasing dividends even during market downturns, ensuring a steady stream of income for retail investors."
+            },
+            "7": {
+                title: "The Green Energy Revolution: Multi-bagger Opportunities",
+                author: "Eco-Invest",
+                date: "2 days ago",
+                img: "https://images.unsplash.com/photo-1466611653911-954ffea112cd?auto=format&fit=crop&q=80&w=1200",
+                badge: "ENERGY",
+                content: "As India pivots to renewable energy, these companies are well-positioned to lead the transition and deliver exceptional market returns. Massive government subsidies and international environmental commitments are driving unprecedented local investment into wind, solar, and green hydrogen infrastructure."
+            },
+            "8": {
+                title: "Tech Giants: Assessing Valuation in a High-Rate Environment",
+                author: "Tech Desk",
+                date: "3 days ago",
+                img: "https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&q=80&w=1200",
+                badge: "TECHNOLOGY",
+                content: "A deep dive into the mega-cap tech stocks and whether their current valuations are sustainable given the changing economic landscape. While AI continues to be a massive tailwind, investors are becoming increasingly discerning about actual revenue growth versus speculative hype."
+            },
+            "9": {
+                title: "Small-cap Hidden Gems with Massive Potential",
+                author: "Alpha Hunter",
+                date: "4 days ago",
+                img: "https://images.unsplash.com/photo-1543286386-713bdd548da4?auto=format&fit=crop&q=80&w=1200",
+                badge: "GROWTH",
+                content: "Identify under-the-radar small-cap companies with strong fundamentals and innovative products that could be the next market leaders. These companies operate in niche segments with high entry barriers and are currently trading at significant discounts to their larger peers."
+            },
+            "10": {
+                title: "Gold vs Stocks: Where to Hedge against Inflation?",
+                author: "Commodity Desk",
+                date: "5 days ago",
+                img: "https://images.unsplash.com/photo-1589758438368-0ad531db3366?auto=format&fit=crop&q=80&w=1200",
+                badge: "COMMODITIES",
+                content: "Comparing the performance of yellow metal against equities during inflationary periods to help you build a resilient investment portfolio. Historically, gold has acted as a safe haven, but certain equity sectors like energy and real estate have also shown strong correlation with inflation."
+            },
+            "11": {
+                title: "Real Estate REITs: Stable Returns in Volatile Markets",
+                author: "Real Estate Expert",
+                date: "1 week ago",
+                img: "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&q=80&w=1200",
+                badge: "REITS",
+                content: "Understanding Real Estate Investment Trusts and how they offer exposure to premium commercial property with the liquidity of common stocks. Commercial occupancy rates in top-tier cities are at five-year highs, driving rental yields and dividend distributions for REIT holders."
+            },
+            "12": {
+                title: "Consumer Goods Surge: Rural Demand Picks Up",
+                author: "Retail Analyst",
+                date: "1 week ago",
+                img: "https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&q=80&w=1200",
+                badge: "CONSUMER",
+                content: "The FMCG sector is witnessing a strong rebound as rural consumption patterns improve following a healthy monsoon and government support. Companies with strong supply chain networks in tire-2 and tier-3 cities are outperforming expectations as consumer sentiment reaches pre-pandemic levels."
+            },
+            "13": {
+                title: "EV Infrastructure Growth: Charging the Future",
+                author: "Auto Analyst",
+                date: "2 weeks ago",
+                img: "https://images.unsplash.com/photo-1593941707882-a5bba14938c7?auto=format&fit=crop&q=80&w=1200",
+                badge: "AUTOMOBILE",
+                content: "Investigating the companies building India's electric vehicle charging network and the long-term prospects for the EV ecosystem. With new policy frameworks coming into place, the scale-up of charging stations is expected to accelerate dramatically over the next 24 months."
+            },
+            "14": {
+                title: "Pharma Sector: New R&D Breakthroughs",
+                author: "Healtcare Desk",
+                date: "2 weeks ago",
+                img: "https://images.unsplash.com/photo-1563089145-599997674d42?auto=format&fit=crop&q=80&w=1200",
+                badge: "PHARMA",
+                content: "India's pharmaceutical leaders are pivoting from generics to complex molecules, opening up significant value creation opportunities for long-term investors. Higher R&D spending is beginning to show results in specialized therapy areas like oncology and rare diseases."
+            }
+        };
+
+        // Parse URL params
+        const params = new URLSearchParams(window.location.search);
+        const newsId = params.get('id');
+
+        // Lookup from newsId or fallback to query params
+        let finalData = newsData[newsId] || {
+            title: safeDecode(params.get('title') || 'Market Notice'),
+            author: safeDecode(params.get('author') || 'Admin'),
+            date: safeDecode(params.get('date') || 'Just now'),
+            img: safeDecode(params.get('img') || 'https://images.unsplash.com/photo-1611974765270-ca1258634369?auto=format&fit=crop&q=80&w=1200'),
+            badge: safeDecode(params.get('badge') || 'Business'),
+            content: safeDecode(params.get('content') || '')
+        };
+
+        // Render Data
+        document.title = finalData.title + " - Avendus";
+        document.getElementById('articleTitle').textContent = finalData.title;
+        document.getElementById('authorName').textContent = finalData.author;
+        document.getElementById('heroDate').textContent = finalData.date;
+        document.getElementById('fullDate').textContent = finalData.date;
+
+        // Handle image loading and placeholder fallback
+        const heroBg = document.getElementById('heroBg');
+        const imgUrl = finalData.img;
+
+        if (heroBg) {
+            const testImg = new Image();
+            testImg.onload = () => {
+                heroBg.style.backgroundImage = `url('${imgUrl}')`;
+            };
+            testImg.onerror = () => {
+                console.warn("News image failed to load, using placeholder.");
+                heroBg.style.backgroundImage = `url('https://images.unsplash.com/photo-1611974765270-ca1258634369?auto=format&fit=crop&q=80&w=1200')`;
+            };
+            testImg.src = imgUrl;
+        }
+
+        // Initials
+        const names = finalData.author.split(' ');
+        let initials = names[0][0];
+        if (names.length > 1) initials += names[names.length - 1][0];
+        document.getElementById('authorInitials').textContent = initials;
+
+        // Content
+        const defaultText = `Market analysis suggests ongoing resilience...`;
+        document.getElementById('articleContent').innerHTML = (finalData.content || defaultText).replace(/\n/g, '<br><br>');
+    </script>
+</body>
+
+</html>

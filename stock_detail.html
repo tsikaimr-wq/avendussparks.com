@@ -1,0 +1,1798 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Detail - Avendus Capital</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Core Database Layer (MOVED TO HEAD FOR RELIABILITY) -->
+    <script src="stocktv_config.js?v=1.0.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="js/supabase.js?v=1.0.5"></script>
+    <script src="js/db.js?v=1.0.9"></script>
+    <script src="js/user.js?v=1.0.4"></script>
+    <script src="js/market_data.js?v=1.0.8"></script>
+    <script src="js/trading.js?v=1.0.5"></script>
+    <script src="script.js?v=1.0.4"></script>
+    <script src="js/credit_notifier.js?v=1.0.4"></script>
+    <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
+
+    <style>
+        /* Reusing styles from market.html */
+        .market-wrapper {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .stock-detail-content {
+            padding: 1.5rem;
+            max-width: 1400px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* --- Split Layout --- */
+        .market-main-container {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-start;
+        }
+
+        .market-left-col {
+            flex: 1;
+        }
+
+        .market-right-col {
+            width: 350px;
+            display: flex;
+            /* Always visible in this view */
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        /* --- Buy Panel Styles --- */
+        .buy-panel {
+            background: white;
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid #f1f5f9;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .bp-header {
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+            color: #1e293b;
+            border-bottom: 1px solid #f1f5f9;
+            padding-bottom: 0.8rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .bp-row {
+            margin-bottom: 1rem;
+        }
+
+        .bp-label {
+            display: block;
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-bottom: 0.4rem;
+            font-weight: 600;
+        }
+
+        .bp-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1rem;
+            outline: none;
+            transition: all 0.2s;
+        }
+
+        .bp-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .bp-info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .bp-total-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #f1f5f9;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #1e293b;
+        }
+
+        .bp-btn {
+            width: 100%;
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 1rem;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 1.5rem;
+            transition: all 0.2s;
+        }
+
+        .bp-btn:hover {
+            background: #059669;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+        }
+
+        /* --- Transactions List --- */
+        .trans-list-panel {
+            background: white;
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid #f1f5f9;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .tl-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.8rem 0;
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .tl-item:last-child {
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        .tl-left {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .tl-symbol {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: #1e293b;
+        }
+
+        .tl-date {
+            font-size: 0.7rem;
+            color: #94a3b8;
+        }
+
+        .tl-right {
+            text-align: right;
+        }
+
+        .tl-qty {
+            font-size: 0.8rem;
+            color: #64748b;
+        }
+
+        .tl-price {
+            font-weight: 600;
+            color: #1e293b;
+        }
+
+        /* Chart Area */
+        .main-index-view {
+            background: white;
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .price-hero {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            margin-bottom: 2rem;
+        }
+
+        .price-hero h2 {
+            font-size: 3.5rem;
+            margin: 0;
+            font-weight: 800;
+            letter-spacing: -1px;
+        }
+
+        .index-chg {
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .index-chg.green {
+            color: #10b981;
+        }
+
+        .index-chg.red {
+            color: #ef4444;
+        }
+
+        .chart-container-realtime {
+            height: 600px;
+            border-radius: 16px;
+            overflow: hidden;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 2rem;
+        }
+
+        /* Timeframe Buttons */
+        .timeframe-btns {
+            display: flex;
+            gap: 0.8rem;
+            margin: 1.5rem 0;
+        }
+
+        .tf-btn {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            padding: 0.5rem 1.2rem;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #1e293b;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .tf-btn:hover {
+            border-color: #3b82f6;
+            color: #3b82f6;
+            background: #f0f9ff;
+        }
+
+        .tf-btn.active {
+            background: #1e56a0;
+            color: white;
+            border-color: #1e56a0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="market-wrapper">
+        <header class="header" style="padding: 1rem 2rem;">
+            <div class="header-left">
+                <a href="market.html"
+                    style="text-decoration:none; display:flex; align-items:center; gap:0.5rem; color:#1e293b; font-weight:600;">
+                    <button class="settings-btn"><i data-lucide="arrow-left"></i></button>
+                    Back to Market
+                </a>
+            </div>
+            <nav class="nav">
+                <!-- Simplified Nav -->
+                <span style="font-weight: 700; color: #1e56a0; font-size: 1.2rem;">Stock Details</span>
+            </nav>
+            <div class="header-right">
+                <button class="settings-btn"><i data-lucide="settings"></i></button>
+            </div>
+        </header>
+
+        <main class="stock-detail-content">
+            <!-- Auth Lock Check (simplified) -->
+            <div id="authCheck" style="display:none; text-align:center; padding:4rem;">
+                <h2>Please Log In</h2>
+                <a href="login.html" style="color:#3b82f6;">Go to Login</a>
+            </div>
+
+            <div id="stockContent" class="market-main-container">
+                <!-- Left Column: Chart -->
+                <div class="market-left-col">
+                    <div class="main-index-view" style="padding: 0;">
+                        <div class="chart-container-realtime"
+                            style="height: 700px; margin-bottom: 0; border: none; border-radius: 16px; overflow: hidden;">
+                            <div id="tradingview_widget" style="height:100%; width:100%;"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Buy Panel -->
+                <div class="market-right-col">
+                    <div class="buy-panel">
+                        <div class="bp-header">
+                            <span id="bpHeaderTitle" style="color:#1e56a0;">Buy Stock</span>
+                            <span id="bpStockSymbol" style="font-size:0.9rem; color:#64748b;">...</span>
+                        </div>
+
+                        <div class="bp-info-row" style="display: none;">
+                            <span style="color:#64748b;">Current Price:</span>
+                            <span id="bpCurrentPrice" style="font-weight:700; color:#1e293b;">₹0.00</span>
+                        </div>
+
+
+                        <div class="bp-info-row" style="margin-bottom:1.5rem; display: none;">
+                            <span style="color:#64748b;">Your Balance:</span>
+                            <span id="bpUserBalance" style="font-weight:700; color:#10b981;">₹0.00</span>
+                        </div>
+
+
+                        <div class="bp-row">
+                            <label class="bp-label">Quantity (Shares)</label>
+                            <input type="number" id="bpQuantity" class="bp-input" value="1" min="1"
+                                oninput="updateBuyTotal()">
+                        </div>
+                        <div class="bp-info-row">
+                            <span style="color:#64748b;">Tax Fees:</span>
+                            <span id="bpTaxFees" style="font-weight:600; color:#1e293b;">₹0.00</span>
+                        </div>
+                        <div class="bp-info-row">
+                            <span style="color:#64748b;">Txn Charge:</span>
+                            <span id="bpTxnCharge" style="font-weight:600; color:#1e293b;">₹0.00</span>
+                        </div>
+                        <div class="bp-total-row">
+                            <span>Total Cost:</span>
+                            <span id="bpTotalCost" style="color:#1e56a0;">₹0.00</span>
+                        </div>
+
+                        <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+                            <button class="bp-btn" id="buyBtn" onclick="executeBuyOrder()"
+                                style="margin-top: 0; flex: 1;">
+                                BUY NOW
+                            </button>
+                            <button class="bp-btn" id="sellBtn" onclick="executeSellOrder()"
+                                style="margin-top: 0; flex: 1; background: #ef4444;">
+                                SELL NOW
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Holdings List -->
+                    <div class="trans-list-panel">
+                        <div class="bp-header" style="margin-bottom:0.5rem; border:none; padding-bottom:0;">
+                            <span style="color:#1e293b;">Your Holdings</span>
+                            <i data-lucide="history" size="16" color="#64748b"></i>
+                        </div>
+                        <div id="holdingsListWrapper" style="max-height: 300px; overflow-y: auto;">
+                            <!-- Items will be injected here -->
+                            <div style="text-align:center; padding:1.5rem; color:#94a3b8; font-size:0.8rem;">
+                                No active holdings
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Scripts -->
+    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+    <script>
+        lucide.createIcons();
+
+        // Stock Data for Pricing Fallbacks
+        // (Copying a subset or full list from market.html to ensure price availability)
+        // In a real app, this should be in a shared JS file or fetched from API.
+        const INDIAN_STOCKS = [
+            { s: 'BSE:SENSEX', n: 'SENSEX Index', p: 83580.40 },
+            { s: 'NSE:NIFTY', n: 'NIFTY 50', p: 25641.65 },
+            { s: 'NSE:BANKNIFTY', n: 'NIFTY BANK', p: 60045.35 },
+            { s: 'NSE:RELIANCE', n: 'Reliance Industries Ltd', p: 2985.50 },
+            { s: 'NSE:TCS', n: 'Tata Consultancy Services', p: 4250.20 },
+            { s: 'NSE:HDFCBANK', n: 'HDFC Bank Ltd', p: 1680.75 },
+            { s: 'NSE:INFY', n: 'Infosys Ltd', p: 1890.30 },
+            { s: 'NSE:ICICIBANK', n: 'ICICI Bank Ltd', p: 1250.40 },
+            { s: 'NSE:HINDUNILVR', n: 'Hindustan Unilever Ltd', p: 2780.10 },
+            { s: 'NSE:SBIN', n: 'State Bank of India', p: 795.60 },
+            { s: 'NSE:BHARTIARTL', n: 'Bharti Airtel Ltd', p: 1650.20 },
+            { s: 'NSE:ITC', n: 'ITC Ltd', p: 510.40 },
+            { s: 'NSE:KOTAKBANK', n: 'Kotak Mahindra Bank', p: 1820.50 },
+            { s: 'NSE:LT', n: 'Larsen & Toubro Ltd', p: 3750.80 },
+            { s: 'NSE:AXISBANK', n: 'Axis Bank Ltd', p: 1190.30 },
+            { s: 'NSE:HCLTECH', n: 'HCL Technologies', p: 1760.40 },
+            { s: 'NSE:MARUTI', n: 'Maruti Suzuki India', p: 12450.00 },
+            { s: 'NSE:TITAN', n: 'Titan Company Ltd', p: 3580.20 },
+            { s: 'NSE:BAJFINANCE', n: 'Bajaj Finance Ltd', p: 7450.60 },
+            { s: 'NSE:SUNPHARMA', n: 'Sun Pharmaceutical', p: 1890.10 },
+            { s: 'NSE:TATAMOTORS', n: 'Tata Motors Ltd', p: 980.50 },
+            { s: 'NSE:ULTRACEMCO', n: 'UltraTech Cement', p: 11250.00 },
+            { s: 'NSE:ASIANPAINT', n: 'Asian Paints Ltd', p: 3250.40 },
+            { s: 'NSE:NTPC', n: 'NTPC Ltd', p: 410.20 },
+            { s: 'NSE:M_M', n: 'Mahindra & Mahindra', p: 2890.50 },
+            { s: 'NSE:POWERGRID', n: 'Power Grid Corp', p: 345.60 },
+            { s: 'NSE:ADANIENT', n: 'Adani Enterprises', p: 3150.80 },
+            { s: 'NSE:ADANIPORTS', n: 'Adani Ports & SEZ', p: 1450.30 },
+            { s: 'NSE:COALINDIA', n: 'Coal India Ltd', p: 510.20 },
+            { s: 'NSE:WIPRO', n: 'Wipro Ltd', p: 540.60 },
+            { s: 'NSE:ONGC', n: 'ONGC', p: 320.10 },
+            { s: 'NSE:JSWSTEEL', n: 'JSW Steel Ltd', p: 980.40 },
+            { s: 'NSE:BAJAJFINSV', n: 'Bajaj Finserv Ltd', p: 1850.20 },
+            { s: 'NSE:GRASIM', n: 'Grasim Industries', p: 2650.50 },
+            { s: 'NSE:TECHM', n: 'Tech Mahindra Ltd', p: 1540.30 },
+            { s: 'NSE:EICHERMOT', n: 'Eicher Motors Ltd', p: 4850.60 },
+            { s: 'NSE:NESTLEIND', n: 'Nestle India Ltd', p: 2540.20 },
+            { s: 'NSE:TATASTEEL', n: 'Tata Steel Ltd', p: 165.40 },
+            { s: 'NSE:INDUSINDBK', n: 'IndusInd Bank Ltd', p: 1450.30 },
+            { s: 'NSE:BRITANNIA', n: 'Britannia Industries', p: 5890.50 },
+            { s: 'NSE:CIPLA', n: 'Cipla Ltd', p: 1620.40 },
+            { s: 'NSE:HEROMOTOCO', n: 'Hero MotoCorp Ltd', p: 5650.20 },
+            { s: 'NSE:APOLLOHOSP', n: 'Apollo Hospitals', p: 6850.40 },
+            { s: 'NSE:DIVISLAB', n: 'Divi\'s Laboratories', p: 5450.80 },
+            { s: 'NSE:DRREDDY', n: 'Dr. Reddy\'s Labs', p: 6780.20 },
+            { s: 'NSE:SBILIFE', n: 'SBI Life Insurance', p: 1780.50 },
+            { s: 'NSE:HDFCLIFE', n: 'HDFC Life Insurance', p: 720.40 },
+            { s: 'NSE:BPCL', n: 'Bharat Petroleum', p: 340.20 },
+            { s: 'NSE:LTIM', n: 'LTIMindtree Ltd', p: 5950.60 },
+            { s: 'NSE:TATACONSUM', n: 'Tata Consumer', p: 1250.30 }
+        ];
+
+        // Helper to find price
+        function getStockPrice(sym) {
+            const s = INDIAN_STOCKS.find(x => x.s === sym);
+            return s ? s.p : 0;
+        }
+
+        function formatCurrency(val) {
+            return '₹' + (parseFloat(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
+        let currentActiveSymbol = '';
+        let currentStockName = '';
+        let currentPrice = 0;
+        let currentInterval = 'D';
+        let currentProductId = null;
+        let currentMinInvest = 0;
+        let currentProductType = '';
+
+        async function syncBalance() {
+            const user = window.DB.getCurrentUser();
+            if (!user) return;
+            const client = window.DB.getClient();
+            if (!client) return;
+            try {
+                const { data: dbUser } = await client.from('users').select('*').eq('id', user.id).single();
+                if (dbUser) {
+                    const [pD, pW, pT] = await Promise.all([
+                        client.from('deposits').select('amount').eq('user_id', user.id).eq('status', 'Pending'),
+                        client.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'Pending'),
+                        client.from('trades').select('total_amount').eq('user_id', user.id).eq('status', 'Pending')
+                    ]);
+                    const lockedDeposits = (pD.data || []).reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+                    const lockedWithdrawals = (pW.data || []).reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
+                    const lockedTrades = (pT.data || []).reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0);
+                    let effectiveBalance = (parseFloat(dbUser.balance) || 0) + lockedDeposits - lockedWithdrawals - lockedTrades;
+                    if (effectiveBalance < 0) effectiveBalance = 0;
+                    const balanceEl = document.getElementById('bpUserBalance');
+                    if (balanceEl) {
+                        balanceEl.innerText = '₹' + effectiveBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+                        balanceEl.dataset.effective = effectiveBalance;
+                    }
+                }
+            } catch (e) {
+                console.error("Sync Balance Error:", e);
+            }
+        }
+
+        window.onload = function () {
+            // Check Auth
+            const user = window.DB.getCurrentUser();
+            if (!user) {
+                document.getElementById('stockContent').style.display = 'none';
+                document.getElementById('authCheck').style.display = 'block';
+                return;
+            } else {
+                document.getElementById('stockContent').style.display = 'flex';
+                syncBalance();
+            }
+
+            // Parse URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const sym = urlParams.get('symbol');
+            const name = urlParams.get('name') || sym;
+            const type = urlParams.get('type') || 'stock';
+            const id = urlParams.get('id');
+            const minInvest = urlParams.get('minInvest') || 0;
+
+            if (sym) {
+                initPage(sym, name, type, id, minInvest);
+            } else {
+                alert("No stock specified.");
+                window.location.href = 'market.html';
+            }
+
+            loadHoldings();
+
+            setInterval(() => {
+                if (window.DB.getCurrentUser()) {
+                    syncBalance();
+                    loadHoldings();
+                }
+            }, 2000);
+        };
+
+        let globalModalCallback = null;
+        function showModal(type, title, msg, callback) {
+            const modal = document.getElementById('globalModal');
+            if (!modal) {
+                alert(msg);
+                if (callback) callback();
+                return;
+            }
+            const iconContainer = document.getElementById('modalIconContainer');
+            const icon = document.getElementById('modalIcon');
+            const titleEl = document.getElementById('modalTitle');
+            const msgEl = document.getElementById('modalMsg');
+            const btn = document.getElementById('modalBtn');
+            titleEl.innerText = title;
+            msgEl.innerText = msg;
+            globalModalCallback = callback;
+            if (type === 'success') {
+                iconContainer.style.background = '#ecfdf5';
+                iconContainer.style.color = '#10b981';
+                icon.setAttribute('data-lucide', 'check-circle');
+                btn.style.background = '#1e56a0';
+            } else if (type === 'error') {
+                iconContainer.style.background = '#fef2f2';
+                iconContainer.style.color = '#ef4444';
+                icon.setAttribute('data-lucide', 'alert-circle');
+                btn.style.background = '#ef4444';
+            } else if (type === 'warning') {
+                iconContainer.style.background = '#fffbeb';
+                iconContainer.style.color = '#f59e0b';
+                icon.setAttribute('data-lucide', 'alert-triangle');
+                btn.style.background = '#f59e0b';
+            }
+            modal.style.display = 'flex';
+            if (window.lucide) window.lucide.createIcons();
+        }
+        function closeGlobalModal() {
+            document.getElementById('globalModal').style.display = 'none';
+            if (globalModalCallback) {
+                globalModalCallback();
+                globalModalCallback = null;
+            }
+        }
+
+        async function initPage(sym, name, type = 'stock', id = null, minInvest = 0) {
+            console.log("INIT PAGE LOADED");
+            currentActiveSymbol = sym;
+            currentStockName = name;
+            currentProductType = type;
+            currentProductId = id;
+            currentMinInvest = parseFloat(minInvest) || 0;
+            currentPrice = 0; // Reset to 0 to ensure live price takes precedence
+
+            // Set Titles
+            document.getElementById('bpStockSymbol').innerText = sym;
+            document.title = `${name} - Stock Detail`;
+
+            // Load Widget
+            loadWidget(sym);
+
+            // Ensure price is fetched live from Provider Engine
+            const priceEl = document.getElementById('bpCurrentPrice');
+            if (priceEl) priceEl.innerText = 'Loading...';
+
+            const sdPriceEl = document.getElementById('sdPrice');
+            if (sdPriceEl) sdPriceEl.innerText = 'Loading...';
+
+
+            // Set Action Text
+            const buyBtn = document.getElementById('buyBtn');
+            const headerTitle = document.getElementById('bpHeaderTitle');
+            const qtyRow = document.querySelector('.bp-row'); // The row containing Quantity label and input
+
+            if (currentProductType === 'OTC' || currentProductType === 'IPO') {
+                if (buyBtn) {
+                    buyBtn.innerText = 'SUBSCRIBE NOW';
+                    buyBtn.dataset.type = currentProductType;
+                }
+                if (headerTitle) headerTitle.innerText = `Subscribe to ${currentProductType}`;
+
+                if (currentProductType === 'IPO') {
+                    // IPO MUST NOT allow user to select quantity
+                    if (qtyRow) qtyRow.style.display = 'none';
+                } else {
+                    if (qtyRow) qtyRow.style.display = 'block';
+                }
+            } else {
+                if (qtyRow) qtyRow.style.display = 'block';
+            }
+
+            updateBuyTotal();
+            startSimulation(); // Starts the ticker and triggers initial fetchLivePrice()
+
+            // Ensure trades are fetched with debug logging
+            if (typeof window.loadTrades === 'function') {
+                window.loadTrades();
+            }
+
+            await fetchLivePrice(sym);
+        }
+
+        let currentYahooChart = null;
+        let yahooUpdateTimer = null;
+        let yahooResizeObserver = null;
+
+        async function loadYahooChart(symbol, containerId, options = {}) {
+            const container = document.getElementById(containerId);
+            if (!container) return;
+
+            if (yahooUpdateTimer) clearInterval(yahooUpdateTimer);
+            if (yahooResizeObserver) {
+                try { yahooResizeObserver.disconnect(); } catch (_) { }
+                yahooResizeObserver = null;
+            }
+            if (currentYahooChart && typeof currentYahooChart.remove === 'function') {
+                try { currentYahooChart.remove(); } catch (_) { }
+            }
+            currentYahooChart = null;
+            container.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-family: Outfit, sans-serif;">Loading realtime chart...</div>';
+
+            if (!window.LightweightCharts) {
+                container.innerHTML = '<div style="color:#ef4444; text-align:center;">Library Error: Lightweight Charts not loaded.</div>';
+                return;
+            }
+
+            const seriesType = options.seriesType === 'line' ? 'line' : 'candlestick';
+            const desiredPeriod = options.period || '1d';
+            const desiredInterval = options.interval || '5m';
+
+            const marketApiBases = () => {
+                const supabaseBase = (window.supabaseClient?.supabaseUrl || window.SUPABASE_URL || '').trim();
+                const functionBase = supabaseBase ? `${supabaseBase.replace(/\/$/, '')}/functions/v1` : '';
+                const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
+                const fromWindow = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
+                    ? [window.INDIA_MARKET_API_BASE.trim()]
+                    : [];
+                const preferExternal = window.PREFER_INDIA_MARKET_API_BASE === true;
+                const ordered = preferExternal ? [...fromWindow, functionBase] : [functionBase, ...fromWindow];
+                return [...new Set(ordered.filter(Boolean))];
+            };
+
+            const edgeHeaders = () => {
+                const key = window.SUPABASE_ANON_KEY || '';
+                const headers = { 'Content-Type': 'application/json' };
+                if (key) {
+                    headers['apikey'] = key;
+                    headers['Authorization'] = `Bearer ${key}`;
+                }
+                return headers;
+            };
+
+            const normalizeApiSymbol = (raw) => {
+                const s = String(raw || '').trim().toUpperCase();
+                if (!s) return '';
+                if (s.startsWith('^')) return s;
+                if (s.startsWith('NSE:') || s.startsWith('BSE:')) {
+                    const parts = s.split(':');
+                    const prefix = parts[0];
+                    const code = (parts[1] || '').replace(/\.(NS|BO)$/i, '');
+                    if (!code) return '';
+                    return prefix === 'BSE' ? `${code}.BO` : `${code}.NS`;
+                }
+                if (s.endsWith('.NS') || s.endsWith('.BO')) return s;
+                return s;
+            };
+
+            const toChartPoint = (row) => {
+                const ts = Math.floor(new Date(row?.t).getTime() / 1000);
+                const o = Number(row?.o);
+                const h = Number(row?.h);
+                const l = Number(row?.l);
+                const c = Number(row?.c);
+                if (!Number.isFinite(ts) || !Number.isFinite(c)) return null;
+                if (seriesType === 'line') return { time: ts, close: c };
+                if (!Number.isFinite(o) || !Number.isFinite(h) || !Number.isFinite(l)) return null;
+                return { time: ts, open: o, high: h, low: l, close: c };
+            };
+
+            const fetchKlineFromLocalApi = async (sym, name = '') => {
+                for (const base of marketApiBases()) {
+                    try {
+                        const baseUrl = String(base || '').replace(/\/$/, '');
+                        const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                        const url = isFnBase
+                            ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(desiredPeriod)}&interval=${encodeURIComponent(desiredInterval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`
+                            : `${baseUrl}/kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(desiredPeriod)}&interval=${encodeURIComponent(desiredInterval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`;
+                        const response = await fetch(url, {
+                            cache: 'no-store',
+                            headers: isFnBase ? edgeHeaders() : undefined
+                        });
+                        if (!response.ok) continue;
+                        const data = await response.json();
+                        if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
+                            return { payload: data, base: baseUrl };
+                        }
+                    } catch (_) { }
+                }
+                return null;
+            };
+
+            const fetchYahooChartJson = async (targetUrl) => {
+                try {
+                    const response = await fetch(targetUrl, { cache: 'no-store' });
+                    if (!response.ok) return null;
+                    return await response.json();
+                } catch (_) {
+                    return null;
+                }
+            };
+
+            const fetchYahooKline = async (sym) => {
+                try {
+                    const interval = desiredInterval || '5m';
+                    const rangeMap = {
+                        '1d': '1d',
+                        '5d': '5d',
+                        '1mo': '1mo',
+                        '3mo': '3mo',
+                        '6mo': '6mo',
+                        '1y': '1y',
+                        '2y': '2y',
+                        '5y': '5y',
+                        '10y': '10y',
+                        'ytd': 'ytd',
+                        'max': 'max'
+                    };
+                    const range = rangeMap[desiredPeriod] || '1d';
+                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${encodeURIComponent(interval)}&range=${encodeURIComponent(range)}`;
+                    const data = await fetchYahooChartJson(url);
+                    const result = data?.chart?.result?.[0];
+                    const timestamps = result?.timestamp;
+                    const quote = result?.indicators?.quote?.[0];
+                    if (!Array.isArray(timestamps) || !quote) return null;
+
+                    const rows = timestamps.map((t, i) => {
+                        const o = Number(quote.open?.[i]);
+                        const h = Number(quote.high?.[i]);
+                        const l = Number(quote.low?.[i]);
+                        const c = Number(quote.close?.[i]);
+                        if (!Number.isFinite(c)) return null;
+                        return {
+                            t: new Date(t * 1000).toISOString(),
+                            o: Number.isFinite(o) ? o : c,
+                            h: Number.isFinite(h) ? h : c,
+                            l: Number.isFinite(l) ? l : c,
+                            c,
+                            v: Number(quote.volume?.[i]) || 0
+                        };
+                    }).filter(Boolean);
+
+                    if (!rows.length) return null;
+                    return {
+                        payload: {
+                            success: true,
+                            symbol: result?.meta?.symbol || sym,
+                            source: 'yahoo',
+                            data: rows
+                        },
+                        symbol: result?.meta?.symbol || sym
+                    };
+                } catch (_) {
+                    return null;
+                }
+            };
+
+            const fetchQuoteFromLocalApi = async (sym, name = '') => {
+                for (const base of marketApiBases()) {
+                    try {
+                        const baseUrl = String(base || '').replace(/\/$/, '');
+                        const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                        const response = isFnBase
+                            ? await fetch(`${baseUrl}/get-market-price`, {
+                                method: 'POST',
+                                headers: edgeHeaders(),
+                                body: JSON.stringify({ symbol: sym, name: name || undefined }),
+                                cache: 'no-store'
+                            })
+                            : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(sym)}${name ? `&name=${encodeURIComponent(name)}` : ''}`, { cache: 'no-store' });
+                        if (!response.ok) continue;
+                        const data = await response.json();
+                        const price = Number(data?.price);
+                        if (data?.success && Number.isFinite(price)) {
+                            return { price, symbol: data.symbol || sym, base: baseUrl };
+                        }
+                    } catch (_) { }
+                }
+                if (window.DB && typeof window.DB.getMarketPrice === 'function') {
+                    try {
+                        const data = await window.DB.getMarketPrice(sym, name);
+                        const price = Number(data?.price);
+                        if (data && data.status !== 'error' && Number.isFinite(price)) {
+                            return { price, symbol: data.symbol || sym, base: 'db_fallback' };
+                        }
+                    } catch (_) { }
+                }
+                return null;
+            };
+
+            const buildSyntheticKline = (seedPrice, sym) => {
+                const price = Number(seedPrice);
+                if (!Number.isFinite(price) || price <= 0) return null;
+                const intervalMap = { '1m': 60, '2m': 120, '5m': 300, '15m': 900, '30m': 1800, '60m': 3600, '90m': 5400, '1d': 86400 };
+                const step = intervalMap[desiredInterval] || 300;
+                const points = desiredPeriod === '1d' ? 96 : 120;
+                const now = Math.floor(Date.now() / 1000);
+                const start = now - (points - 1) * step;
+                let lastClose = price;
+                const rows = [];
+                for (let i = 0; i < points; i++) {
+                    const ts = start + (i * step);
+                    const drift = (Math.random() - 0.5) * 0.0035;
+                    const o = lastClose;
+                    const c = Math.max(0.01, o * (1 + drift));
+                    const h = Math.max(o, c) * (1 + Math.random() * 0.0012);
+                    const l = Math.min(o, c) * (1 - Math.random() * 0.0012);
+                    rows.push({
+                        t: new Date(ts * 1000).toISOString(),
+                        o,
+                        h,
+                        l,
+                        c,
+                        v: Math.floor(1000 + Math.random() * 3000)
+                    });
+                    lastClose = c;
+                }
+                return {
+                    success: true,
+                    symbol: sym,
+                    source: 'quote_synthetic',
+                    delayed: true,
+                    data: rows
+                };
+            };
+
+            try {
+                const baseSymbol = normalizeApiSymbol(symbol);
+                const candidates = [];
+                if (baseSymbol) candidates.push(baseSymbol);
+                if (baseSymbol && !baseSymbol.startsWith('^') && !baseSymbol.includes(':') && !baseSymbol.includes('.')) {
+                    candidates.push(`${baseSymbol}.NS`, `${baseSymbol}.BO`);
+                }
+                const uniqCandidates = [...new Set(candidates.filter(Boolean))];
+
+                let klinePayload = null;
+                let usedSymbol = baseSymbol || symbol;
+                for (const candidate of uniqCandidates) {
+                    const result = await fetchKlineFromLocalApi(candidate, window.MarketEngine?.getProduct?.(candidate)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
+                    if (result?.payload) {
+                        klinePayload = result.payload;
+                        usedSymbol = result.payload.symbol || candidate;
+                        break;
+                    }
+                }
+
+                if (!klinePayload) {
+                    for (const candidate of uniqCandidates) {
+                        const result = await fetchYahooKline(candidate);
+                        if (result?.payload) {
+                            klinePayload = result.payload;
+                            usedSymbol = result.symbol || candidate;
+                            break;
+                        }
+                    }
+                }
+
+                if (!klinePayload) {
+                    const quote = await fetchQuoteFromLocalApi(usedSymbol, window.MarketEngine?.getProduct?.(usedSymbol)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
+                    const quotePrice = Number(quote?.price);
+                    const productPrice = Number(
+                        window.MarketEngine?.getProduct?.(usedSymbol)?.price ??
+                        window.MarketEngine?.getProduct?.(baseSymbol)?.price
+                    );
+                    const seedPrice = Number.isFinite(quotePrice) && quotePrice > 0
+                        ? quotePrice
+                        : (Number.isFinite(productPrice) && productPrice > 0 ? productPrice : null);
+                    if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, quote?.symbol || usedSymbol);
+                }
+                if (!klinePayload) throw new Error("No kline data from edge market API");
+
+                const chartData = (klinePayload.data || [])
+                    .map(toChartPoint)
+                    .filter(Boolean);
+
+                if (chartData.length === 0) throw new Error("Kline data empty after filtering");
+
+                container.innerHTML = '';
+                const chart = LightweightCharts.createChart(container, {
+                    layout: {
+                        background: { color: '#ffffff' }, // stock_detail is light theme
+                        textColor: '#94a3b8',
+                        fontFamily: 'Outfit, sans-serif',
+                    },
+                    grid: {
+                        vertLines: { color: '#f1f5f9' },
+                        horzLines: { color: '#f1f5f9' },
+                    },
+                    crosshair: {
+                        mode: LightweightCharts.CrosshairMode.Normal,
+                    },
+                    rightPriceScale: {
+                        borderColor: '#f1f5f9',
+                        visible: true,
+                    },
+                    timeScale: {
+                        borderColor: '#f1f5f9',
+                        timeVisible: true,
+                        secondsVisible: false,
+                    },
+                });
+
+                const mainSeries = seriesType === 'line'
+                    ? chart.addAreaSeries({
+                        lineColor: '#d4af37',
+                        topColor: 'rgba(212, 175, 55, 0.22)',
+                        bottomColor: 'rgba(212, 175, 55, 0.02)',
+                        lineWidth: 2
+                    })
+                    : chart.addCandlestickSeries({
+                        upColor: '#10b981',
+                        downColor: '#ef4444',
+                        borderVisible: false,
+                        wickUpColor: '#10b981',
+                        wickDownColor: '#ef4444',
+                    });
+
+                if (seriesType === 'line') {
+                    mainSeries.setData(chartData.map(p => ({ time: p.time, value: p.close })));
+                } else {
+                    mainSeries.setData(chartData);
+                }
+                chart.timeScale().fitContent();
+
+                currentYahooChart = chart;
+
+                yahooUpdateTimer = setInterval(async () => {
+                    try {
+                        const quote = await fetchQuoteFromLocalApi(usedSymbol);
+                        if (!quote || !Number.isFinite(quote.price)) return;
+                        const nowTs = Math.floor(Date.now() / 1000);
+                        if (seriesType === 'line') {
+                            mainSeries.update({ time: nowTs, value: quote.price });
+                        } else {
+                            mainSeries.update({
+                                time: nowTs,
+                                open: quote.price,
+                                high: quote.price,
+                                low: quote.price,
+                                close: quote.price,
+                            });
+                        }
+                    } catch (e) {
+                        console.warn("Realtime quote update failed:", e);
+                    }
+                }, 20000);
+
+                yahooResizeObserver = new ResizeObserver(entries => {
+                    if (entries.length === 0 || !entries[0].contentRect) return;
+                    const { width, height } = entries[0].contentRect;
+                    try {
+                        chart.applyOptions({ width, height });
+                    } catch (_) {
+                        if (yahooResizeObserver) {
+                            try { yahooResizeObserver.disconnect(); } catch (_) { }
+                            yahooResizeObserver = null;
+                        }
+                    }
+                });
+                yahooResizeObserver.observe(container);
+
+            } catch (error) {
+                console.error("loadYahooChart Error:", error);
+                container.innerHTML = `<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-size:1.1rem; text-align:center; flex-direction:column; gap:10px; font-family: Outfit, sans-serif;"><i data-lucide="bar-chart-2" style="width:48px;height:48px;opacity:0.5;"></i>Chart data not available for ${symbol}</div>`;
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        function loadWidget(symbol) {
+            const container = document.getElementById('tradingview_widget');
+            if (container) container.innerHTML = '';
+
+            const raw = String(symbol || '').toUpperCase();
+            const isIndiaVix = raw === 'NSE:INDIAVIX' || raw === 'INDIAVIX' || raw.includes('INDIAVIX');
+            if (isIndiaVix && typeof window.loadYahooChart === 'function') {
+                window.loadYahooChart('^INDIAVIX', 'tradingview_widget', { seriesType: 'line' });
+                return;
+            }
+
+            let tvSymbol = symbol;
+
+            // Handle Index Symbol Mapping for TradingView
+            const indexMap = {
+                'NIFTY1!': 'BSE:SNSX50',
+                'NSE:NIFTY': 'BSE:SNSX50',
+                'NIFTYBANK': 'BSE:BANK',
+                'NSE:NIFTYBANK': 'BSE:BANK',
+                'NSE:BANKNIFTY': 'BSE:BANK',
+                'BSE:SENSEX': 'BSE:SENSEX',
+                'SENSEX': 'BSE:SENSEX',
+                'NSE:INDIAVIX': 'NSE:INDIAVIX',
+                'INDIAVIX': 'NSE:INDIAVIX',
+                'NSE:MIDCPNIFTY': 'BSE:MID150',
+                'NIFMDCP100': 'BSE:MID150',
+                'NSE:NIFMDCP100': 'BSE:MID150',
+                'NSE:SMLCAP100': 'BSE:SML250',
+                'NIFSMCP100': 'BSE:SML250',
+                'NSE:NIFSMCP100': 'BSE:SML250'
+            };
+
+            if (container) container.innerHTML = ''; // Re-initialize widget correctly
+
+            if (indexMap[symbol]) {
+                tvSymbol = indexMap[symbol];
+            } else {
+                const resolveTvStockSymbol = (rawSymbol) => {
+                    if (!rawSymbol || typeof rawSymbol !== 'string') return 'NSE:RELIANCE';
+
+                    const input = rawSymbol.trim().toUpperCase();
+                    if (!input) return 'NSE:RELIANCE';
+
+                    if (input.includes(':')) {
+                        const parts = input.split(':');
+                        const ex = (parts[0] || '').trim().toUpperCase();
+                        const rhs = (parts.slice(1).join(':') || '').trim().toUpperCase();
+                        if (!rhs) return 'NSE:RELIANCE';
+                        const ticker = rhs
+                            .replace(/\.(NS|BO|NSE|BSE|KS|KRX)$/i, '')
+                            .replace(/\s+/g, '');
+                        if (ex === 'BSE') return `BSE:${ticker}`;
+                        if (ex === 'KRX') return `KRX:${ticker}`;
+                        return `NSE:${ticker}`;
+                    }
+                    if (input.endsWith('.NS')) return `NSE:${input.slice(0, -3)}`;
+                    if (input.endsWith('.BO')) return `BSE:${input.slice(0, -3)}`;
+                    if (input.endsWith('.KS')) return `KRX:${input.slice(0, -3)}`;
+
+                    if (input.includes('.')) {
+                        const parts = input.split('.');
+                        if (parts.length === 2) {
+                            const ticker = parts[0];
+                            const suffix = parts[1];
+                            if (suffix === 'NSE') return `NSE:${ticker}`;
+                            if (suffix === 'BSE') return `BSE:${ticker}`;
+                            if (suffix === 'KRX') return `KRX:${ticker}`;
+                        }
+                    }
+
+                    // Default to NSE for Indian stocks to avoid invalid BSE symbols like CDSL.
+                    return `NSE:${input}`;
+                };
+                tvSymbol = resolveTvStockSymbol(symbol);
+            }
+
+            new TradingView.widget({
+                "autosize": true,
+                "symbol": tvSymbol,
+                "interval": "D",
+                "timezone": "Etc/UTC",
+                "theme": "dark",
+                "style": "3",
+                "locale": "en",
+                "toolbar_bg": "#111111",
+                "enable_publishing": false,
+                "allow_symbol_change": true,
+                "container_id": "tradingview_widget",
+                "hide_side_toolbar": false,
+                "withdateranges": true,
+                "save_image": true,
+                "details": true,
+                "hotlist": true,
+                "calendar": true,
+                "overrides": {
+                    "paneProperties.background": "#111111",
+                    "paneProperties.vertGridProperties.color": "#1f1f1f",
+                    "paneProperties.horzGridProperties.color": "#1f1f1f",
+                    "scalesProperties.textColor": "#94a3b8",
+                    "mainSeriesProperties.areaStyle.linecolor": "#d4af37",
+                    "mainSeriesProperties.areaStyle.color1": "rgba(212, 175, 55, 0.2)",
+                    "mainSeriesProperties.areaStyle.color2": "rgba(212, 175, 55, 0.05)"
+                }
+            });
+        }
+
+
+        // --- Buy Logic ---
+        function updateBuyTotal() {
+            const qtyInput = document.getElementById('bpQuantity');
+            if (!qtyInput) return { qty: 0, price: 0, baseTotal: 0, tax: 0, txnCharge: 0, total: 0 };
+
+            let qty = parseInt(qtyInput.value) || 0;
+            let baseTotal, tax, txnCharge, finalTotal;
+
+            if (currentProductType === 'IPO') {
+                // FIXED LOT LOGIC FOR IPO
+                baseTotal = currentMinInvest || 15000;
+                qty = baseTotal / (currentPrice || 1);
+                tax = 0;
+                txnCharge = 0;
+                finalTotal = baseTotal;
+            } else {
+                baseTotal = qty * currentPrice;
+                tax = baseTotal * 0.0012;
+                txnCharge = baseTotal * 0.0003;
+                finalTotal = baseTotal + tax + txnCharge;
+            }
+
+            const taxEl = document.getElementById('bpTaxFees');
+            const txnEl = document.getElementById('bpTxnCharge');
+            const totalEl = document.getElementById('bpTotalCost');
+
+            if (taxEl) taxEl.innerText = '₹' + tax.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (txnEl) txnEl.innerText = '₹' + txnCharge.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            if (totalEl) totalEl.innerText = '₹' + finalTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+            return { qty, price: currentPrice, baseTotal, tax, txnCharge, total: finalTotal };
+        }
+
+        function closeOrderConfirm() {
+            const modal = document.getElementById('orderConfirmModal');
+            if (modal) modal.style.display = 'none';
+        }
+
+        async function executeBuyOrder() {
+            const user = window.DB.getCurrentUser();
+            if (!user) return;
+
+            if (currentProductType?.toUpperCase() === 'IPO') {
+                const product = window.MarketEngine ? window.MarketEngine.getProduct(currentActiveSymbol) : null;
+                if (!product) {
+                    alert("Product data not found.");
+                    return;
+                }
+
+                // 1. Force Refresh User Data
+                const freshUser = await window.DB.refreshCurrentUser();
+                if (!freshUser) {
+                    alert("Session expired. Please login again.");
+                    window.location.href = 'login.html';
+                    return;
+                }
+
+                if (freshUser.trading_frozen) {
+                    showModal('error', 'Service Unavailable', "Trading functions are temporarily unavailable.");
+                    return;
+                }
+
+                const price = product.price || 0;
+                const minInvest = product.min_invest || 15000;
+                let qty = price > 0 ? Math.floor(minInvest / price) : 1;
+                if (qty <= 0) qty = 1;
+
+                const tradeData = {
+                    user_id: freshUser.id,
+                    product_id: product.id,
+                    symbol: currentActiveSymbol,
+                    name: currentStockName,
+                    type: 'ipo',
+                    quantity: qty,
+                    requested_quantity: qty,
+                    price: price,
+                    total_amount: minInvest,
+                    status: 'AWAITING_APPROVAL',
+                    order_status: 'PENDING'
+                };
+
+                const btn = document.getElementById('buyMainBtn'); // Assuming there's a main buy button
+                const originalText = btn ? btn.innerText : "BUY NOW";
+                if (btn) {
+                    btn.innerText = "PROCESSING...";
+                    btn.disabled = true;
+                }
+
+                try {
+                    const result = await window.DB.submitSubscriptionAtomic(tradeData);
+                    if (result.success) {
+                        const isLocked = result.status === 'LOCKED_UNPAID';
+                        if (isLocked) {
+                            showModal('warning', 'Position Locked', `SUBMISSION SUCCESSFUL (RESTRICTED). Your subscription for ${currentStockName} has been recorded. However, due to insufficient balance, this position is currently LOCKED. Please settle the outstanding balance of ₹${(result.outstanding || 0).toLocaleString('en-IN')} in your portfolio to enable trading.`, () => {
+                                if (typeof syncBalance === 'function') syncBalance();
+                            });
+                        } else {
+                            showModal('success', 'Subscription Received', `Your allocation request for ${currentStockName} has been received and is awaiting approval.`);
+                        }
+                        if (typeof syncUserData === 'function') syncUserData();
+                        if (typeof fetchUserTransactions === 'function') fetchUserTransactions();
+                    } else {
+                        alert("Submission failed: " + (result.error?.message || result.error));
+                    }
+                } catch (e) {
+                    console.error("IPO Error:", e);
+                    alert("A technical error occurred.");
+                } finally {
+                    if (btn) {
+                        btn.innerText = originalText;
+                        btn.disabled = false;
+                    }
+                }
+                return;
+            }
+
+            const qty = parseInt(document.getElementById('bpQuantity').value) || 0;
+            if (qty <= 0) { alert("Invalid quantity"); return; }
+
+            const calc = updateBuyTotal();
+            const symbol = currentActiveSymbol;
+            const stockName = currentStockName;
+
+            // Populate Premium Confirmation Modal
+            const ocName = document.getElementById('ocAssetName');
+            const ocSym = document.getElementById('ocAssetSymbol');
+            const ocQty = document.getElementById('ocQuantity');
+            const ocPr = document.getElementById('ocPrice');
+            const ocBase = document.getElementById('ocBaseAmount');
+            const ocTx = document.getElementById('ocTax');
+            const ocTn = document.getElementById('ocTxn');
+            const ocTot = document.getElementById('ocTotal');
+            const ocBtn = document.getElementById('ocConfirmBtn');
+
+            if (ocName) ocName.innerText = stockName;
+            if (ocSym) ocSym.innerText = `${symbol} • BSE`;
+            if (ocQty) ocQty.innerText = calc.qty.toLocaleString();
+            if (ocPr) ocPr.innerText = '₹' + calc.price.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocBase) ocBase.innerText = '₹' + calc.baseTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTx) ocTx.innerText = '+₹' + calc.tax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTn) ocTn.innerText = '+₹' + calc.txnCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTot) ocTot.innerText = '₹' + calc.total.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+            if (ocBtn) {
+                ocBtn.innerText = `CONFIRM ${currentProductType.toUpperCase()} BUY`;
+                ocBtn.onclick = () => executeConfirmedTrade('buy', currentProductType, symbol, stockName, calc);
+            }
+
+            const modal = document.getElementById('orderConfirmModal');
+            if (modal) modal.style.display = 'flex';
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        // --- IPO Logic Removed ---
+
+        async function executeSellOrder(tradeId) {
+            const user = window.DB.getCurrentUser();
+            if (!user) return;
+
+            // If no tradeId provided, find the first available holding for this symbol
+            if (!tradeId) {
+                const trades = await window.DB.getTradesByUserId(user.id);
+                const matching = trades.find(t => t.status === 'Approved' && t.symbol.toUpperCase() === currentActiveSymbol.toUpperCase());
+                if (!matching) {
+                    alert("You don't have any holdings for " + currentActiveSymbol + " to sell.");
+                    return;
+                }
+                tradeId = matching.id;
+            }
+
+            const trade = (await window.DB.getTradesByUserId(user.id)).find(t => t.id == tradeId);
+            if (!trade) return;
+
+            const qty = parseFloat(trade.quantity);
+            const baseReturn = qty * currentPrice;
+            const tax = baseReturn * 0.0012;
+            const txnCharge = baseReturn * 0.0003;
+            const totalReturn = baseReturn - tax - txnCharge;
+
+            const calc = {
+                tradeId,
+                qty,
+                price: currentPrice,
+                baseTotal: baseReturn,
+                tax: tax,
+                txnCharge: txnCharge,
+                total: totalReturn
+            };
+
+            // Populate Premium Confirmation Modal for SELL
+            const ocName = document.getElementById('ocAssetName');
+            const ocSym = document.getElementById('ocAssetSymbol');
+            const ocQty = document.getElementById('ocQuantity');
+            const ocPr = document.getElementById('ocPrice');
+            const ocBase = document.getElementById('ocBaseAmount');
+            const ocTx = document.getElementById('ocTax');
+            const ocTn = document.getElementById('ocTxn');
+            const ocTot = document.getElementById('ocTotal');
+            const ocBtn = document.getElementById('ocConfirmBtn');
+
+            if (ocName) ocName.innerText = currentStockName;
+            if (ocSym) ocSym.innerText = `${currentActiveSymbol} • EXIT LOT`;
+            if (ocQty) ocQty.innerText = qty.toLocaleString();
+            if (ocPr) ocPr.innerText = '₹' + currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocBase) ocBase.innerText = '₹' + baseReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTx) ocTx.innerText = '-₹' + tax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTn) ocTn.innerText = '-₹' + txnCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTot) ocTot.innerText = '₹' + totalReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+
+            if (ocBtn) {
+                ocBtn.innerText = `CONFIRM SELL ORDER`;
+                ocBtn.style.background = '#ef4444';
+                ocBtn.onclick = () => executeConfirmedTrade('sell', 'stock', currentActiveSymbol, currentStockName, calc);
+            }
+
+            const modal = document.getElementById('orderConfirmModal');
+            if (modal) modal.style.display = 'flex';
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        async function executeConfirmedTrade(action, type, symbol, stockName, calc) {
+            const btn = document.getElementById('ocConfirmBtn');
+            const originalText = btn.innerText;
+            btn.innerText = "EXECUTING...";
+            btn.disabled = true;
+
+            const user = window.DB.getCurrentUser();
+            const client = window.DB.getClient();
+
+            try {
+                if (action === 'buy') {
+                    // 1. Force Refresh User Data
+                    const freshUser = await window.DB.refreshCurrentUser();
+                    const currentBalance = parseFloat(freshUser.balance || 0);
+
+                    if (calc.total > currentBalance) {
+                        alert(`Insufficient balance! Your available balance is ₹${currentBalance.toFixed(2)}, but the total cost is ₹${calc.total.toFixed(2)}.`);
+                        closeOrderConfirm();
+                        return;
+                    }
+
+                    const isSubscription = ['otc', 'ipo'].includes((type || '').toLowerCase());
+                    const tradeStatus = isSubscription ? 'Pending' : 'Approved';
+
+                    const tradeData = {
+                        user_id: freshUser.id,
+                        symbol: symbol,
+                        name: stockName,
+                        type: (type || 'stock').toLowerCase(),
+                        product_id: currentProductId,
+                        quantity: calc.qty,
+                        requested_quantity: calc.qty,
+                        price: calc.price,
+                        total_amount: calc.total,
+                        tax_amount: calc.tax,
+                        txn_charge: calc.txnCharge,
+                        status: tradeStatus,
+                        order_status: (type === 'ipo' ? 'PENDING' : 'OPEN')
+                    };
+
+                    let result;
+                    if (isSubscription) {
+                        result = await window.DB.submitSubscriptionAtomic(tradeData);
+                    } else {
+                        result = await window.DB.submitTrade(tradeData);
+                    }
+
+                    if (result.success) {
+                        // --- WALLET STATE TRANSITION (NON-SUBSCRIPTION) ---
+                        if (!isSubscription && tradeStatus === 'Approved') {
+                            const newBalance = currentBalance - calc.total;
+                            const newInvested = (parseFloat(freshUser.invested) || 0) + calc.total;
+                            await window.DB.updateUserFinancials(freshUser.id, newBalance, newInvested);
+                        }
+
+                        closeOrderConfirm();
+                        if (isSubscription) {
+                            openPurchaseModal(type, symbol, stockName, calc.qty, calc.total);
+                        } else {
+                            showModal('success', 'Order Successful', `Successfully purchased ${calc.qty} shares of ${stockName}.`, () => {
+                                syncBalance();
+                                loadHoldings();
+                            });
+                        }
+                    } else {
+                        const errStr = result.error?.message || result.error || "Unknown Error";
+                        showModal('error', 'Submission Failed', 'Failed to submit trade: ' + errStr);
+                    }
+                } else {
+                    // SELL logic
+                    const tradeId = calc.tradeId;
+                    const { error: tradeErr } = await client.from('trades').update({
+                        status: 'Settled',
+                        processed_at: new Date().toISOString(),
+                        admin_note: `Sold at Market ₹${calc.price.toFixed(2)}`
+                    }).eq('id', tradeId);
+                    if (tradeErr) throw tradeErr;
+
+                    const freshUser = await window.DB.refreshCurrentUser();
+                    const newBalance = (parseFloat(freshUser.balance) || 0) + calc.total;
+                    const originalTrade = (await window.DB.getTradesByUserId(user.id)).find(t => t.id == tradeId);
+                    const newInvested = (parseFloat(freshUser.invested) || 0) - (parseFloat(originalTrade.total_amount) || 0);
+
+                    await client.from('users').update({
+                        balance: newBalance,
+                        invested: Math.max(0, newInvested)
+                    }).eq('id', user.id);
+
+                    showModal('success', 'Order Closed', `Order closed successfully! ₹${calc.total.toLocaleString('en-IN')} added to your balance.`, () => {
+                        closeOrderConfirm();
+                        syncBalance();
+                        loadHoldings();
+                    });
+                }
+            } catch (e) {
+                console.error("Trade error:", e);
+                alert("Transaction failed: " + e.message);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+                btn.style.background = ''; // reset color
+            }
+        }
+
+        async function loadHoldings() {
+            const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+            const list = document.getElementById('holdingsListWrapper');
+            if (!list || !user) return;
+
+            try {
+                // Fetch latest trades for this user
+                const allTrades = await window.DB.getTradesByUserId(user.id);
+
+                // Filter for Approved trades for THIS specific stock/product
+                const myTrades = allTrades.filter(t =>
+                    t.status === 'Approved' &&
+                    t.symbol.toUpperCase() === currentActiveSymbol.toUpperCase()
+                );
+
+                if (myTrades.length > 0) {
+                    list.innerHTML = myTrades.map(trade => {
+                        const tradeDate = new Date(trade.created_at).toLocaleDateString('en-IN', {
+                            day: '2-digit', month: 'short'
+                        });
+                        const totalBuyIn = parseFloat(trade.total_amount);
+                        const qty = parseFloat(trade.quantity);
+                        const buyPrice = parseFloat(trade.price);
+
+                        // Calculate Real-time Profit
+                        // Profit = (Current Price * Qty) - Buy In Total (including fees)
+                        // Or if Buy In Total is just base, we use that. 
+                        // Instructions say: Profit = Current Price - Buy In Price
+                        const profitPerShare = currentPrice - buyPrice;
+                        const totalProfit = profitPerShare * qty;
+                        const profitPercent = (profitPerShare / buyPrice) * 100;
+
+                        const profitColor = totalProfit >= 0 ? '#10b981' : '#ef4444';
+                        const profitSign = totalProfit >= 0 ? '+' : '';
+
+                        return `
+                            <div class="tl-item" style="padding: 1.25rem 0;">
+                                <div class="tl-left">
+                                    <div class="tl-symbol" style="display:flex; align-items:center; gap:0.5rem;">
+                                        ${trade.symbol}
+                                        <span style="font-size: 0.7rem; padding: 2px 6px; background: #f1f5f9; border-radius: 4px; color: #64748b;">LOT</span>
+                                    </div>
+                                    <div class="tl-date">${tradeDate} • Bought at ₹${buyPrice.toLocaleString('en-IN')}</div>
+                                    
+                                    <div style="margin-top: 0.8rem; display: flex; gap: 1rem; align-items: center;">
+                                        <div style="font-size: 0.8rem;">
+                                            <span style="color: #64748b;">Profit:</span>
+                                            <span style="font-weight: 700; color: ${profitColor};">${profitSign}₹${totalProfit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                        <div style="font-size: 0.8rem;">
+                                            <span style="color: #64748b;">ROI:</span>
+                                            <span style="font-weight: 700; color: ${profitColor}; border-radius: 4px; padding: 2px 6px; background: ${profitColor}15;">${profitSign}${profitPercent.toFixed(2)}%</span>
+                                        </div>
+                                    </div>
+
+                                    <button onclick="executeSellOrder('${trade.id}')" style="margin-top: 1rem; background: #ef4444; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; font-weight: 700; transition: 0.2s;" onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">EXIT POSITION</button>
+                                </div>
+                                <div class="tl-right">
+                                    <div class="tl-price" style="font-size: 1.1rem;">₹${totalBuyIn.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                                    <div class="tl-qty">${qty} Units</div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    list.innerHTML = '<div style="text-align:center; padding:2rem; color:#94a3b8; font-size:0.85rem;">You do not own this asset yet.</div>';
+                }
+            } catch (e) {
+                console.error("Error loading holdings:", e);
+                list.innerHTML = '<div style="text-align:center; padding:1.5rem; color:#ef4444; font-size:0.8rem;">Error updating holdings</div>';
+            }
+        }
+
+        // --- MARKET DATA POLLING ---
+        let priceInterval = null;
+
+        async function fetchLivePrice(symbol) {
+            console.log("🔥 fetchLivePrice CALLED:", symbol);
+            if (!symbol) symbol = currentActiveSymbol;
+
+            try {
+                let price = null;
+                const isOTC = currentProductType?.toUpperCase() === 'OTC';
+
+                if (isOTC && window.MarketEngine) {
+                    const prod = window.MarketEngine.dbOtcProducts.find(p => p.symbol === symbol || p.id == currentProductId);
+                    const marketSymbol = prod ? prod.market_symbol : symbol;
+
+                    // Fetch real-time price from Yahoo (via Supabase function)
+                    const data = await window.DB.getMarketPrice(marketSymbol, prod?.name || '');
+                    if (data && data.status !== 'error' && data.price) {
+                        price = parseFloat(data.price);
+                        if (window.MarketEngine.livePrices) window.MarketEngine.livePrices[marketSymbol] = price;
+                    }
+                }
+
+                if (price === null) {
+                    price = await window.DB.getCachedMarketPrice(symbol, prod?.name || '');
+                }
+
+                if (!price) return;
+
+                currentPrice = parseFloat(price);
+
+                const formatted = `₹${Number(price).toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                })}`;
+
+                const el = document.getElementById("detPrice");
+
+                if (el) {
+                    el.innerText = formatted;
+
+                    // 🔥 HARD LOCK — prevent other scripts from overwriting
+                    Object.defineProperty(el, "innerText", {
+                        writable: false
+                    });
+                }
+
+                console.log("✅ detPrice locked at:", formatted);
+
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function startSimulation() {
+            // Initial fetch
+            fetchLivePrice();
+
+            // Poll every 10 seconds safely
+            if (priceInterval) clearInterval(priceInterval);
+            priceInterval = setInterval(fetchLivePrice, 10000);
+        }
+
+        window.addEventListener('beforeunload', () => {
+            if (priceInterval) clearInterval(priceInterval);
+        });
+
+        let currentPurchaseData = null;
+
+        function openPurchaseModal(type, symbol, name, qty, total) {
+            currentPurchaseData = { type, symbol, name, qty, total };
+
+            document.getElementById('cpName').innerText = name;
+            document.getElementById('cpSymbol').innerText = symbol;
+            document.getElementById('cpQty').innerText = qty;
+            document.getElementById('cpTotal').innerText = `₹${total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+
+            document.getElementById('purchaseConfirmModal').style.display = 'flex';
+            lucide.createIcons();
+        }
+
+        function closePurchaseModal() {
+            document.getElementById('purchaseConfirmModal').style.display = 'none';
+            currentPurchaseData = null;
+        }
+
+        window.confirmPurchaseSubscription = async function () {
+            const btn = document.getElementById('cpSubmitBtn');
+            const originalText = btn.innerText;
+
+            btn.innerText = "Processing...";
+            btn.disabled = true;
+
+            try {
+                showModal('success', 'Request Received', `Your subscription request for ${currentPurchaseData.name} has been received and is waiting for approval.`, () => {
+                    closePurchaseModal();
+                    syncBalance();
+                });
+            } catch (e) {
+                console.error(e);
+                alert("Error: " + e.message);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        };
+
+
+    </script>
+    <!-- IPO Order Form Modal REMOVED -->
+
+    <!-- Premium Order Confirmation Modal -->
+    <div id="orderConfirmModal" class="center-popup-modal" onclick="if(event.target == this) closeOrderConfirm()"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; align-items:center; justify-content:center;">
+        <div class="center-popup-content"
+            style="max-width: 480px; padding: 0; overflow: hidden; border: none; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); background: white; border-radius: 20px; width: 90%;">
+            <div style="background: linear-gradient(135deg, #1e56a0 0%, #16427d 100%); padding: 1.5rem; color: white;">
+                <div style="display: flex; justify-content: space-between; align-items: start;">
+                    <div>
+                        <div id="ocTypeLabel"
+                            style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.8; font-weight: 700; margin-bottom: 0.25rem;">
+                            PRO ORDER CONFIRMATION</div>
+                        <h2 id="ocAssetName" style="font-weight: 800; font-size: 1.5rem; margin: 0; line-height: 1.2;">
+                            Stock Name</h2>
+                        <div id="ocAssetSymbol"
+                            style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.25rem; font-weight: 500;">SYMBOL •
+                            EXCHANGE</div>
+                    </div>
+                    <button class="popup-close" onclick="closeOrderConfirm()"
+                        style="background: rgba(255,255,255,0.1); border: none; color: white; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: grid; place-items: center;"><i
+                            data-lucide="x" size="20"></i></button>
+                </div>
+            </div>
+
+            <div class="popup-body" style="padding: 1.5rem; background: #ffffff;">
+                <div style="display: flex; gap: 1rem; margin-bottom: 2rem;">
+                    <div
+                        style="flex: 1; background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #f1f5f9;">
+                        <div
+                            style="font-size: 0.7rem; color: #64748b; font-weight: 700; margin-bottom: 0.25rem; text-transform: uppercase;">
+                            Quantity</div>
+                        <div id="ocQuantity" style="font-size: 1.25rem; font-weight: 800; color: #1e293b;">0</div>
+                    </div>
+                    <div
+                        style="flex: 1; background: #f8fafc; padding: 1rem; border-radius: 12px; border: 1px solid #f1f5f9;">
+                        <div
+                            style="font-size: 0.7rem; color: #64748b; font-weight: 700; margin-bottom: 0.25rem; text-transform: uppercase;">
+                            Price/Share</div>
+                        <div id="ocPrice" style="font-size: 1.25rem; font-weight: 800; color: #1e293b;">₹0.00</div>
+                    </div>
+                </div>
+
+                <div style="border-radius: 16px; background: #f1f5f9; padding: 1.25rem; margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                        <span style="color: #64748b; font-size: 0.9rem; font-weight: 500;">Base Amount</span>
+                        <span id="ocBaseAmount"
+                            style="font-weight: 600; color: #1e293b; font-size: 0.95rem;">₹0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                        <span style="color: #64748b; font-size: 0.85rem;">Tax (0.12%)</span>
+                        <span id="ocTax" style="font-weight: 600; color: #ef4444; font-size: 0.85rem;">+₹0.00</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                        <span style="color: #64748b; font-size: 0.85rem;">Txn Charge (0.03%)</span>
+                        <span id="ocTxn" style="font-weight: 600; color: #ef4444; font-size: 0.85rem;">+₹0.00</span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px dashed #cbd5e1;">
+                        <span style="color: #1e56a0; font-weight: 800; font-size: 1rem;">EST. TOTAL</span>
+                        <span id="ocTotal" style="font-weight: 900; color: #1e56a0; font-size: 1.4rem;">₹0.00</span>
+                    </div>
+                </div>
+
+                <div
+                    style="display: flex; align-items: center; gap: 0.75rem; padding: 0.75rem; background: #fffbeb; border: 1px solid #fef3c7; border-radius: 10px; margin-bottom: 2rem;">
+                    <i data-lucide="shield-check" size="18" color="#d97706"></i>
+                    <span style="font-size: 0.75rem; color: #92400e; line-height: 1.4; font-weight: 500;">By confirming,
+                        you agree to execute the order at the current market value. Real-time volatility may affect the
+                        final price.</span>
+                </div>
+
+                <button id="ocConfirmBtn"
+                    style="width: 100%; padding: 1.25rem; background: #1e56a0; color: white; border: none; border-radius: 12px; font-weight: 800; font-size: 1.1rem; cursor: pointer; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 6px -1px rgba(30, 86, 160, 0.3);"
+                    onmouseover="this.style.background='#16427d'; this.style.transform='translateY(-2px)'; this.style.boxShadow='0 10px 15px -3px rgba(30, 86, 160, 0.4)';"
+                    onmouseout="this.style.background='#1e56a0'; this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 6px -1px rgba(30, 86, 160, 0.3)';">CONFIRM
+                    BUY ORDER</button>
+
+                <p style="text-align: center; margin-top: 1rem; font-size: 0.75rem; color: #94a3b8; font-weight: 500;">
+                    Fast execution • Secured by Avendus Enterprise</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Purchase Modal (For OTC/IPO) -->
+    <div id="purchaseConfirmModal" class="center-popup-modal" onclick="if(event.target == this) closePurchaseModal()"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; align-items:center; justify-content:center;">
+        <div class="center-popup-content"
+            style="max-width: 480px; background:white; border-radius:20px; width:90%; overflow: hidden;">
+            <div style="background: #1e56a0; padding: 1.5rem; color: white;">
+                <h2 style="font-weight: 800; margin: 0; font-size: 1.25rem;">Subscription Confirmation</h2>
+                <div style="font-size: 0.85rem; opacity: 0.8; margin-top: 4px;">Review your institutional subscription
+                    request</div>
+            </div>
+            <div class="popup-body" style="padding:1.5rem;">
+                <div style="background: #f1f5f9; border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                        <span style="color: #64748b; font-size: 0.9rem;">Product</span>
+                        <span id="cpName" style="font-weight: 700; color: #1e293b;">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
+                        <span style="color: #64748b; font-size: 0.9rem;">Symbol</span>
+                        <span id="cpSymbol" style="font-weight: 700; color: #1e293b;">-</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                        <span style="color: #64748b; font-size: 0.9rem;">Quantity Requested</span>
+                        <span id="cpQty" style="font-weight: 700; color: #1e293b;">0</span>
+                    </div>
+                    <div
+                        style="display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px dashed #cbd5e1;">
+                        <span style="color: #1e56a0; font-weight: 800;">TOTAL PAYABLE</span>
+                        <span id="cpTotal" style="font-weight: 900; color: #1e56a0; font-size: 1.25rem;">₹0.00</span>
+                    </div>
+                </div>
+
+                <div
+                    style="margin-bottom: 1.5rem; text-align: center; color: #64748b; font-size: 0.85rem; line-height: 1.5; padding: 0 1rem;">
+                    Your subscription request will be sent to our desk for review. Once verified, units will be credited
+                    to your portfolio.
+                </div>
+
+                <button class="logout-btn"
+                    style="background: #1e56a0; width: 100%; border-radius: 12px; height: 56px; font-weight: 800; border:none; color:white; cursor:pointer;"
+                    id="cpSubmitBtn" onclick="confirmPurchaseSubscription()">SEND SUBSCRIPTION REQUEST</button>
+            </div>
+        </div>
+    </div>
+    <!-- Global Notification Modal -->
+    <div id="globalModal" class="center-popup-modal" onclick="if(event.target == this) closeGlobalModal()"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:3000; align-items:center; justify-content:center;">
+        <div class="center-popup-content"
+            style="max-width: 400px; padding: 2.5rem 2rem; text-align: center; border-radius: 24px; border: none; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.15); background: white;">
+            <div id="modalIconContainer"
+                style="width: 80px; height: 80px; background: #ecfdf5; color: #10b981; border-radius: 50%; display: grid; place-items: center; margin: 0 auto 1.5rem;">
+                <i id="modalIcon" data-lucide="check-circle" size="48"></i>
+            </div>
+            <h2 id="modalTitle" style="font-weight: 800; font-size: 1.5rem; color: #1e293b; margin-bottom: 0.5rem;">
+                Success</h2>
+            <p id="modalMsg" style="color: #64748b; font-size: 0.95rem; line-height: 1.6; margin-bottom: 2rem;">Your
+                transaction has been processed successfully.</p>
+            <button id="modalBtn" onclick="closeGlobalModal()"
+                style="width: 100%; padding: 1rem; background: #1e56a0; color: white; border: none; border-radius: 12px; font-weight: 700; font-size: 1rem; cursor: pointer; transition: all 0.2s;"
+                onmouseover="this.style.filter='brightness(1.1)'" onmouseout="this.style.filter='none'">
+                CONTINUE
+            </button>
+        </div>
+    </div>
+    </div>
+
+    <style>
+        .mini-tf-btn {
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 700;
+            color: #475569;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .mini-tf-btn.active {
+            background: #1e56a0;
+            color: white;
+            border-color: #1e56a0;
+        }
+
+        .range-dot,
+        #rangeProgress {
+            transition: all 0.5s ease;
+        }
+
+        .styled-chart-box {
+            background: white;
+            border-radius: 16px;
+            padding: 1.5rem;
+            border: 1px solid #e2e8f0;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        }
+    </style>
+
+</body>
+
+</html>

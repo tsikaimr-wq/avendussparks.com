@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Bank Accounts</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="settings-panel-fix.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="db.js"></script>
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(180deg, #0b0b0f, #111111);
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            color: #e2e8f0;
+        }
+
+        .ba-header {
+            background: #000000;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+            color: #d4af37;
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .ba-back-btn {
+            background: none;
+            border: none;
+            color: #d4af37;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            transition: transform 0.2s;
+        }
+
+        .ba-back-btn:hover {
+            transform: translateX(-3px);
+            color: #f5d76e;
+        }
+
+        .ba-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+
+        .ba-content {
+            padding: 2rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        @media (max-width: 900px) {
+            .ba-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .ba-card {
+            background: #121212;
+            border-radius: 12px;
+            padding: 1.5rem;
+            box-shadow: 0 0 25px rgba(212, 175, 55, 0.08);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .ba-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            padding-bottom: 1rem;
+        }
+
+        .ba-card-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 700;
+            color: #d4af37;
+            font-size: 1.1rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .ba-card-icon {
+            color: #d4af37;
+        }
+
+        .ba-add-btn {
+            color: #000;
+            font-weight: 700;
+            font-size: 0.9rem;
+            background: linear-gradient(90deg, #d4af37, #f5d76e);
+            padding: 0.6rem 1.2rem;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2);
+        }
+
+        .ba-add-btn:hover {
+            background: linear-gradient(90deg, #e6c256, #ffed8b);
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        .ba-blue-card {
+            background: linear-gradient(135deg, #1c1c1c 0%, #2a2a2a 100%);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 12px;
+            padding: 1.5rem;
+            color: #d4af37;
+            position: relative;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+        }
+
+        .ba-blue-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 2rem;
+        }
+
+        .ba-bank-name {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #f5d76e;
+        }
+
+        .ba-country-tag {
+            background: rgba(212, 175, 55, 0.2);
+            color: #d4af37;
+            border: 1px solid rgba(212, 175, 55, 0.4);
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .ba-account-num {
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            margin-bottom: 0.5rem;
+            text-align: center;
+            color: #fff;
+            text-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+        }
+
+        .ba-account-name {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            color: #cccccc;
+        }
+
+        .ba-account-phone {
+            font-size: 0.8rem;
+            opacity: 0.7;
+            margin-bottom: 1rem;
+            color: #999;
+        }
+
+        .ba-blue-bottom {
+            background: rgba(0, 0, 0, 0.3);
+            margin: 0 -1.5rem -1.5rem -1.5rem;
+            padding: 0.8rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-radius: 0 0 12px 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+            color: #d4af37;
+        }
+
+        /* List Item Card */
+        .ba-list-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1rem;
+            background: #1a1a1a;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border: 1px solid #333;
+            transition: all 0.2s;
+        }
+
+        .ba-list-item:hover {
+            border-color: rgba(212, 175, 55, 0.3);
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.05);
+        }
+
+        .ba-list-left {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .ba-list-bank {
+            font-weight: 700;
+            color: #d4af37;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .ba-list-tag {
+            background: rgba(212, 175, 55, 0.1);
+            color: #d4af37;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            font-size: 0.65rem;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-weight: 700;
+        }
+
+        .ba-list-num {
+            font-size: 0.9rem;
+            color: #e2e8f0;
+        }
+
+        .ba-list-ifsc {
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .ba-list-actions {
+            display: flex;
+            gap: 0.8rem;
+        }
+
+        .ba-action-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 6px;
+            color: #64748b;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            border-radius: 4px;
+        }
+
+        .ba-action-btn:hover {
+            color: #d4af37;
+            background: rgba(212, 175, 55, 0.1);
+        }
+
+        .ba-action-btn.delete:hover {
+            color: #ef4444;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        /* Terms List */
+        .ba-terms-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .ba-terms-list li {
+            position: relative;
+            padding-left: 1.2rem;
+            margin-bottom: 0.8rem;
+            font-size: 0.9rem;
+            color: #cccccc;
+            line-height: 1.5;
+        }
+
+        .ba-terms-list li::before {
+            content: "•";
+            position: absolute;
+            left: 0;
+            color: #d4af37;
+            font-weight: bold;
+        }
+
+        /* Modal Styles */
+        .ba-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .ba-modal {
+            background: #151515;
+            padding: 2rem;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 550px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            position: relative;
+            animation: fadeIn 0.3s ease-out;
+            color: #e2e8f0;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .ba-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 0.8rem;
+        }
+
+        .ba-modal-title {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #d4af37;
+            text-shadow: 0 0 10px rgba(212, 175, 55, 0.2);
+        }
+
+        .ba-modal-close {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #64748b;
+            padding: 0;
+            transition: color 0.3s;
+        }
+
+        .ba-modal-close:hover {
+            color: #d4af37;
+        }
+
+        .ba-form-group {
+            margin-bottom: 1.2rem;
+        }
+
+        .ba-label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #94a3b8;
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.5px;
+        }
+
+        .ba-label span {
+            color: #d4af37;
+        }
+
+        .ba-input {
+            width: 100%;
+            padding: 0.8rem;
+            background: #1a1a1a;
+            border: 1px solid rgba(212, 175, 55, 0.25);
+            border-radius: 8px;
+            font-size: 0.9rem;
+            color: #ffffff;
+            outline: none;
+            font-family: inherit;
+            transition: all 0.3s;
+        }
+
+        .ba-input:focus {
+            border-color: #d4af37;
+            box-shadow: 0 0 8px rgba(212, 175, 55, 0.4);
+            background: #1f1f1f;
+        }
+
+        .ba-input::placeholder {
+            color: #555;
+        }
+
+        .ba-row {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .ba-col {
+            flex: 1;
+        }
+
+        .ba-modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 1rem;
+            margin-top: 2rem;
+        }
+
+        .ba-btn {
+            padding: 0.8rem 2rem;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        /* Primary Action (Save/Submit) */
+        .ba-btn-submit,
+        button[onclick="submitAdd()"],
+        button[onclick="submitEdit()"] {
+            background: linear-gradient(90deg, #d4af37, #f5d76e) !important;
+            color: #000 !important;
+            border: none !important;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.2);
+        }
+
+        .ba-btn-submit:hover,
+        button[onclick="submitAdd()"]:hover,
+        button[onclick="submitEdit()"]:hover {
+            background: linear-gradient(90deg, #e6c256, #ffed8b) !important;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        /* Secondary Action (Cancel) */
+        .ba-btn-cancel,
+        button[onclick^="close"] {
+            background: transparent !important;
+            border: 1px solid rgba(212, 175, 55, 0.4) !important;
+            color: #d4af37 !important;
+        }
+
+        .ba-btn-cancel:hover,
+        button[onclick^="close"]:hover {
+            background: rgba(212, 175, 55, 0.1) !important;
+            border-color: #d4af37 !important;
+            color: #fff !important;
+        }
+
+        /* Notifications & Modals Override */
+        .toast-notification {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%) translateY(50px);
+            background: #151515;
+            color: #fff;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 2000;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            min-width: 300px;
+        }
+
+        .toast-notification.show {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast-icon {
+            color: #d4af37;
+        }
+
+        .confirm-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(5px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .confirm-modal {
+            background: #151515;
+            padding: 2rem;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 400px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            box-shadow: 0 0 30px rgba(212, 175, 55, 0.1);
+            text-align: center;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .confirm-title {
+            color: #d4af37;
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .confirm-msg {
+            color: #cccccc;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .confirm-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .confirm-btn {
+            padding: 0.8rem 2rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            flex: 1;
+        }
+
+        .confirm-btn.delete {
+            background: linear-gradient(90deg, #d4af37, #f5d76e);
+            color: #000;
+        }
+
+        .confirm-btn.delete:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(212, 175, 55, 0.3);
+        }
+
+        .confirm-btn.cancel {
+            background: transparent;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            color: #d4af37;
+        }
+
+        .confirm-btn.cancel:hover {
+            background: rgba(212, 175, 55, 0.1);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="ba-header">
+        <button class="ba-back-btn" onclick="window.location.href='market.html'"><i data-lucide="chevron-left"
+                size="24"></i></button>
+        <div class="ba-title">Manage your bank accounts</div>
+    </div>
+
+    <div class="ba-content">
+        <!-- New Left Column: Bank Accounts -->
+        <div class="ba-card" id="accountsListContainer">
+            <div class="ba-card-header">
+                <div class="ba-card-title">
+                    <i data-lucide="credit-card" class="ba-card-icon" size="20"></i> Bank Accounts
+                </div>
+                <button class="ba-add-btn" onclick="openAddAccountModal()">+ Add Account</button>
+            </div>
+
+            <div id="accountsList">
+                <div style="text-align:center; padding:2rem; color:#64748b;">Loading accounts...</div>
+            </div>
+        </div>
+
+        <!-- Right Column: Terms -->
+        <div class="ba-card">
+            <div class="ba-card-header">
+                <div class="ba-card-title">Terms & Conditions</div>
+            </div>
+            <ul class="ba-terms-list">
+                <li>Bank accounts must be under your legal name and ownership.</li>
+                <li>Only verified accounts can be used for withdrawals.</li>
+                <li>Changes to bank details may require additional verification.</li>
+                <li>Incorrect information may delay or fail fund transfers.</li>
+                <li>All transactions are governed by applicable financial regulations.</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- Edit Account Modal -->
+    <div id="editAccountModal" class="ba-modal-overlay">
+        <div class="ba-modal" style="max-width: 500px; padding: 2rem; border-radius: 16px;">
+            <div class="ba-modal-header"
+                style="border: none; padding-bottom: 0; margin-bottom: 0.5rem; justify-content: space-between;">
+                <div class="ba-modal-title" style="font-size: 1.25rem; font-weight: 700; color: #1e293b;">Edit Account
+                </div>
+                <button class="ba-modal-close" onclick="closeEditAccountModal()"><i data-lucide="x"
+                        size="24"></i></button>
+            </div>
+
+            <div class="ba-form-group">
+                <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">Bank Name <span
+                        style="color: #ef4444">*</span></label>
+                <input type="text" id="editBankName" class="ba-input" placeholder="Please enter the bank name"
+                    style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+            </div>
+
+            <div class="ba-row" style="gap: 1rem;">
+                <div class="ba-col">
+                    <div class="ba-form-group">
+                        <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">First name
+                            <span style="color: #ef4444">*</span></label>
+                        <input type="text" id="editFirstName" class="ba-input" placeholder="Enter first name"
+                            style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+                    </div>
+                </div>
+                <div class="ba-col">
+                    <div class="ba-form-group">
+                        <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">Last name
+                            <span style="color: #ef4444">*</span></label>
+                        <input type="text" id="editLastName" class="ba-input" placeholder="Enter last name"
+                            style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="ba-form-group">
+                <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">Account Number
+                    <span style="color: #ef4444">*</span></label>
+                <input type="text" id="editAccNum" class="ba-input" placeholder="Your bank account no"
+                    style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+            </div>
+
+            <div class="ba-form-group">
+                <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">Mobile No. <span
+                        style="color: #ef4444">*</span></label>
+                <input type="text" id="editPhone" class="ba-input" placeholder="Enter your mobile number"
+                    style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+            </div>
+
+            <div class="ba-form-group">
+                <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">IFSC <span
+                        style="color: #ef4444">*</span></label>
+                <input type="text" id="editIFSC" class="ba-input" placeholder="Please enter IFSC"
+                    style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+            </div>
+
+            <div class="ba-modal-actions" style="margin-top: 2rem; gap: 1rem; justify-content: flex-end;">
+                <button class="ba-btn" onclick="submitEdit()"
+                    style="background: #3b82f6; color: white; padding: 0.8rem 2.5rem; border-radius: 8px; font-weight: 600; border:none; transition: background 0.2s;">Save
+                    Changes</button>
+                <button class="ba-btn" onclick="closeEditAccountModal()"
+                    style="background: #ef4444; color: white; padding: 0.8rem 2.5rem; border-radius: 8px; font-weight: 600; border:none; transition: background 0.2s;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Account Modal -->
+    <div id="addAccountModal" class="ba-modal-overlay">
+        <div class="ba-modal" style="max-width: 500px; padding: 2rem; border-radius: 16px;">
+            <div class="ba-modal-header"
+                style="border: none; padding-bottom: 0; margin-bottom: 0.5rem; justify-content: space-between;">
+                <div class="ba-modal-title" style="font-size: 1.25rem; font-weight: 700; color: #1e293b;">Add Account
+                </div>
+                <button class="ba-modal-close" onclick="closeAddAccountModal()"><i data-lucide="x"
+                        size="24"></i></button>
+            </div>
+
+
+
+            <div class="ba-form-group">
+                <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">Bank Name <span
+                        style="color: #ef4444">*</span></label>
+                <input type="text" id="addBankName" class="ba-input" placeholder="Please enter the bank name"
+                    style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+            </div>
+
+            <div class="ba-row" style="gap: 1rem;">
+                <div class="ba-col">
+                    <div class="ba-form-group">
+                        <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">First name
+                            <span style="color: #ef4444">*</span></label>
+                        <input type="text" id="addFirstName" class="ba-input" placeholder="Enter first name"
+                            style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+                    </div>
+                </div>
+                <div class="ba-col">
+                    <div class="ba-form-group">
+                        <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">Last name
+                            <span style="color: #ef4444">*</span></label>
+                        <input type="text" id="addLastName" class="ba-input" placeholder="Enter last name"
+                            style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+                    </div>
+                </div>
+            </div>
+
+            <div class="ba-form-group">
+                <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">Account Number
+                    <span style="color: #ef4444">*</span></label>
+                <input type="text" id="addAccNum" class="ba-input" placeholder="Your bank account no"
+                    style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+            </div>
+
+            <div class="ba-form-group">
+                <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">Mobile No. <span
+                        style="color: #ef4444">*</span></label>
+                <input type="text" id="addPhone" class="ba-input" placeholder="Enter your mobile number"
+                    style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+            </div>
+
+            <label class="ba-label" style="font-size: 0.9rem; font-weight: 600; color: #1e293b;">IFSC <span
+                    style="color: #ef4444">*</span></label>
+            <input type="text" id="addIFSC" class="ba-input" placeholder="Please enter IFSC"
+                style="padding: 0.8rem; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 0.9rem;">
+            <div class="ba-modal-actions"
+                style="margin-top: 2rem; gap: 1rem; justify-content: flex-end; display: flex;">
+                <button class="ba-btn" onclick="submitAdd()">Add Account</button>
+                <button class="ba-btn" onclick="closeAddAccountModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications HTML -->
+    <div id="toastNotification" class="toast-notification">
+        <i data-lucide="check-circle" class="toast-icon"></i>
+        <span id="toastMessage">Success</span>
+    </div>
+
+    <div id="deleteConfirmModal" class="confirm-modal-overlay" style="z-index: 9999;">
+        <div class="confirm-modal">
+            <h3 class="confirm-title">Confirm Deletion</h3>
+            <p class="confirm-msg" id="confirmMessage">Are you sure you want to delete this bank account?</p>
+            <div class="confirm-actions">
+                <button class="confirm-btn cancel" onclick="closeConfirmModal()">Cancel</button>
+                <button class="confirm-btn delete" id="btnConfirmDeleteAction"
+                    onclick="confirmDeleteAction()">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allAccounts = [];
+        let editingAccountId = null;
+
+        // --- Custom Notification Logic ---
+        function showToast(message, isError = false) {
+            const toast = document.getElementById('toastNotification');
+            const msgSpan = document.getElementById('toastMessage');
+            const icon = toast.querySelector('.toast-icon');
+
+            msgSpan.textContent = message;
+            if (isError) {
+                toast.style.borderLeft = '4px solid #ef4444';
+                // icon logic could be improved but simple style change is enough for now
+            } else {
+                toast.style.borderLeft = '4px solid #d4af37';
+            }
+
+            toast.classList.add('show');
+            lucide.createIcons();
+
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        let pendingConfirmCallback = null;
+
+        function showConfirm(message, onConfirm) {
+            const msgEl = document.getElementById('confirmMessage');
+            const modal = document.getElementById('deleteConfirmModal');
+
+            if (msgEl) msgEl.textContent = message;
+            if (modal) {
+                modal.style.display = 'flex';
+                // Force z-index to be top-most
+                modal.style.zIndex = '9999';
+            } else {
+                console.error("Delete Confirm Modal not found in DOM");
+            }
+            pendingConfirmCallback = onConfirm;
+        }
+
+        function closeConfirmModal() {
+            const modal = document.getElementById('deleteConfirmModal');
+            if (modal) modal.style.display = 'none';
+            pendingConfirmCallback = null;
+        }
+
+        function confirmDeleteAction() {
+            if (typeof pendingConfirmCallback === 'function') {
+                pendingConfirmCallback();
+            }
+            closeConfirmModal();
+        }
+
+        // Wrapper to safely handle click event and propagation
+        function onDeleteClick(event, id) {
+            if (event) {
+                event.stopPropagation();
+                event.preventDefault();
+            }
+            handleDelete(id);
+        }
+
+        // --- Existing Logic Updated ---
+
+        async function init() {
+            const user = DB.getCurrentUser();
+            if (!user) {
+                window.location.href = 'login.html';
+                return;
+            }
+            lucide.createIcons();
+            await loadAccounts();
+        }
+
+        async function loadAccounts() {
+            const user = DB.getCurrentUser();
+            allAccounts = await DB.getBankAccounts(user.id);
+            renderAccounts();
+        }
+
+        function renderAccounts() {
+            const container = document.getElementById('accountsList');
+            if (allAccounts.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding: 2rem; color: #64748b;">No bank accounts linked.</div>';
+                return;
+            }
+
+            container.innerHTML = allAccounts.map(acc => {
+                const rawNum = acc.account_number || '';
+                const masked = rawNum.length > 4 ? rawNum.substring(0, 3) + "*****" + rawNum.substring(rawNum.length - 3) : rawNum;
+
+                return `
+                    <div class="ba-blue-card" style="margin-bottom: 2rem;">
+                        <div class="ba-blue-top">
+                            <div class="ba-bank-name">${acc.bank_name} <span class="ba-country-tag">IN</span></div>
+                            <div class="ba-list-actions" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
+                                <button class="ba-action-btn" onclick="openEditAccountModal('${acc.id}')" title="Edit"><i data-lucide="pencil" size="16"></i></button>
+                                <button class="ba-action-btn delete" onclick="onDeleteClick(event, '${acc.id}')" title="Delete"><i data-lucide="trash-2" size="16"></i></button>
+                            </div>
+                        </div>
+                        <div class="ba-account-num" style="font-family: monospace; letter-spacing: 4px;">${masked}</div>
+                        <div class="ba-account-name" style="margin-top: 1rem; font-weight: 600; color: #fff;">${acc.first_name} ${acc.last_name}</div>
+                        <div class="ba-account-phone" style="font-size: 0.8rem; margin-top: 2px;">${acc.mobile || ''}</div>
+                        <div class="ba-blue-bottom">
+                            <span>IFSC CODE</span>
+                            <span style="font-family: monospace; letter-spacing: 1px;">${acc.ifsc}</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function openAddAccountModal() {
+            editingAccountId = null;
+            // create local refs
+            const addModal = document.getElementById('addAccountModal');
+            const deleteModal = document.getElementById('deleteConfirmModal');
+
+            if (deleteModal) deleteModal.style.display = 'none';
+            if (addModal) addModal.style.display = 'flex';
+        }
+
+        function closeAddAccountModal() {
+            document.getElementById('addAccountModal').style.display = 'none';
+        }
+
+        async function submitAdd() {
+            const data = {
+                bank_name: document.getElementById('addBankName').value.trim(),
+                first_name: document.getElementById('addFirstName').value.trim(),
+                last_name: document.getElementById('addLastName').value.trim(),
+                account_number: document.getElementById('addAccNum').value.trim(),
+                mobile: document.getElementById('addPhone').value.trim(),
+                ifsc: document.getElementById('addIFSC').value.trim()
+            };
+
+            if (!data.bank_name || !data.account_number || !data.first_name || !data.last_name || !data.mobile || !data.ifsc) {
+                showToast('Please fill in all required fields marked with *', true);
+                return;
+            }
+
+            const user = window.DB.getCurrentUser();
+            if (!user) {
+                showToast("Please login first.", true);
+                return;
+            }
+
+            const res = await window.DB.addBankAccount(user.id, data);
+
+            if (res.success) {
+                showToast('Bank account added successfully.');
+                closeAddAccountModal();
+
+                if (res.demo) {
+                    data.id = 'demo_' + Date.now();
+                    allAccounts.push(data);
+                    renderAccounts();
+                } else {
+                    loadAccounts();
+                }
+
+                ['addBankName', 'addFirstName', 'addLastName', 'addAccNum', 'addPhone', 'addIFSC'].forEach(id => {
+                    document.getElementById(id).value = '';
+                });
+            } else {
+                console.error("Add Bank Error:", res.error);
+                showToast('Error adding account: ' + (res.error?.message || 'Unknown error'), true);
+            }
+        }
+
+        function openEditAccountModal(id) {
+            editingAccountId = id;
+            const acc = allAccounts.find(a => a.id == id);
+            if (!acc) return;
+
+            document.getElementById('editBankName').value = acc.bank_name;
+            document.getElementById('editFirstName').value = acc.first_name;
+            document.getElementById('editLastName').value = acc.last_name;
+            document.getElementById('editAccNum').value = acc.account_number;
+            document.getElementById('editPhone').value = acc.mobile || '';
+            document.getElementById('editIFSC').value = acc.ifsc;
+
+            document.getElementById('editAccountModal').style.display = 'flex';
+            lucide.createIcons();
+        }
+
+        function closeEditAccountModal() {
+            document.getElementById('editAccountModal').style.display = 'none';
+        }
+
+        async function submitEdit() {
+            if (!editingAccountId) return;
+
+            const data = {
+                bank_name: document.getElementById('editBankName').value.trim(),
+                first_name: document.getElementById('editFirstName').value.trim(),
+                last_name: document.getElementById('editLastName').value.trim(),
+                account_number: document.getElementById('editAccNum').value.trim(),
+                mobile: document.getElementById('editPhone').value.trim(),
+                ifsc: document.getElementById('editIFSC').value.trim()
+            };
+
+            if (!data.bank_name || !data.account_number || !data.first_name || !data.last_name || !data.mobile || !data.ifsc) {
+                showToast('Please fill in all required fields.', true);
+                return;
+            }
+
+            if (editingAccountId.startsWith('demo_')) {
+                const idx = allAccounts.findIndex(a => a.id === editingAccountId);
+                if (idx !== -1) {
+                    allAccounts[idx] = { ...allAccounts[idx], ...data };
+                    showToast('Account updated locally (Demo Mode)!');
+                    closeEditAccountModal();
+                    renderAccounts();
+                }
+                return;
+            }
+
+            const res = await window.DB.updateBankAccount(editingAccountId, data);
+
+            if (res.success) {
+                showToast('Account updated successfully!');
+                closeEditAccountModal();
+                loadAccounts();
+            } else {
+                console.error("Update Error:", res.error);
+                showToast('Error: ' + (res.error?.message || 'Unknown error'), true);
+            }
+        }
+
+        function handleDelete(id) {
+            showConfirm("Are you sure you want to delete this bank account?", async () => {
+                const res = await window.DB.deleteBankAccount(id);
+                if (res.success) {
+                    showToast("Bank account deleted successfully.");
+                    loadAccounts();
+                } else {
+                    showToast('Error deleting account', true);
+                }
+            });
+        }
+
+        window.onload = init;
+    </script>
+
+    <div id="topAlertContainer" class="top-alert-container">
+        <div class="top-alert">
+            <i data-lucide="alert-circle"></i>
+            <span>Please sign in to continue.</span>
+            <i data-lucide="x" class="close-alert" onclick="closeAlert()"></i>
+        </div>
+    </div>
+
+    <div id="messageCenterOverlay" class="message-center-overlay" onclick="toggleMessageCenter()"></div>
+    <div id="messageCenter" class="message-center-modal">
+        <div class="mc-header">
+            <div class="mc-title-row">
+                <span class="mc-title">Notifications</span>
+                <span class="mc-subtitle" id="msgCount">10 Messages</span>
+            </div>
+            <button class="mc-close" onclick="toggleMessageCenter()"><i data-lucide="x" size="24"></i></button>
+        </div>
+        <div class="mc-actions">
+            <button class="mc-btn" onclick="makeAllRead()">Make all read</button>
+            <button class="mc-btn delete-all" onclick="deleteAllMessages()">Delete all</button>
+        </div>
+        <div class="mc-list" id="mcList">
+            <div class="mc-item">
+                <div class="mc-dot unread"></div>
+                <div class="mc-content">
+                    <div class="mc-msg-title">IPO Announcement – Armour Security IPO（QIB）</div>
+                    <div class="mc-time">14-01-2026 15:10:23</div>
+                    <div class="mc-tag">IPO:NEW</div>
+                    <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
+                </div>
+            </div>
+            <div class="mc-item">
+                <div class="mc-dot unread"></div>
+                <div class="mc-content">
+                    <div class="mc-msg-title">Important Notice</div>
+                    <div class="mc-time">12-01-2026 09:32:02</div>
+                    <div class="mc-tag">TEXT</div>
+                    <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="settings-modal" onclick="if(event.target == this) closeSettings()">
+        <div class="settings-content">
+            <button class="settings-close" onclick="closeSettings()"><i data-lucide="x" size="24"></i></button>
+            <div class="settings-header">
+                <div class="avatar-circle" id="settingsAvatar">U</div>
+                <div class="settings-name" id="settingsName"
+                    style="font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-top: 0.5rem;">User Name</div>
+                <div class="settings-phone" id="settingsPhone"
+                    style="font-size: 0.9rem; color: #64748b; margin-top: 0.2rem;">+91</div>
+                <div class="badge-row">
+                    <div class="s-badge vip"><i data-lucide="shield-check" size="18"></i> VIP: 0</div>
+                    <div class="s-badge credit"><i data-lucide="crown" size="18"></i> Credit Score: 100</div>
+                </div>
+            </div>
+            <div class="settings-list">
+                <div class="settings-item" onclick="toggleUserProfile()">
+                    <div class="settings-item-icon"><i data-lucide="user" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">User Profile</div>
+                        <div class="settings-item-desc">Update your profile information.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="userProfileChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="userProfileSubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openEditNameModal()">
+                        <i data-lucide="edit-3" size="18"></i> Update Name
+                    </div>
+                    <div class="submenu-item" onclick="openAvatarModal()">
+                        <i data-lucide="image" size="18"></i> Update Avatar
+                    </div>
+                    <div class="submenu-item" onclick="openKYCModal()">
+                        <i data-lucide="file-check" size="18"></i> View KYC
+                    </div>
+                </div>
+                <div class="settings-item" onclick="toggleSecurityMenu()">
+                    <div class="settings-item-icon"><i data-lucide="lock" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Security</div>
+                        <div class="settings-item-desc">Update your system security settings.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="securityChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="securitySubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openWithdrawalPinModal()">
+                        <i data-lucide="shield-check" size="18"></i> Withdrawal PIN
+                    </div>
+                    <div class="submenu-item" onclick="openResetPassword()">
+                        <i data-lucide="key" size="18"></i> Change Login Password
+                    </div>
+                </div>
+                <div class="settings-item" onclick="window.location.href='bank_accounts.html'">
+                    <div class="settings-item-icon"><i data-lucide="landmark" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Bank Accounts</div>
+                        <div class="settings-item-desc">Manage bank accounts and info</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+                <div class="settings-item" onclick="openCS()">
+                    <div class="settings-item-icon"><i data-lucide="headset" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Customer Service</div>
+                        <div class="settings-item-desc">Contact customer service</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+                <div class="settings-item" onclick="alert('Connection Status: Strong (14ms)')">
+                    <div class="settings-item-icon"><i data-lucide="search" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Test Connection</div>
+                        <div class="settings-item-desc">Test and Diagnosis</div>
+                    </div>
+                </div>
+            </div>
+            <div class="logout-btn-container">
+                <button class="logout-btn" onclick="DB.logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Service Modal (Fixed Bottom-Right) -->
+    <div id="csModal">
+        <!-- Maximized Content -->
+        <div class="cs-modal-content">
+            <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 8px; z-index: 100;">
+                <button onclick="minimizeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="minus" size="18"></i>
+                </button>
+                <button onclick="closeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(239, 68, 68, 0.2)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="x" size="18"></i>
+                </button>
+            </div>
+
+            <div class="settings-header"
+                style="margin-bottom: 0; padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid #222;">
+                <h2 style="font-size: 1.3rem; font-weight: 700; color: #d4af37; margin: 0;">Customer Service</h2>
+                <div style="height: 2px; width: 30px; background: #d4af37; margin-top: 5px;"></div>
+            </div>
+
+            <div id="chatBox"
+                style="flex: 1; overflow-y: auto; padding: 1.5rem; background: #0c0c0c; display: flex; flex-direction: column; gap: 1rem;">
+            </div>
+
+            <div id="csImagePreviewArea"
+                style="display: none; padding: 0.5rem 1.5rem; background: #1a1a1a; border-top: 1px solid #333; gap: 0.5rem; align-items: center;">
+            </div>
+
+            <div
+                style="display: flex; gap: 0.5rem; align-items: center; padding: 1.2rem 1.5rem; background: #111; border-top: 1px solid #222;">
+                <input type="file" id="csImageInput" accept="image/*" style="display: none;"
+                    onchange="handleCSImageUpload(this)">
+                <button onclick="document.getElementById('csImageInput').click()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="image" size="22"></i>
+                </button>
+                <button onclick="toggleEmojiPicker()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; position: relative; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="smile" size="22"></i>
+                    <div id="emojiPicker"
+                        style="display: none; position: absolute; bottom: 50px; left: -10px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 0.75rem; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 180px; z-index: 100;">
+                        <span onclick="insertEmoji('👍')" style="cursor: pointer; font-size: 1.4rem;">👍</span>
+                        <span onclick="insertEmoji('👋')" style="cursor: pointer; font-size: 1.4rem;">👋</span>
+                        <span onclick="insertEmoji('😊')" style="cursor: pointer; font-size: 1.4rem;">😊</span>
+                        <span onclick="insertEmoji('😂')" style="cursor: pointer; font-size: 1.4rem;">😂</span>
+                        <span onclick="insertEmoji('❤️')" style="cursor: pointer; font-size: 1.4rem;">❤️</span>
+                        <span onclick="insertEmoji('🔥')" style="cursor: pointer; font-size: 1.4rem;">🔥</span>
+                        <span onclick="insertEmoji('🎉')" style="cursor: pointer; font-size: 1.4rem;">🎉</span>
+                        <span onclick="insertEmoji('💰')" style="cursor: pointer; font-size: 1.4rem;">💰</span>
+                    </div>
+                </button>
+                <input type="text" id="csInput" placeholder="Type a message..."
+                    style="flex: 1; padding: 0.7rem 1rem; background: #050505; border: 1px solid #333; border-radius: 10px; color: white; outline: none; font-family: 'Outfit', sans-serif; font-size: 0.9rem;">
+                <button onclick="sendCSMessage()"
+                    style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); color: #000; border: none; padding: 0.7rem 1.2rem; border-radius: 10px; font-weight: 800; cursor: pointer; transition: opacity 0.2s;"
+                    onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Send</button>
+            </div>
+        </div>
+
+        <!-- Minimized Bar -->
+        <div id="csMinimizedBar" onclick="maximizeCS()">
+            <div
+                style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: rgba(212,175,55,0.1); border-radius: 50%;">
+                <i data-lucide="message-circle" size="14"></i>
+            </div>
+            <span style="font-size: 0.9rem;">Customer Service</span>
+            <i data-lucide="chevron-up" size="18" style="margin-left: auto; opacity: 0.7;"></i>
+        </div>
+    </div>
+
+
+    <!-- Reset Password Modal (Logged-In) -->
+    <div id="resetPasswordModal" class="settings-modal" onclick="if(event.target == this) closeResetPassword()">
+        <div class="settings-content" style="max-width: 450px;">
+            <button class="settings-close" onclick="closeResetPassword()"><i data-lucide="x" size="24"></i></button>
+            <div class="settings-header" style="margin-bottom: 1.5rem;">
+                <h2 style="font-size: 1.5rem; font-weight: 700; color: #1e293b;">Reset Password</h2>
+            </div>
+            <div style="padding: 1rem 0;">
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Current
+                        Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="currentPass" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('currentPass', this)"></i>
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                        Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="newPassInternal" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('newPassInternal', this)"></i>
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 2rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                        New Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="confirmPassInternal" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('confirmPassInternal', this)"></i>
+                    </div>
+                </div>
+                <button class="logout-btn" style="background: #3b82f6;" onclick="handleInternalReset()">Update
+                    Password</button>
+                <button class="logout-btn" style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                    onclick="closeResetPassword()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Avatar Modal -->
+    <div id="avatarModal" class="center-popup-modal">
+        <div class="center-popup-content avatar-form" style="max-width: 400px;">
+            <div class="popup-header"
+                style="width:100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="font-size: 1.25rem; font-weight: 700;">Update Avatar</h2>
+                <button class="popup-close" onclick="closeAvatarModal()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body" style="display:flex; flex-direction:column; align-items:center; width: 100%;">
+                <div class="avatar-preview-lg" id="avatarPreviewContainer"
+                    onclick="document.getElementById('avatarInput').click()">
+                    <i data-lucide="user" size="64" style="color:#cbd5e1;" id="avatarPlaceholderIcon"></i>
+                    <img id="avatarPreviewImg" src="" style="display:none;">
+                    <div class="avatar-change-overlay">Change Image</div>
+                </div>
+                <input type="file" id="avatarInput" hidden onchange="previewAvatar(this)" accept="image/*">
+                <div style="width: 100%; margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    <button class="btn-primary" onclick="uploadAvatar()">Save Changes</button>
+                    <button class="btn-secondary" onclick="closeAvatarModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KYC Modal -->
+    <div id="kycModal" class="center-popup-modal">
+        <div class="center-popup-content">
+            <div class="popup-header">
+                <h2>View KYC</h2>
+                <button class="popup-close" onclick="closeKYCModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="kyc-form-grid">
+                    <div class="kyc-field-label">Full Name</div>
+                    <input type="text" id="kycName" class="kyc-field-input" placeholder="Enter Full Name">
+                    <div class="kyc-field-label">Mobile Number</div>
+                    <input type="text" id="kycMobile" class="kyc-field-input" placeholder="Enter Mobile Number">
+                    <div class="kyc-field-label">ID Number</div>
+                    <input type="text" id="kycIdNum" class="kyc-field-input" placeholder="Enter ID Number">
+                    <div class="kyc-field-label">Submitted On</div>
+                    <input type="text" id="kycSubmitted" class="kyc-field-input" readonly style="background: #f8fafc;">
+                    <div class="kyc-field-label">Approval Status</div>
+                    <input type="text" id="kycApproved" class="kyc-field-input" readonly style="background: #f8fafc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycFrontInput').click()">
+                        <div class="plus-icon">+ Front</div>
+                        <img id="kycFrontPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycFrontInput" hidden
+                            onchange="previewKYCImage(this, 'kycFrontPreview')">
+                    </div>
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycBackInput').click()">
+                        <div class="plus-icon">+ Back</div>
+                        <img id="kycBackPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycBackInput" hidden onchange="previewKYCImage(this, 'kycBackPreview')">
+                    </div>
+                </div>
+                <button class="btn-submit" onclick="submitKYC()" style="margin-top: 1.5rem; width: 100%;">Submit
+                    Verification</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="js/credit_notifier.js"></script>
+</body>
+
+</html>

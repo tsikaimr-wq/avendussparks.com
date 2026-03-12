@@ -1,0 +1,18 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Navy Background with Premium Rounded Corners -->
+  <rect width="512" height="512" rx="120" fill="#0B1C2D"/>
+  
+  <!-- Artistic Geometric A -->
+  <!-- Main thick stroke -->
+  <path d="M256 75L120 432H195L256 265L317 432H392L256 75Z" fill="#D4AF37"/>
+  
+  <!-- Interior Cutout for sharpness -->
+  <path d="M256 160L300 290H212L256 160Z" fill="#0B1C2D"/>
+  
+  <!-- Modern Luxury Split Bar -->
+  <rect x="225" y="290" width="62" height="15" fill="#0B1C2D"/>
+  <rect x="235" y="295" width="42" height="4" fill="#D4AF37"/>
+  
+  <!-- Top point sharpener -->
+  <path d="M256 75L270 115H242L256 75Z" fill="#D4AF37"/>
+</svg>

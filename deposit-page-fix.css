@@ -1,0 +1,665 @@
+/* ========================================
+   DEPOSIT PAGE - COMPREHENSIVE BLACK & GOLD FIX
+   Scope: Deposit page component only
+   ======================================== */
+
+/* ========================================
+   1. HEADER BAR FIX
+   ======================================== */
+
+/* Deposit header bar */
+.deposit-navbar,
+.navbar {
+    background: #000000 !important;
+    border-bottom: 2px solid #D4AF37 !important;
+    color: #FFFFFF !important;
+}
+
+/* Back button */
+.deposit-navbar .back-btn,
+.navbar .back-btn {
+    color: #D4AF37 !important;
+}
+
+.deposit-navbar .back-btn:hover,
+.navbar .back-btn:hover {
+    color: #FFD700 !important;
+}
+
+/* Page title */
+.deposit-navbar h1,
+.navbar h1,
+.deposit-navbar .navbar-title,
+.navbar .navbar-title {
+    color: #FFFFFF !important;
+}
+
+/* ========================================
+   2. MAIN CARDS (LEFT & RIGHT PANELS)
+   ======================================== */
+
+/* All white cards on deposit page */
+.white-card {
+    background: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Card headers */
+.card-header {
+    border-bottom: 1px solid #2A2A2A !important;
+}
+
+/* Primary text in cards */
+.white-card h2,
+.white-card h3,
+.white-card h4 {
+    color: #FFFFFF !important;
+}
+
+/* Secondary text in cards */
+.white-card p {
+    color: #B3B3B3 !important;
+}
+
+/* Notice text */
+.notice-text {
+    color: #B3B3B3 !important;
+}
+
+.notice-text b,
+.notice-text strong {
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   3. CONTACT SUPPORT BUTTON
+   ======================================== */
+
+/* Support button */
+.support-btn {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    transition: all 0.2s ease !important;
+}
+
+.support-btn:hover {
+    background: #D4AF37 !important;
+    color: #000000 !important;
+    box-shadow: 0 0 12px rgba(212, 175, 55, 0.6) !important;
+}
+
+/* ========================================
+   4. DEPOSIT RECORDS SECTION
+   ======================================== */
+
+/* Records container */
+.records-container {
+    background: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+}
+
+/* Records header */
+.records-header {
+    border-bottom: 1px solid #2A2A2A !important;
+    padding-bottom: 1rem !important;
+}
+
+/* Deposit Records title - Gold */
+.records-title {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+}
+
+.records-title i {
+    color: #D4AF37 !important;
+}
+
+/* Refresh button - Gold bordered circle */
+.refresh-btn {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    transition: all 0.2s ease !important;
+}
+
+.refresh-btn:hover {
+    background: rgba(212, 175, 55, 0.1) !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.5) !important;
+}
+
+.refresh-btn i {
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   5. FILTER BUTTONS
+   ======================================== */
+
+/* Filter pills container */
+.filter-pills {
+    margin-bottom: 1.5rem !important;
+}
+
+/* Inactive filter pills */
+.pill {
+    background: #141414 !important;
+    border: 1px solid #333 !important;
+    color: #B3B3B3 !important;
+    transition: all 0.2s ease !important;
+}
+
+.pill:hover {
+    background: #1c1c1c !important;
+    border-color: #D4AF37 !important;
+    color: #D4AF37 !important;
+}
+
+/* Active filter pill - Gold */
+.pill.active {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    box-shadow: 0 0 8px rgba(212, 175, 55, 0.3) !important;
+}
+
+/* ========================================
+   6. DEPOSIT RECORD ITEMS
+   ======================================== */
+
+/* Record item container */
+.record-item {
+    background: #000000 !important;
+    border: 1px solid #2A2A2A !important;
+    color: #FFFFFF !important;
+    transition: all 0.2s ease !important;
+}
+
+.record-item:hover {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2) !important;
+}
+
+/* Record bank name/title - White */
+.record-bank {
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+}
+
+/* Record date/time - Gray */
+.record-date {
+    color: #B3B3B3 !important;
+    font-size: 0.75rem !important;
+}
+
+/* Record amount - Gold */
+.record-amount {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    font-family: 'Consolas', monospace !important;
+}
+
+/* Status badges - FORCE OVERRIDE WITH MAXIMUM SPECIFICITY */
+
+/* Base status badge - highest priority */
+.status-badge,
+.badge,
+.approved,
+.rejected,
+.pending,
+.success,
+.failed,
+span.status-badge,
+div.status-badge,
+.record-item .status-badge,
+.white-card .status-badge {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    border-radius: 2px !important;
+    font-size: 0.7rem !important;
+    font-weight: 600 !important;
+    padding: 0.2rem 0.6rem !important;
+}
+
+/* Override ALL status badge variants with ultra-high specificity */
+.status-badge.approved,
+.status-badge.success,
+.status-badge.pending,
+.status-badge.rejected,
+.status-badge.failed,
+span.approved,
+span.rejected,
+span.pending,
+span.success,
+div.approved,
+div.rejected,
+div.pending,
+.record-item .approved,
+.record-item .rejected,
+.record-item .pending,
+.record-item .status-badge.approved,
+.record-item .status-badge.rejected,
+.record-item .status-badge.pending {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    border-color: #D4AF37 !important;
+    color: #D4AF37 !important;
+}
+
+/* Force override green styling from approved/success */
+.status-badge.approved,
+.status-badge.success,
+.approved,
+.success,
+span.approved,
+span.success,
+[class*="approved"],
+[class*="success"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    color: #D4AF37 !important;
+    border: 1px solid #D4AF37 !important;
+    border-color: #D4AF37 !important;
+}
+
+/* Force override pending styling */
+.status-badge.pending,
+.pending,
+span.pending,
+[class*="pending"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    color: #D4AF37 !important;
+    border: 1px solid #D4AF37 !important;
+    border-color: #D4AF37 !important;
+}
+
+/* Force override red styling from rejected/failed */
+.status-badge.rejected,
+.status-badge.failed,
+.rejected,
+.failed,
+span.rejected,
+span.failed,
+[class*="rejected"],
+[class*="failed"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    color: #D4AF37 !important;
+    border: 1px solid #D4AF37 !important;
+    border-color: #D4AF37 !important;
+}
+
+/* Override Tailwind green classes */
+[class*="bg-green"],
+[class*="text-green"],
+[class*="border-green"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    color: #D4AF37 !important;
+    border-color: #D4AF37 !important;
+}
+
+/* Override Tailwind red classes */
+[class*="bg-red"],
+[class*="text-red"],
+[class*="border-red"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    color: #D4AF37 !important;
+    border-color: #D4AF37 !important;
+}
+
+/* Override inline styles for status badges */
+.status-badge[style],
+.approved[style],
+.rejected[style],
+.pending[style],
+span[style*="background"],
+div[style*="background"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    color: #D4AF37 !important;
+    border: 1px solid #D4AF37 !important;
+}
+
+/* Nuclear option - override ANY element with status-related classes */
+*[class*="status-badge"],
+*[class*="approved"],
+*[class*="rejected"],
+*[class*="pending"],
+*[class*="success"],
+*[class*="failed"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    color: #D4AF37 !important;
+    border: 1px solid #D4AF37 !important;
+}
+
+/* ========================================
+   7. TERMS & CONDITIONS COLUMN - MATCH WITHDRAWAL
+   ======================================== */
+
+/* Terms container - Black background like Withdrawal */
+.terms-col,
+.terms-container,
+.white-card.terms-card {
+    background: #000000 !important;
+    border: 1px solid #2A2A2A !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Remove any light grey backgrounds */
+.terms-col .white-card,
+.terms-container .white-card {
+    background: #000000 !important;
+}
+
+/* Main title - Gold, uppercase, bold */
+.terms-col h2,
+.terms-container h2,
+.terms-title {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1.5px !important;
+    opacity: 1 !important;
+}
+
+/* Section headings - Gold, bold */
+.terms-content h3,
+.terms-content h4,
+.terms-content h5 {
+    color: #D4AF37 !important;
+    font-weight: 600 !important;
+    opacity: 1 !important;
+}
+
+/* Paragraph text - White, high contrast */
+.terms-content,
+.terms-content p,
+.terms-col p {
+    color: #FFFFFF !important;
+    opacity: 1 !important;
+}
+
+/* List items - White */
+.terms-content ul,
+.terms-content ol,
+.terms-content li {
+    color: #FFFFFF !important;
+    opacity: 1 !important;
+}
+
+/* Strong/bold text in terms - Gold */
+.terms-content strong,
+.terms-content b {
+    color: #D4AF37 !important;
+    opacity: 1 !important;
+}
+
+/* Remove any faded/opacity styling */
+.terms-col *,
+.terms-container *,
+.terms-content * {
+    opacity: 1 !important;
+}
+
+/* Ensure no light backgrounds leak through */
+.terms-col>*,
+.terms-container>* {
+    background: transparent !important;
+}
+
+/* ========================================
+   8. REMOVE BLUE COLORS (SCOPED)
+   ======================================== */
+
+/* Override any blue text classes on deposit page */
+[class*="text-blue"] {
+    color: #D4AF37 !important;
+}
+
+/* Override any blue background classes on deposit page */
+[class*="bg-blue"] {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+}
+
+/* Override any blue border classes on deposit page */
+[class*="border-blue"] {
+    border-color: #D4AF37 !important;
+}
+
+/* ========================================
+   9. INLINE STYLE OVERRIDES
+   ======================================== */
+
+/* Override inline blue styles */
+[style*="color: #3b82f6"],
+[style*="color: #2563eb"],
+[style*="color: #1e56a0"] {
+    color: #D4AF37 !important;
+}
+
+[style*="background: #3b82f6"],
+[style*="background: #2563eb"],
+[style*="background: #1e56a0"],
+[style*="background-color: #3b82f6"],
+[style*="background-color: #2563eb"],
+[style*="background-color: #1e56a0"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+}
+
+[style*="border-color: #3b82f6"],
+[style*="border-color: #2563eb"],
+[style*="border-color: #1e56a0"] {
+    border-color: #D4AF37 !important;
+}
+
+/* ========================================
+   10. BUTTONS & LINKS
+   ======================================== */
+
+/* Primary buttons */
+.btn-primary,
+button.btn-primary {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    transition: all 0.2s ease !important;
+}
+
+.btn-primary:hover,
+button.btn-primary:hover {
+    background: #D4AF37 !important;
+    color: #000000 !important;
+    box-shadow: 0 0 12px rgba(212, 175, 55, 0.6) !important;
+}
+
+/* Links - scoped to deposit content */
+.deposit-container a,
+.deposit-navbar a {
+    color: #D4AF37 !important;
+}
+
+.deposit-container a:hover,
+.deposit-navbar a:hover {
+    color: #FFD700 !important;
+}
+
+/* ========================================
+   11. INPUT FIELDS & FORMS
+   ======================================== */
+
+/* Labels */
+.deposit-container label {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+}
+
+/* Input fields */
+.deposit-container input,
+.deposit-container select,
+.deposit-container textarea {
+    background: #141414 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #333 !important;
+}
+
+.deposit-container input:focus,
+.deposit-container select:focus,
+.deposit-container textarea:focus {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 6px rgba(212, 175, 55, 0.5) !important;
+    outline: none !important;
+}
+
+/* ========================================
+   12. ENSURE TEXT VISIBILITY
+   ======================================== */
+
+/* Make sure all text is visible on dark backgrounds */
+.container,
+.left-col,
+.right-col,
+aside {
+    color: #FFFFFF !important;
+}
+
+/* All headings - scoped to avoid leaking into modals */
+.deposit-container h1,
+.deposit-container h2,
+.deposit-container h3,
+.deposit-container h4,
+.deposit-container h5,
+.deposit-container h6,
+.deposit-navbar h1 {
+    color: #FFFFFF !important;
+}
+
+/* Paragraphs */
+.deposit-container p {
+    color: #B3B3B3 !important;
+}
+
+/* Strong/bold text */
+.deposit-container strong,
+.deposit-container b {
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   13. ADDITIONAL DEPOSIT-SPECIFIC ELEMENTS
+   ======================================== */
+
+/* Deposit instructions */
+.deposit-instructions {
+    background: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+    color: #B3B3B3 !important;
+}
+
+/* Deposit amount display */
+.deposit-amount {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+}
+
+/* Warning messages */
+.warning-box {
+    background: rgba(239, 68, 68, 0.1) !important;
+    border: 2px solid rgba(239, 68, 68, 0.3) !important;
+}
+
+.warning-title {
+    color: #ef4444 !important;
+}
+
+.warning-text {
+    color: #ef4444 !important;
+}
+
+/* Success messages */
+.success-box {
+    background: rgba(16, 185, 129, 0.1) !important;
+    border: 2px solid rgba(16, 185, 129, 0.3) !important;
+}
+
+.success-title {
+    color: #10b981 !important;
+}
+
+.success-text {
+    color: #10b981 !important;
+}
+
+/* Info messages */
+.info-box {
+    background: rgba(212, 175, 55, 0.1) !important;
+    border: 2px solid rgba(212, 175, 55, 0.3) !important;
+}
+
+.info-title {
+    color: #D4AF37 !important;
+}
+
+.info-text {
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   14. SCROLLBAR STYLING (DEPOSIT PAGE ONLY)
+   ======================================== */
+
+/* Scrollbar track */
+::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: #0a0a0a !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #D4AF37 !important;
+    border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #FFD700 !important;
+}
+
+/* ========================================
+   15. EMPTY STATE & LOADING
+   ======================================== */
+
+/* Empty state */
+.empty-state {
+    color: #B3B3B3 !important;
+}
+
+.empty-state i {
+    color: #D4AF37 !important;
+}
+
+/* Loading spinner */
+.loading-spinner {
+    border-color: #D4AF37 !important;
+}

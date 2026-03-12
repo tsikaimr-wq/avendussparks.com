@@ -1,0 +1,485 @@
+/* ========================================
+   SETTINGS PANEL - TARGETED BLACK & GOLD FIX
+   Scope: Settings drawer component only
+   ======================================== */
+
+/* General Font Unification */
+#settingsModal,
+#csModal,
+#topAlertContainer,
+#resetPasswordModal,
+#withdrawalPinModal,
+.center-popup-modal,
+.custom-alert-overlay {
+    font-family: 'Outfit', sans-serif !important;
+}
+
+/* Custom Global Alert/Confirm Modal */
+.custom-alert-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    background: rgba(0, 0, 0, 0.85) !important;
+    backdrop-filter: blur(8px) !important;
+    display: none;
+    align-items: center !important;
+    justify-content: center !important;
+    z-index: 20000 !important;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.custom-alert-overlay.show {
+    display: flex !important;
+    opacity: 1;
+}
+
+.custom-alert-box {
+    background: #0d0d0d !important;
+    border: 1px solid #d4af37 !important;
+    box-shadow: 0 0 50px rgba(212, 175, 55, 0.25) !important;
+    border-radius: 20px !important;
+    width: 90% !important;
+    max-width: 420px !important;
+    padding: 2.5rem 2rem !important;
+    text-align: center !important;
+    transform: scale(0.8);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.custom-alert-overlay.show .custom-alert-box {
+    transform: scale(1);
+}
+
+.custom-alert-title {
+    color: #d4af37 !important;
+    font-size: 1.4rem !important;
+    font-weight: 800 !important;
+    margin-bottom: 1rem !important;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+}
+
+.custom-alert-message {
+    color: #cccccc !important;
+    font-size: 1rem !important;
+    line-height: 1.6 !important;
+    margin-bottom: 2.5rem !important;
+    font-weight: 400 !important;
+}
+
+.custom-alert-actions {
+    display: flex !important;
+    gap: 1rem !important;
+    justify-content: center !important;
+}
+
+.custom-alert-btn {
+    padding: 0.85rem 1.8rem !important;
+    border-radius: 10px !important;
+    font-weight: 700 !important;
+    cursor: pointer !important;
+    transition: all 0.3s ease !important;
+    min-width: 120px !important;
+    text-transform: uppercase;
+    font-size: 0.85rem;
+    letter-spacing: 0.5px;
+}
+
+.custom-alert-btn.primary {
+    background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%) !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3) !important;
+}
+
+.custom-alert-btn.primary:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 8px 20px rgba(212, 175, 55, 0.5) !important;
+}
+
+.custom-alert-btn.secondary {
+    background: transparent !important;
+    color: #d4af37 !important;
+    border: 1px solid #d4af37 !important;
+}
+
+.custom-alert-btn.secondary:hover {
+    background: rgba(212, 175, 55, 0.1) !important;
+    color: #f9e29b !important;
+}
+
+/* Modal Overlay */
+#settingsModal.settings-modal,
+#csModal.settings-modal {
+    background: rgba(0, 0, 0, 0.85) !important;
+    backdrop-filter: blur(5px);
+}
+
+/* Settings Side Panel & CS Modal Content */
+#settingsModal .settings-content,
+#csModal .settings-content {
+    background: #121212 !important;
+    border: 1px solid rgba(212, 175, 55, 0.2) !important;
+    box-shadow: 0 0 25px rgba(212, 175, 55, 0.08) !important;
+    position: relative !important;
+    /* For absolute close button */
+    color: #cccccc !important;
+}
+
+/* Close Button Repositioning & Styling */
+#settingsModal .settings-close,
+#csModal .settings-close {
+    position: absolute !important;
+    top: 20px !important;
+    right: 20px !important;
+    background: transparent !important;
+    border: none !important;
+    color: #d4af37 !important;
+    cursor: pointer !important;
+    padding: 5px !important;
+    display: block !important;
+    transition: none !important;
+    z-index: 100 !important;
+    border-radius: 0 !important;
+    transform: none !important;
+}
+
+#settingsModal .settings-close:hover,
+#csModal .settings-close:hover {
+    background: transparent !important;
+    color: #d4af37 !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+#settingsModal .settings-close i,
+#csModal .settings-close i {
+    width: 24px !important;
+    height: 24px !important;
+}
+
+/* Header standard alignment */
+#settingsModal .settings-header,
+#csModal .settings-header {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    margin-bottom: 2rem !important;
+    padding-top: 1rem !important;
+    text-align: center !important;
+    /* Center align like premium profile cards */
+}
+
+/* Typography Colors */
+#settingsModal h2,
+#settingsModal .settings-name,
+#csModal h2,
+#wpModalTitle {
+    color: #d4af37 !important;
+    font-weight: 700 !important;
+}
+
+#settingsModal .settings-phone,
+#settingsModal .settings-item-desc {
+    color: #888888 !important;
+}
+
+#settingsModal .settings-item-title {
+    color: #d4af37 !important;
+    font-weight: 600 !important;
+}
+
+/* Avatar Styling */
+#settingsModal .avatar-circle {
+    background: linear-gradient(135deg, #d4af37 0%, #b8860b 100%) !important;
+    color: #000 !important;
+    font-weight: 800 !important;
+    border: 2px solid rgba(255, 255, 255, 0.1) !important;
+    box-shadow: 0 0 15px rgba(212, 175, 55, 0.3) !important;
+}
+
+/* Menu Items (Cards) */
+#settingsModal .settings-item {
+    background: #151515 !important;
+    border: 1px solid rgba(212, 175, 55, 0.2) !important;
+    border-radius: 12px !important;
+    margin-bottom: 1rem !important;
+    padding: 1rem !important;
+    transition: all 0.3s ease !important;
+}
+
+#settingsModal .settings-item:hover {
+    background: rgba(212, 175, 55, 0.08) !important;
+    border-color: rgba(212, 175, 55, 0.4) !important;
+    transform: translateX(5px);
+}
+
+/* Menu Item Icons */
+#settingsModal .settings-item-icon {
+    color: #d4af37 !important;
+    background: rgba(212, 175, 55, 0.1) !important;
+    padding: 8px !important;
+    border-radius: 8px !important;
+}
+
+#settingsModal .settings-chevron {
+    color: #666 !important;
+}
+
+#settingsModal .settings-item:hover .settings-chevron {
+    color: #d4af37 !important;
+}
+
+/* Submenu Items */
+#settingsModal .settings-submenu {
+    background: transparent !important;
+    border: none !important;
+    padding-left: 1rem !important;
+}
+
+#settingsModal .submenu-item {
+    background: #151515 !important;
+    border: 1px solid rgba(255, 255, 255, 0.05) !important;
+    border-left: 3px solid transparent !important;
+    margin-bottom: 0.5rem !important;
+    color: #cccccc !important;
+    border-radius: 8px !important;
+    transition: all 0.2s !important;
+}
+
+#settingsModal .submenu-item:hover {
+    background: rgba(212, 175, 55, 0.05) !important;
+    border-color: rgba(212, 175, 55, 0.3) !important;
+    border-left-color: #d4af37 !important;
+    color: #d4af37 !important;
+}
+
+#settingsModal .submenu-item i {
+    color: #d4af37 !important;
+}
+
+#settingsModal .submenu-item:hover i {
+    color: #f9e29b !important;
+}
+
+/* Logout Button */
+#settingsModal .logout-btn-container {
+    padding-top: 2rem !important;
+    border-top: 1px solid rgba(255, 255, 255, 0.05) !important;
+    background: transparent !important;
+    text-align: center;
+}
+
+#settingsModal .logout-btn {
+    background: transparent !important;
+    border: 1px solid rgba(255, 0, 0, 0.4) !important;
+    color: #ff4d4d !important;
+    width: 100% !important;
+    padding: 0.8rem !important;
+    border-radius: 8px !important;
+    font-family: 'Outfit', sans-serif !important;
+    font-weight: 600 !important;
+    transition: all 0.3s !important;
+}
+
+#settingsModal .logout-btn:hover {
+    background: rgba(255, 0, 0, 0.05) !important;
+    border-color: #ff0000 !important;
+    box-shadow: 0 0 15px rgba(255, 0, 0, 0.2) !important;
+}
+
+/* Badges */
+#settingsModal .s-badge {
+    background: #000 !important;
+    border: 1px solid rgba(212, 175, 55, 0.3) !important;
+    color: #d4af37 !important;
+}
+
+/* CS Modal Chat Specifics */
+#chatBox {
+    background: #0f0f0f !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+}
+
+#csInput {
+    background: #1a1a1a !important;
+    border: 1px solid rgba(212, 175, 55, 0.3) !important;
+    color: #fff !important;
+}
+
+#csInput:focus {
+    border-color: #d4af37 !important;
+    box-shadow: 0 0 8px rgba(212, 175, 55, 0.2) !important;
+}
+
+/* Scrollbar styling for panels */
+#settingsModal .settings-content::-webkit-scrollbar,
+#chatBox::-webkit-scrollbar {
+    width: 6px;
+}
+
+#settingsModal .settings-content::-webkit-scrollbar-track,
+#chatBox::-webkit-scrollbar-track {
+    background: #111;
+}
+
+#settingsModal .settings-content::-webkit-scrollbar-thumb,
+#chatBox::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+}
+
+#settingsModal .settings-content::-webkit-scrollbar-thumb:hover,
+#chatBox::-webkit-scrollbar-thumb:hover {
+    background: #d4af37;
+}
+
+/* Unified Center Popups (Update Name, Withdrawal PIN, Reset Password, KYC, Avatar) */
+.center-popup-modal {
+    background: rgba(0, 0, 0, 0.85) !important;
+    backdrop-filter: blur(5px) !important;
+}
+
+.center-popup-content {
+    background: #0b0b0b !important;
+    border: 1px solid #d4af37 !important;
+    box-shadow: 0 0 30px rgba(212, 175, 55, 0.2) !important;
+    border-radius: 12px !important;
+}
+
+.popup-header h2 {
+    color: #d4af37 !important;
+    font-weight: 700 !important;
+    margin: 0 !important;
+}
+
+.popup-close {
+    color: #d4af37 !important;
+    background: transparent !important;
+    border: none !important;
+    cursor: pointer !important;
+    transition: all 0.2s ease !important;
+}
+
+.popup-close:hover {
+    color: #f9e29b !important;
+    transform: scale(1.1) rotate(90deg) !important;
+}
+
+/* Inputs in Popups */
+.reg-input,
+.kyc-field-input,
+.center-popup-modal input {
+    background: #151515 !important;
+    border: 1px solid rgba(212, 175, 55, 0.3) !important;
+    color: #ffffff !important;
+    border-radius: 8px !important;
+    padding: 0.8rem 1rem !important;
+}
+
+.reg-input:focus,
+.kyc-field-input:focus,
+.center-popup-modal input:focus {
+    border-color: #d4af37 !important;
+    box-shadow: 0 0 8px rgba(212, 175, 55, 0.3) !important;
+}
+
+.reg-input::placeholder,
+.kyc-field-input::placeholder,
+.center-popup-modal input::placeholder {
+    color: #888888 !important;
+}
+
+/* Modal Titles/Labels */
+.reg-input-group label,
+.kyc-field-label,
+.center-popup-modal label {
+    color: #d4af37 !important;
+    font-weight: 600 !important;
+    margin-bottom: 0.5rem !important;
+}
+
+.popup-body p,
+#wpModalDesc {
+    color: #aaaaaa !important;
+}
+
+/* Primary Action Buttons (Save/Update) */
+.center-popup-modal button.btn-primary,
+.center-popup-modal button.btn-submit,
+.center-popup-modal button.logout-btn:not(:last-of-type) {
+    background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%) !important;
+    color: #000000 !important;
+    border: none !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+    transition: all 0.3s ease !important;
+    box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3) !important;
+    padding: 0.8rem !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+}
+
+.center-popup-modal button.btn-primary:hover,
+.center-popup-modal button.btn-submit:hover,
+.center-popup-modal button.logout-btn:not(:last-of-type):hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 20px rgba(212, 175, 55, 0.5) !important;
+}
+
+/* Secondary/Cancel Buttons */
+.center-popup-modal button.btn-secondary,
+.center-popup-modal button.logout-btn:last-of-type {
+    background: #000000 !important;
+    color: #d4af37 !important;
+    border: 1px solid #d4af37 !important;
+    font-weight: 600 !important;
+    transition: all 0.3s ease !important;
+    padding: 0.8rem !important;
+    border-radius: 8px !important;
+    cursor: pointer !important;
+}
+
+.center-popup-modal button.btn-secondary:hover,
+.center-popup-modal button.logout-btn:last-of-type:hover {
+    background: rgba(212, 175, 55, 0.1) !important;
+    color: #f9e29b !important;
+}
+
+/* password eye icon adjustment */
+.reg-password-wrapper i {
+    color: #d4af37 !important;
+    opacity: 0.6;
+}
+
+.reg-password-wrapper i:hover {
+    opacity: 1;
+}
+
+/* KYC Specific Upload Boxes */
+.kyc-upload-box {
+    background: #111 !important;
+    border: 1px dashed rgba(212, 175, 55, 0.5) !important;
+    color: #d4af37 !important;
+}
+
+.kyc-upload-box:hover {
+    background: #151515 !important;
+    border-style: solid !important;
+}
+
+/* Avatar Specifics */
+#avatarPlaceholderIcon {
+    color: #d4af37 !important;
+    opacity: 0.5;
+}
+
+.avatar-change-overlay {
+    background: rgba(212, 175, 55, 0.85) !important;
+    color: #000000 !important;
+    font-weight: 700 !important;
+}

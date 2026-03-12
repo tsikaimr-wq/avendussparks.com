@@ -1,0 +1,8 @@
+name = "stocktv-proxy"
+main = "src/index.js"
+compatibility_date = "2025-01-15"
+
+[vars]
+STOCKTV_COUNTRY_ID = "14"
+STOCKTV_EXCHANGE_ID = "46"
+STOCKTV_MAX_PAGES = "12"

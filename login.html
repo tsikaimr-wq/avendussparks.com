@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Sign in to Avendus Capital</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="db.js"></script>
+    <style>
+        /* Premium Black & Gold Theme */
+        body.login-body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #000000 0%, #111111 100%) !important;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Outfit', sans-serif;
+            color: #e2e8f0;
+        }
+
+        .login-card {
+            background: #0f0f0f;
+            width: 100%;
+            max-width: 450px;
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 0 30px rgba(212, 175, 55, 0.15);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            text-align: center;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Ensure header is absolute and simple */
+        .login-header {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            pointer-events: none;
+        }
+
+        .login-header>* {
+            pointer-events: auto;
+        }
+
+        .login-logo {
+            font-weight: 800;
+            color: #d4af37;
+            font-size: 1.5rem;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            letter-spacing: 0.5px;
+        }
+
+        .home-btn {
+            color: #d4af37;
+            background: rgba(212, 175, 55, 0.1);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .home-btn:hover {
+            background: rgba(212, 175, 55, 0.2);
+            box-shadow: 0 0 10px rgba(212, 175, 55, 0.3);
+        }
+
+        /* Form Styles */
+        h1 {
+            color: #d4af37;
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-shadow: 0 0 15px rgba(212, 175, 55, 0.2);
+        }
+
+        h2 {
+            color: #d4af37;
+        }
+
+        .form-group {
+            margin-bottom: 1.25rem;
+            text-align: left;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: #94a3b8;
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .phone-input-wrapper {
+            display: flex;
+            border: 1px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #1a1a1a;
+            transition: border-color 0.3s;
+        }
+
+        .phone-input-wrapper:focus-within {
+            border-color: #d4af37;
+            box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1);
+        }
+
+        .country-code {
+            background: #222;
+            padding: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            border-right: 1px solid #333;
+            font-weight: 500;
+            color: #e2e8f0;
+        }
+
+        input {
+            width: 100%;
+            padding: 0.75rem;
+            border: none;
+            outline: none;
+            font-family: inherit;
+            background: #1a1a1a;
+            color: #fff;
+        }
+
+        input::placeholder {
+            color: #555;
+        }
+
+        /* Password field */
+        .password-wrapper {
+            position: relative;
+            border: 1px solid #333;
+            border-radius: 8px;
+            background: #1a1a1a;
+            transition: border-color 0.3s;
+        }
+
+        .password-wrapper:focus-within {
+            border-color: #d4af37;
+            box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1);
+        }
+
+        .eye-icon {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #d4af37;
+            cursor: pointer;
+            opacity: 0.7;
+        }
+
+        .eye-icon:hover {
+            opacity: 1;
+        }
+
+        .login-submit-btn {
+            background: linear-gradient(to right, #d4af37, #b8962e);
+            color: #000;
+            border: none;
+            width: 100%;
+            padding: 0.9rem;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            font-size: 1rem;
+            margin-top: 1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(212, 175, 55, 0.3);
+        }
+
+        .login-submit-btn:hover {
+            background: linear-gradient(to right, #e6c256, #cda73e);
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(212, 175, 55, 0.4);
+        }
+
+        .links {
+            margin-top: 1.5rem;
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+
+        .links a {
+            color: #d4af37;
+            text-decoration: none;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+
+        .links a:hover {
+            color: #fceda8;
+        }
+
+        .divider {
+            height: 1px;
+            background: #333;
+            margin: 1.5rem 0;
+            position: relative;
+        }
+
+        .divider span {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: #0f0f0f;
+            padding: 0 10px;
+            color: #64748b;
+            font-size: 0.8rem;
+        }
+
+        /* Modals */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-body {
+            background: #0f0f0f;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 16px;
+            padding: 2rem;
+            position: relative;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            color: #e2e8f0;
+        }
+
+        .modal-body input {
+            background: #1a1a1a !important;
+            border: 1px solid #333 !important;
+            color: #fff !important;
+            border-radius: 8px;
+            padding: 0.75rem;
+            width: 100%;
+        }
+
+        .modal-body input:focus {
+            border-color: #d4af37 !important;
+        }
+
+        .close-modal {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #64748b;
+            transition: color 0.3s;
+        }
+
+        .close-modal:hover {
+            color: #d4af37;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            color: #64748b;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab-btn.active {
+            color: #d4af37;
+            border-bottom-color: #d4af37;
+        }
+
+        .otp-btn {
+            background: linear-gradient(to right, #d4af37, #b8962e);
+            border: none;
+            color: black;
+            font-weight: 600;
+            padding: 0 1rem;
+            cursor: pointer;
+            font-size: 0.85rem;
+            white-space: nowrap;
+        }
+
+        .otp-btn:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+        }
+
+        /* Custom Alert Modal Styling (Admin Style) */
+        .confirm-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            backdrop-filter: blur(6px);
+            transition: all 0.3s ease;
+            pointer-events: auto;
+        }
+
+        .confirm-modal-card {
+            background: white;
+            width: 400px;
+            padding: 35px 25px;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            transform: scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            pointer-events: auto;
+        }
+
+        .confirm-modal-overlay.active {
+            display: flex;
+        }
+
+        .confirm-modal-overlay.active .confirm-modal-card {
+            transform: scale(1);
+            opacity: 1;
+        }
+
+        .confirm-modal-icon-box {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .confirm-modal-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 0 0 10px 0;
+        }
+
+        .confirm-modal-message {
+            font-size: 0.95rem;
+            color: #64748b;
+            line-height: 1.5;
+            margin: 0 0 25px 0;
+        }
+
+        .confirm-modal-footer {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+        }
+
+        .confirm-modal-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            border: none;
+            transition: all 0.2s;
+        }
+    </style>
+</head>
+
+<body class="login-body">
+
+    <div class="login-header">
+        <div class="login-logo">Avendus Capital</div>
+        <div style="display:flex; align-items:center; gap:10px;">
+            <a href="index.html" class="home-btn"><i data-lucide="home" width="20"></i></a>
+        </div>
+    </div>
+
+    <div class="login-card">
+        <h1 data-i18n="login_title">Sign in</h1>
+
+        <!-- Mobile Login Only (Instruction 1) -->
+
+        <form id="loginForm">
+            <input type="hidden" id="loginType" value="mobile">
+
+            <!-- Mobile Login (Instruction 3) -->
+            <div id="loginMobileSection" class="form-group">
+                <label data-i18n="lbl_phone">Mobile Number</label>
+                <div class="phone-input-wrapper">
+                    <div class="country-code">
+                        <img src="https://flagcdn.com/w20/in.png" width="20"> +91
+                    </div>
+                    <input type="tel" id="phoneNumber" placeholder="Enter mobile number" maxlength="10"
+                        data-i18n="ph_enter_phone">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label data-i18n="lbl_password">Password</label>
+                <div class="password-wrapper">
+                    <input type="password" id="password" placeholder="Enter password" required
+                        data-i18n="ph_enter_password">
+                    <button type="button" id="togglePass" class="eye-icon"
+                        style="background: none; border: none; padding: 0;">
+                        <i data-lucide="eye"></i>
+                    </button>
+                </div>
+                <div style="text-align: right; margin-top: 5px;">
+                    <a href="#" onclick="openModal('forgot')"
+                        style="font-size: 0.8rem; color: #d4af37; text-decoration: none;"
+                        data-i18n="lnk_forgot_password">Forgot Password?</a>
+                </div>
+            </div>
+
+            <button type="submit" class="login-submit-btn" data-i18n="btn_login">Login</button>
+        </form>
+
+        <div class="links">
+            <span data-i18n="no_account_hint">Don't have an account?</span> <a href="#" onclick="openModal('register')"
+                data-i18n="lnk_register">Register Now</a>
+        </div>
+
+
+    </div>
+
+    <!-- Register Modal (5-Step Flow) -->
+    <div id="registerModal" class="modal-overlay">
+        <div class="modal-body" style="max-width: 600px;">
+            <button class="close-modal" onclick="closeModal('register')"><i data-lucide="x"></i></button>
+            <div id="regTitleContainer">
+                <h2 id="regTitle" data-i18n="modal_create_account">Create Account</h2>
+            </div>
+
+            <!-- STEP 1: Registration -->
+            <div id="regStep1">
+                <div class="form-group">
+                    <label data-i18n="lbl_phone">Mobile Number</label>
+                    <div class="phone-input-wrapper">
+                        <div class="country-code">
+                            <img src="https://flagcdn.com/w20/in.png" width="20"> +91
+                        </div>
+                        <input type="tel" id="regMobile" placeholder="10-digit number" maxlength="10"
+                            data-i18n="ph_10_digit">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_create_pass">Create Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="regPass" placeholder="Create password" required
+                            data-i18n="ph_create_pass">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_confirm_pass">Confirm Password</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="regConfirmPass" placeholder="Confirm password" required
+                            data-i18n="ph_confirm_pass">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_invite_code">Invitation Code (MANDATORY)</label>
+                    <input type="text" id="regInviteCode" placeholder="Enter code" required data-i18n="ph_enter_code">
+                </div>
+                <button class="login-submit-btn" onclick="goToStep2()" data-i18n="btn_next">Next</button>
+            </div>
+
+            <!-- STEP 2: Email Binding -->
+            <div id="regStep2" style="display:none;">
+                <div class="form-group">
+                    <label data-i18n="lbl_email">Email Address</label>
+                    <div class="phone-input-wrapper">
+                        <input type="email" id="regEmail" placeholder="name@example.com" data-i18n="ph_enter_email">
+                        <button type="button" class="otp-btn" id="sendEmailOtpBtn" onclick="triggerEmailOtp()"
+                            data-i18n="btn_send_otp">Send
+                            OTP</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_ver_code">Verification Code</label>
+                    <input type="text" id="regOtpInput" placeholder="Enter 6-digit code" maxlength="6"
+                        data-i18n="ph_enter_otp">
+                </div>
+                <button class="login-submit-btn" onclick="finishStep2()" data-i18n="btn_next">Next</button>
+                <div style="text-align: center; margin-top: 10px;">
+                    <a href="#" onclick="showStep(1)" style="color: #64748b; font-size: 0.9rem; text-decoration: none;"
+                        data-i18n="btn_back">Back</a>
+                </div>
+            </div>
+
+            <!-- STEP 3: KYC Agreement -->
+            <div id="regStep3" style="display:none;">
+                <h2 style="margin-bottom: 0.5rem; color: #d4af37;" data-i18n="lbl_kyc">Know Your Customer (KYC)</h2>
+
+                <div id="kycAgreementText"
+                    style="background: #050505; padding: 1.5rem; border-radius: 8px; height: 350px; overflow-y: auto; border: 1px solid #333; margin-bottom: 1.5rem; font-size: 0.85rem; line-height: 1.6; color: #cbd5e1; text-align: left;"
+                    data-i18n="kyc_agreement_content">
+                    <h3 style="color: #fff; margin-top: 0;">Identity Verification Agreement</h3>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">1. Introduction</h4>
+                    <p>This Identity Verification Agreement (“Agreement”) sets forth the terms and conditions governing
+                        the identity verification process for users of our financial application (“the App”).</p>
+                    <p>By proceeding with registration and using the App, you (“the User”) agree to be bound by the
+                        terms of this Agreement.</p>
+                    <p>This Agreement is entered into pursuant to applicable national and international laws, including
+                        but not limited to Anti-Money Laundering (AML), Counter-Terrorism Financing (CTF), and financial
+                        regulations.</p>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">2. Purpose of Identity Verification</h4>
+                    <p>In compliance with applicable laws, regulatory requirements, and anti-money laundering
+                        obligations, we are legally required to verify the identity of all users before granting access
+                        to certain financial features within the App.</p>
+                    <p>The primary purposes of the identity verification process are:</p>
+                    <ul style="padding-left: 20px; list-style-type: disc;">
+                        <li>To prevent fraud and financial crimes</li>
+                        <li>To ensure the legality and compliance of financial transactions</li>
+                        <li>To comply with FATF recommendations and relevant jurisdictional standards</li>
+                    </ul>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">3. Information Collected</h4>
+                    <p>As part of the identity verification process, the user may be required to provide the following
+                        information and documents:</p>
+                    <ul style="padding-left: 20px; list-style-type: disc;">
+                        <li>Full legal name</li>
+                        <li>Date of birth</li>
+                        <li>Residential address and proof of address</li>
+                        <li>Government-issued identification (e.g., passport, ID card, driver’s license)</li>
+                        <li>A live photo or selfie for biometric verification</li>
+                        <li>Additional documents upon request by compliance officers</li>
+                    </ul>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">4. Use of Personal Data</h4>
+                    <p>Your personal data will be used solely for the following purposes:</p>
+                    <ul style="padding-left: 20px; list-style-type: disc;">
+                        <li>Identity verification</li>
+                        <li>Regulatory due diligence</li>
+                        <li>Fraud prevention</li>
+                        <li>Compliance with financial and anti-money laundering regulations</li>
+                    </ul>
+                    <p>No personal data will be used for marketing or unrelated commercial purposes.</p>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">5. Data Protection and Privacy</h4>
+                    <p>We protect your personal data in accordance with the Data Protection Act and industry standards.
+                        Our data protection framework includes:</p>
+                    <ul style="padding-left: 20px; list-style-type: disc;">
+                        <li>End-to-end encryption</li>
+                        <li>Role-based access control and multi-factor authentication (MFA)</li>
+                        <li>Data minimization and secure retention policies</li>
+                        <li>Regular internal and external security audits</li>
+                    </ul>
+                    <p>We will never sell or disclose your data unless required by law or with your explicit consent.
+                    </p>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">6. User Acknowledgment and Consent</h4>
+                    <p>By proceeding with identity verification, the user hereby:</p>
+                    <ul style="padding-left: 20px; list-style-type: disc;">
+                        <li>Confirms the accuracy and truthfulness of all submitted data</li>
+                        <li>Understands the legal necessity of identity verification</li>
+                        <li>Provides informed consent for the collection and processing of personal data</li>
+                        <li>Agrees to comply with any additional verification or re-verification steps that may be
+                            required by our compliance team</li>
+                    </ul>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">7. Retention of Information</h4>
+                    <p>All identity-related data will be securely stored for the legally required period, typically
+                        between five (5) to seven (7) years, in compliance with applicable data retention and financial
+                        audit regulations.</p>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">8. Updates to this Agreement</h4>
+                    <p>We may update or modify this Agreement from time to time.</p>
+                    <p>Any updates will be posted in the App, and such changes will take effect immediately upon
+                        posting. Continued use of the App after updates constitutes acceptance of the revised Agreement.
+                    </p>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">9. Governing Law and Jurisdiction</h4>
+                    <p>This Agreement is governed by and construed under the laws of our operational jurisdiction.</p>
+                    <p>Any disputes arising out of or in connection with this Agreement will be subject to the exclusive
+                        jurisdiction of the competent courts of that jurisdiction.</p>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">10. Contact</h4>
+                    <p>For any questions, concerns, or privacy-related inquiries, please contact our Compliance Team
+                        through the in-app support center or via official communication channels provided in the App.
+                    </p>
+
+                    <h4 style="color: #94a3b8; margin: 1rem 0 0.5rem;">11. User Confirmation</h4>
+                    <p>By tapping “Agree and Continue,” you acknowledge that you have read, understood, and accepted all
+                        the terms of this Identity Verification Agreement.</p>
+                </div>
+
+                <div
+                    style="margin-bottom: 1.5rem; display: flex; align-items: flex-start; gap: 10px; background: #0a0a0a; padding: 10px; border-radius: 4px;">
+                    <input type="checkbox" id="agreeCheckbox"
+                        style="width: 20px; height: 20px; margin-top: 2px; accent-color: #d4af37;">
+                    <label for="agreeCheckbox" style="font-size: 0.9rem; margin: 0; color: #e2e8f0; cursor: pointer;"
+                        data-i18n="agree_kyc_hint">I
+                        agree to the KYC agreement</label>
+                </div>
+
+                <button class="login-submit-btn" onclick="goToStep4()" data-i18n="btn_agree_continue">Agree &
+                    Continue</button>
+                <button class="tab-btn" style="width: 100%; margin-top: 1rem; color: #64748b;"
+                    onclick="closeModal('register')" data-i18n="btn_dont_agree">I don't agree</button>
+            </div>
+
+            <!-- STEP 4: Basic Information -->
+            <div id="regStep4" style="display:none;">
+                <h2 style="margin-bottom: 1.5rem; color: #d4af37;" data-i18n="lbl_basic_info">Basic Information</h2>
+                <div class="form-group">
+                    <label data-i18n="lbl_full_name">Full Name</label>
+                    <input type="text" id="regName" placeholder="Full Legal Name" data-i18n="ph_enter_fullname">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_dob">Date of Birth</label>
+                    <input type="date" id="regDob" style="color-scheme: dark;">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_gender">Gender</label>
+                    <select id="regGender"
+                        style="color-scheme: dark; background: #1a1a1a; color: #fff; width: 100%; padding: 0.75rem; border: 1px solid #333; border-radius: 8px;">
+                        <option value="" disabled selected data-i18n="ph_select_gender">Select Gender</option>
+                        <option value="Male" data-i18n="opt_male">Male</option>
+                        <option value="Female" data-i18n="opt_female">Female</option>
+                        <option value="Other" data-i18n="opt_other">Other</option>
+                    </select>
+                </div>
+                <button class="login-submit-btn" onclick="goToStep5()" data-i18n="btn_next">Next</button>
+            </div>
+
+            <!-- STEP 5: Identification -->
+            <div id="regStep5" style="display:none;">
+                <h2 style="margin-bottom: 1.5rem; color: #d4af37;" data-i18n="lbl_identification">Identification</h2>
+                <div class="form-group">
+                    <label data-i18n="lbl_id_type">ID Type</label>
+                    <div
+                        style="padding: 0.75rem; background: #1a1a1a; border: 1px solid #333; border-radius: 8px; color: #fff; font-weight: 600;">
+                        PAN Card
+                    </div>
+                    <input type="hidden" id="regIdType" value="PAN">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_id_card">ID Number</label>
+                    <input type="text" id="regIdNumber" placeholder="Enter ID number" data-i18n="ph_enter_idnum">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_front_id">ID Photo (Front)</label>
+                    <div id="kycFrontPreview"
+                        style="width: 120px; height: 80px; background: #0a0a0a; border: 1px solid #333; border-radius: 4px; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 0.75rem; color: #64748b;"
+                        data-i18n="ph_not_selected">
+                        No image selected
+                    </div>
+                    <input type="file" id="kycDocId" accept="image/*"
+                        onchange="previewKycImage(this, 'kycFrontPreview')"
+                        style="padding: 10px; background: #0a0a0a; border: 1px dashed #333; width: 100%; color: transparent;">
+                </div>
+                <div class="form-group">
+                    <label data-i18n="lbl_back_id">ID Photo (Back)</label>
+                    <div id="kycBackPreview"
+                        style="width: 120px; height: 80px; background: #0a0a0a; border: 1px solid #333; border-radius: 4px; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: 0.75rem; color: #64748b;"
+                        data-i18n="ph_not_selected">
+                        No image selected
+                    </div>
+                    <input type="file" id="kycDocIdBack" accept="image/*"
+                        onchange="previewKycImage(this, 'kycBackPreview')"
+                        style="padding: 10px; background: #0a0a0a; border: 1px dashed #333; width: 100%; color: transparent;">
+                </div>
+                <button class="login-submit-btn" onclick="submitFinalKYC()" data-i18n="btn_submit_kyc">Submit
+                    KYC</button>
+            </div>
+
+            <!-- Final State: Under Review -->
+            <div id="regFinalReview" style="display:none; text-align: center; padding: 2rem 0;">
+                <div
+                    style="width: 80px; height: 80px; background: rgba(212, 175, 55, 0.1); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; color: #d4af37;">
+                    <i data-lucide="clock" style="width: 40px; height: 40px;"></i>
+                </div>
+                <h2 style="color: #d4af37; margin-bottom: 1rem;" data-i18n="kyc_under_review">KYC Under Review</h2>
+                <p style="color: #94a3b8; line-height: 1.6; margin-bottom: 2rem;" data-i18n="kyc_review_hint">
+                    Your documents have been submitted. Our compliance team is reviewing them — please allow up to 48
+                    hours.
+                </p>
+                <button class="login-submit-btn" onclick="window.location.reload()" data-i18n="btn_back_home">Return to
+                    Home</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Forgot Password Modal -->
+    <div id="forgotModal" class="modal-overlay">
+        <div class="modal-body">
+            <button class="close-modal" onclick="closeModal('forgot')"><i data-lucide="x"></i></button>
+            <h2 data-i18n="modal_reset_password">Reset Password</h2>
+            <p style="color: #64748b; font-size: 0.9rem; margin-bottom: 1rem;" data-i18n="reset_pass_hint">
+                Please contact our support team to verify your identity and reset your password.
+            </p>
+            <button class="login-submit-btn" onclick="closeModal('forgot')" data-i18n="btn_close">Close</button>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Password Toggle
+        document.addEventListener("DOMContentLoaded", function () {
+            const toggleBtn = document.getElementById('togglePass');
+            const passwordInput = document.getElementById('password');
+
+            if (toggleBtn && passwordInput) {
+                toggleBtn.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    // Toggle Password Type
+                    const isPassword = passwordInput.type === 'password';
+                    passwordInput.type = isPassword ? 'text' : 'password';
+
+                    // Toggle Icon
+                    toggleBtn.innerHTML = `<i data-lucide="${isPassword ? 'eye-off' : 'eye'}"></i>`;
+                    lucide.createIcons();
+                });
+            }
+        });
+
+        // Modals
+        window.openModal = function (id) {
+            document.getElementById(id + 'Modal').style.display = 'flex';
+        }
+        window.closeModal = function (id) {
+            document.getElementById(id + 'Modal').style.display = 'none';
+        }
+
+        // Custom Alert Utility
+        window.showAlert = function (type, msg, title, onOk) {
+            let modal = document.getElementById('alertModal');
+            if (!modal) {
+                const div = document.createElement('div');
+                div.id = 'alertModal';
+                div.className = 'confirm-modal-overlay';
+                div.innerHTML = `
+                <div class="confirm-modal-card">
+                    <div class="confirm-modal-icon-box" id="alertIconBox">
+                        <i id="alertIcon" data-lucide="info" size="44"></i>
+                    </div>
+                    <h3 id="alertTitle" class="confirm-modal-title">Notification</h3>
+                    <p id="alertMsg" class="confirm-modal-message"></p>
+                    <div class="confirm-modal-footer" style="justify-content: center;">
+                        <button class="confirm-modal-btn" id="alertBtn" style="background:#3b82f6; width: 100%; color: white;">OK</button>
+                    </div>
+                </div>`;
+                document.body.appendChild(div);
+                modal = div;
+            }
+
+            const iconEl = modal.querySelector('#alertIcon');
+            const iconBox = modal.querySelector('#alertIconBox');
+            const titleEl = modal.querySelector('#alertTitle');
+            const msgEl = modal.querySelector('#alertMsg');
+            const btn = modal.querySelector('#alertBtn');
+
+            let iconName = 'info';
+            let defaultTitle = 'Notification';
+            let color = '#3b82f6';
+            let bgColor = '#eff6ff';
+
+            if (type === 'success') {
+                iconName = 'check-circle';
+                color = '#10b981';
+                bgColor = '#ecfdf5';
+                defaultTitle = 'Success';
+            } else if (type === 'error') {
+                iconName = 'x-circle';
+                color = '#ef4444';
+                bgColor = '#fef2f2';
+                defaultTitle = 'Error';
+            } else if (type === 'warning') {
+                iconName = 'alert-triangle';
+                color = '#f59e0b';
+                bgColor = '#fffbeb';
+                defaultTitle = 'Warning';
+            }
+
+            if (iconEl) {
+                iconEl.setAttribute('data-lucide', iconName);
+                iconEl.style.color = color;
+            }
+            if (iconBox) iconBox.style.background = bgColor;
+            if (titleEl) titleEl.textContent = title || defaultTitle;
+            if (msgEl) msgEl.textContent = msg;
+            if (btn) {
+                btn.style.background = color;
+                btn.onclick = () => {
+                    closeAlertModal();
+                    if (onOk) onOk();
+                };
+            }
+
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('active'), 10);
+            if (window.lucide) lucide.createIcons();
+        }
+
+        window.closeAlertModal = function () {
+            const modal = document.getElementById('alertModal');
+            if (modal) {
+                modal.classList.remove('active');
+                setTimeout(() => { modal.style.display = 'none'; }, 300);
+            }
+        }
+
+        // Global Alert Override
+        window.alert = (msg) => window.showAlert('info', msg);
+
+        // Enhanced Auth Logic
+        let otpSent = false;
+        let emailOtpAttempts = 3;
+        let currentEmailOtp = null; // Store the dynamic OTP
+        let currentRegType = 'email'; // Default to Email
+        let currentLoginType = 'mobile'; // Mobile Only (Instruction 3)
+
+        // --- Login Logic ---
+        window.switchLoginTab = function (type) {
+            // Disabled per Instruction 1
+        };
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const btn = e.target.querySelector('button');
+            const originalText = btn.textContent;
+            btn.textContent = 'Logging in...';
+
+            const mobile = document.getElementById('phoneNumber').value;
+            const password = document.getElementById('password').value;
+
+            if (!mobile) { btn.textContent = originalText; return showAlert('warning', 'Please enter mobile number'); }
+            const identifier = mobile;
+
+            try {
+                // Call DB Login
+                const result = await DB.login(identifier, password);
+
+                if (result.success) {
+                    const redirectUrl = sessionStorage.getItem('postLoginRedirect');
+                    if (redirectUrl) {
+                        sessionStorage.removeItem('postLoginRedirect');
+                        window.location.replace(redirectUrl);
+                    } else {
+                        window.location.replace('index.html');
+                    }
+                } else {
+                    showAlert('error', result.message || 'Invalid mobile or password.', 'Login Failed');
+                    btn.textContent = originalText;
+                }
+            } catch (err) {
+                console.error(err);
+                showAlert('error', 'An error occurred. Please check your connection.', 'Login Error');
+                btn.textContent = originalText;
+            }
+        });
+
+        // --- Registration Logic (Multi-step) ---
+        let regData = {};
+
+        // Reset modal state on open
+        const originalOpenModal = window.openModal;
+        window.openModal = function (id) {
+            originalOpenModal(id);
+            if (id === 'register') {
+                showStep(1);
+            }
+        };
+
+        window.showStep = function (step) {
+            // Hide all steps
+            const ids = ['regStep1', 'regStep2', 'regStep3', 'regStep4', 'regStep5', 'regFinalReview'];
+            ids.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
+            // Show target
+            const targetId = step === 'FinalReview' ? 'regFinalReview' : 'regStep' + step;
+            const target = document.getElementById(targetId);
+            if (target) target.style.display = 'block';
+
+            // Clean up title if needed
+            const titleCont = document.getElementById('regTitleContainer');
+            if (['3', '4', '5', 'FinalReview'].includes(step.toString())) {
+                if (titleCont) titleCont.style.display = 'none';
+            } else {
+                if (titleCont) titleCont.style.display = 'block';
+            }
+        };
+
+        window.goToStep2 = async function () {
+            const mobile = document.getElementById('regMobile').value;
+            const pass = document.getElementById('regPass').value;
+            const confirmPass = document.getElementById('regConfirmPass').value;
+            const inviteCode = document.getElementById('regInviteCode').value.trim();
+
+            if (!mobile || mobile.length < 10) return showAlert('warning', 'Please enter a valid 10-digit mobile number.');
+            if (!pass) return showAlert('warning', 'Please create a password.');
+            if (pass !== confirmPass) return showAlert('warning', 'Passwords do not match.');
+            if (pass.length < 6) return showAlert('warning', 'Password must be at least 6 characters.');
+            if (!inviteCode) return showAlert('warning', 'Invitation code is required.');
+
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = 'Validating...';
+            btn.disabled = true;
+
+            try {
+                // Validate Invitation Code
+                const client = DB.getClient();
+                const { data: csr, error: csrErr } = await client
+                    .from('admins')
+                    .select('id')
+                    .eq('invitation_code', inviteCode)
+                    .eq('role', 'csr')
+                    .eq('status', 'active')
+                    .maybeSingle();
+
+                if (csrErr) throw csrErr;
+                if (!csr) {
+                    return showAlert('error', 'Invalid or inactive invitation code.');
+                }
+
+                // Check if mobile already exists (informational)
+                const { data: existingMob } = await client.from('users').select('id').eq('mobile', mobile).maybeSingle();
+                if (existingMob) {
+                    return showAlert('error', 'Mobile number already registered.');
+                }
+
+                // Store Step 1 Data
+                regData.mobile = mobile;
+                regData.password = pass;
+                regData.inviteCode = inviteCode;
+
+                showStep(2);
+            } catch (err) {
+                console.error(err);
+                showAlert('error', 'Validation failed.');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        };
+
+        window.triggerEmailOtp = function () {
+            const email = document.getElementById('regEmail').value;
+            if (!email) return showAlert('warning', 'Please enter a valid email address.');
+
+            const btn = document.getElementById('sendEmailOtpBtn');
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+
+            DB.sendEmailOtp(email).then(res => {
+                if (res.success) {
+                    showAlert('success', 'OTP sent to ' + email);
+                    let count = 60;
+                    const timer = setInterval(() => {
+                        count--;
+                        if (count < 0) {
+                            clearInterval(timer);
+                            btn.textContent = 'Send OTP';
+                            btn.disabled = false;
+                        } else {
+                            btn.textContent = `Resend (${count}s)`;
+                        }
+                    }, 1000);
+                } else {
+                    showAlert('error', res.message || 'Failed to send OTP.');
+                    btn.textContent = 'Send OTP';
+                    btn.disabled = false;
+                }
+            }).catch(err => {
+                console.error(err);
+                showAlert('error', 'Error sending OTP.');
+                btn.textContent = 'Send OTP';
+                btn.disabled = false;
+            });
+        };
+
+        window.finishStep2 = async function () {
+            const email = document.getElementById('regEmail').value;
+            const otp = document.getElementById('regOtpInput').value;
+
+            if (!email) return showAlert('warning', 'Please enter email address.');
+            if (!otp) return showAlert('warning', 'Please enter verification code.');
+
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = 'Verifying...';
+            btn.disabled = true;
+
+            try {
+                // 1. Verify OTP
+                const res = await DB.verifyEmailOtp(email, otp);
+                if (!res.success) {
+                    return showAlert('error', 'Invalid OTP or expired.');
+                }
+
+                // 2. Create Account (DB.register)
+                const regRes = await DB.register(regData.mobile, regData.password, email, res.authId, regData.inviteCode);
+                if (!regRes.success) {
+                    return showAlert('error', regRes.message || 'Registration failed.');
+                }
+
+                // 3. Establish Session (Session is already established by Supabase auth during verifyEmailOtp/register if configured, 
+                // but we should ensure the user object is in local storage if not already done by script.js)
+                // Actually DB.register probably handles this. Let's assume it works.
+
+                regData.email = email;
+                regData.authId = res.authId;
+                regData.userId = regRes.user.id; // Store for KYC steps
+
+                showStep(3);
+            } catch (err) {
+                console.error(err);
+                showAlert('error', 'Step 2 failed.');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        };
+
+        window.goToStep4 = function () {
+            const checkbox = document.getElementById('agreeCheckbox');
+            if (!checkbox.checked) {
+                return showAlert('warning', 'You must agree to the KYC agreement to proceed.');
+            }
+            showStep(4);
+        };
+
+        window.goToStep5 = function () {
+            const name = document.getElementById('regName').value;
+            const dob = document.getElementById('regDob').value;
+            const gender = document.getElementById('regGender').value;
+
+            if (!name) return showAlert('warning', 'Please enter your full name.');
+            if (!dob) return showAlert('warning', 'Please enter your date of birth.');
+            if (!gender) return showAlert('warning', 'Please select your gender.');
+
+            regData.name = name;
+            regData.dob = dob;
+            regData.gender = gender;
+
+            showStep(5);
+        };
+
+        window.previewKycImage = function (input, previewId) {
+            const preview = document.getElementById(previewId);
+            if (input.files && input.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    preview.innerHTML = `<img src="${e.target.result}" style="width: 100%; height: 100%; object-fit: cover;">`;
+                };
+                reader.readAsDataURL(input.files[0]);
+            } else {
+                preview.innerHTML = 'No image selected';
+            }
+        };
+
+        window.submitFinalKYC = async function () {
+            const idFile = document.getElementById('kycDocId').files[0];
+            const idBackFile = document.getElementById('kycDocIdBack').files[0];
+            const selfieEl = document.getElementById('kycSelfie');
+            const selfieFile = selfieEl ? selfieEl.files[0] : null;
+            const idNumber = document.getElementById('regIdNumber').value.trim();
+            const idType = document.getElementById('regIdType').value;
+
+            if (!idNumber) return showAlert('warning', 'Please enter your ID document number.');
+            if (!idFile) return showAlert('warning', 'Please upload your ID Photo (Front).');
+            if (!idBackFile) return showAlert('warning', 'Please upload your ID Photo (Back).');
+
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = 'Submitting...';
+            btn.disabled = true;
+
+            try {
+                // Submit KYC using Unified Function
+                const kycRes = await DB.submitKYC(
+                    regData.userId,
+                    regData.name,
+                    '+91' + regData.mobile,
+                    idNumber,
+                    idFile,       // idFront
+                    idBackFile,   // idBack
+                    selfieFile || null,         // selfie
+                    {
+                        dob: regData.dob,
+                        email: regData.email,
+                        status: 'active',
+                        auth_id: regData.authId,
+                        username: regData.name,
+                        id_type: idType,
+                        gender: regData.gender
+                    }
+                );
+
+                if (kycRes.success) {
+                    showStep('FinalReview');
+                } else {
+                    throw new Error(kycRes.error?.message || "KYC submission failed.");
+                }
+
+            } catch (err) {
+                console.error("KYC ERROR:", err);
+                showAlert('error', err.message || 'Submission failed.');
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        };
+
+        // Initialize Defaults
+        switchLoginTab('email');
+    </script>
+</body>
+
+</html>

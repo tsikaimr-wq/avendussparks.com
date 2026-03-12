@@ -1,0 +1,763 @@
+/* ========================================
+   MARKET PAGE - COMPREHENSIVE BLACK & GOLD THEME
+   Scope: Market page component only
+   ======================================== */
+
+/* ========================================
+   1. REMOVE ALL WHITE CARDS - GLOBAL OVERRIDE
+   ======================================== */
+
+/* All white cards and panels */
+.white-card,
+.card,
+.panel,
+.widget,
+[class*="card"],
+[class*="panel"] {
+    background: #111111 !important;
+    background-color: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Remove light grey backgrounds */
+[class*="bg-white"],
+[class*="bg-gray"],
+[class*="bg-light"] {
+    background: #111111 !important;
+    background-color: #111111 !important;
+}
+
+/* Primary text */
+.white-card h1,
+.white-card h2,
+.white-card h3,
+.white-card h4,
+.card h1,
+.card h2,
+.card h3,
+.card h4 {
+    color: #FFFFFF !important;
+}
+
+/* Secondary text */
+.white-card p,
+.white-card span,
+.card p,
+.card span {
+    color: #B3B3B3 !important;
+}
+
+/* ========================================
+   2. MAJOR INDICES CARDS (SENSEX / NIFTY) - FIXED ALIGNMENT
+   ======================================== */
+
+/* Indices container */
+.indices-container,
+.market-indices,
+.index-cards {
+    background: transparent !important;
+}
+
+/* Individual index card - CLEAN STRUCTURE */
+.index-card,
+.sensex-card,
+.nifty-card,
+.major-indices-card,
+[class*="index-card"],
+[class*="indices"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2) !important;
+    padding: 1.5rem !important;
+    position: relative !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+}
+
+/* Remove any nested inner containers */
+.index-card>div,
+.sensex-card>div,
+.nifty-card>div,
+.major-indices-card>div {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    position: static !important;
+    transform: none !important;
+}
+
+/* Remove floating effect from inner elements */
+.index-card *,
+.sensex-card *,
+.nifty-card *,
+.major-indices-card * {
+    position: static !important;
+    transform: none !important;
+}
+
+/* Remove extra backgrounds from all children */
+.index-card>*,
+.sensex-card>*,
+.nifty-card>*,
+.major-indices-card>* {
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Index title - proper alignment */
+.index-title,
+.index-name,
+.index-card h3,
+.index-card h4 {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    margin: 0 0 0.5rem 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Index value - proper alignment */
+.index-value,
+.index-price,
+.index-card .value,
+.index-card .price {
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+    font-family: 'Consolas', monospace !important;
+    font-size: 1.5rem !important;
+    margin: 0.5rem 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Index change - proper alignment */
+.index-change,
+.index-percent,
+.index-card .change,
+.index-card .percent {
+    margin: 0.5rem 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    border: none !important;
+}
+
+/* Positive change */
+.positive,
+.gain,
+.up,
+[class*="positive"],
+[class*="gain"] {
+    color: #00C853 !important;
+}
+
+/* Negative change */
+.negative,
+.loss,
+.down,
+[class*="negative"],
+[class*="loss"] {
+    color: #FF3D00 !important;
+}
+
+/* Remove any wrapper divs that create nested look */
+.index-card-wrapper,
+.index-inner,
+.card-inner,
+[class*="inner"] {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Chart inside index card */
+.index-chart,
+.mini-chart {
+    background: transparent !important;
+    border: none !important;
+    margin-top: 1rem !important;
+    width: 100% !important;
+}
+
+/* ========================================
+   3. CHART SECTION - DARK MODE
+   ======================================== */
+
+/* Chart container */
+.chart-container,
+.trading-chart,
+.market-chart,
+#chartContainer,
+[class*="chart"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    border: 1px solid #2A2A2A !important;
+}
+
+/* Chart canvas */
+canvas {
+    background: #000000 !important;
+}
+
+/* Chart title */
+.chart-title,
+.chart-header h3 {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+}
+
+/* Chart grid lines (if accessible via CSS) */
+.chart-grid,
+.grid-line {
+    stroke: #2A2A2A !important;
+    color: #2A2A2A !important;
+}
+
+/* Axis text */
+.chart-axis,
+.axis-label,
+.tick-label {
+    color: #B3B3B3 !important;
+    fill: #B3B3B3 !important;
+}
+
+/* Chart legend */
+.chart-legend {
+    color: #B3B3B3 !important;
+}
+
+/* ========================================
+   4. LEFT SIDEBAR (Assets / Stocks / Commodities)
+   ======================================== */
+
+/* Sidebar container */
+.left-sidebar,
+.sidebar-left,
+.assets-panel {
+    background: transparent !important;
+}
+
+/* Asset cards */
+.asset-card,
+.sector-card,
+.commodity-card {
+    background: #111111 !important;
+    background-color: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+}
+
+.asset-card:hover,
+.sector-card:hover,
+.commodity-card:hover {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2) !important;
+}
+
+/* Section titles */
+.sidebar-title,
+.section-title,
+.asset-title {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+}
+
+/* Asset names */
+.asset-name,
+.stock-name,
+.commodity-name {
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+}
+
+/* Asset labels */
+.asset-label,
+.stock-label {
+    color: #B3B3B3 !important;
+}
+
+/* Icons - reduce brightness if needed */
+.asset-icon,
+.sector-icon {
+    opacity: 0.9 !important;
+}
+
+/* ========================================
+   5. RIGHT PANEL (Watchlist / Top Gainer / Loser / Calendar)
+   ======================================== */
+
+/* Right panel container */
+.right-panel,
+.sidebar-right,
+.watchlist-panel {
+    background: transparent !important;
+}
+
+/* Panel cards */
+.watchlist-card,
+.gainer-card,
+.loser-card,
+.calendar-card {
+    background: #111111 !important;
+    background-color: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+}
+
+/* Panel titles */
+.panel-title,
+.watchlist-title,
+.gainer-title,
+.loser-title {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+}
+
+/* Stock names */
+.stock-name,
+.ticker-name {
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+}
+
+/* Small labels */
+.stock-label,
+.ticker-label,
+.time-label {
+    color: #B3B3B3 !important;
+    font-size: 0.75rem !important;
+}
+
+/* Percent gain */
+.percent-gain,
+.gain-percent,
+[class*="gain"] {
+    color: #00C853 !important;
+    font-weight: 700 !important;
+}
+
+/* Percent loss */
+.percent-loss,
+.loss-percent,
+[class*="loss"] {
+    color: #FF3D00 !important;
+    font-weight: 700 !important;
+}
+
+/* Calendar events */
+.calendar-event {
+    background: #0a0a0a !important;
+    border-left: 3px solid #D4AF37 !important;
+}
+
+/* ========================================
+   6. NEWS SECTION (Bottom Area)
+   ======================================== */
+
+/* News container */
+.news-section,
+.news-container,
+.market-news {
+    background: #111111 !important;
+    background-color: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+}
+
+/* News item */
+.news-item,
+.news-card {
+    background: #0a0a0a !important;
+    border: 1px solid #2A2A2A !important;
+}
+
+.news-item:hover,
+.news-card:hover {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2) !important;
+}
+
+/* News headline */
+.news-headline,
+.news-title {
+    color: #FFFFFF !important;
+    font-weight: 600 !important;
+}
+
+/* News meta (date, source, etc.) */
+.news-meta,
+.news-date,
+.news-source {
+    color: #B3B3B3 !important;
+    font-size: 0.75rem !important;
+}
+
+/* ========================================
+   7. REMOVE ALL LIGHT BACKGROUNDS - FORCE OVERRIDE
+   ======================================== */
+
+/* Override white backgrounds */
+.bg-white,
+[class*="bg-white"] {
+    background: #111111 !important;
+    background-color: #111111 !important;
+}
+
+/* Override gray backgrounds */
+.bg-gray-50,
+.bg-gray-100,
+.bg-gray-200,
+[class*="bg-gray"] {
+    background: #111111 !important;
+    background-color: #111111 !important;
+}
+
+/* Override light backgrounds */
+.bg-light,
+[class*="bg-light"] {
+    background: #111111 !important;
+    background-color: #111111 !important;
+}
+
+/* Override light borders */
+.border-gray-100,
+.border-gray-200,
+.border-gray-300,
+[class*="border-gray"] {
+    border-color: #2A2A2A !important;
+}
+
+/* ========================================
+   8. TABLES & LISTS
+   ======================================== */
+
+/* Table container */
+table,
+.table,
+.data-table {
+    background: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+}
+
+/* Table header */
+thead,
+th {
+    background: #000000 !important;
+    color: #D4AF37 !important;
+    border-bottom: 2px solid #D4AF37 !important;
+}
+
+/* Table rows */
+tbody tr {
+    background: #111111 !important;
+    border-bottom: 1px solid #2A2A2A !important;
+}
+
+tbody tr:hover {
+    background: #1a1a1a !important;
+    border-color: #D4AF37 !important;
+}
+
+/* Table cells */
+td {
+    color: #FFFFFF !important;
+    border-color: #2A2A2A !important;
+}
+
+/* ========================================
+   9. BUTTONS & CONTROLS
+   ======================================== */
+
+/* Primary buttons */
+.btn-primary,
+button.primary {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+}
+
+.btn-primary:hover,
+button.primary:hover {
+    background: #D4AF37 !important;
+    color: #000000 !important;
+    box-shadow: 0 0 12px rgba(212, 175, 55, 0.6) !important;
+}
+
+/* Secondary buttons */
+.btn-secondary,
+button.secondary {
+    background: #141414 !important;
+    border: 1px solid #333 !important;
+    color: #B3B3B3 !important;
+}
+
+.btn-secondary:hover,
+button.secondary:hover {
+    border-color: #D4AF37 !important;
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   10. INPUT FIELDS & SEARCH
+   ======================================== */
+
+/* Input fields */
+input,
+select,
+textarea {
+    background: #141414 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #333 !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 6px rgba(212, 175, 55, 0.5) !important;
+    outline: none !important;
+}
+
+/* Search bar */
+.search-bar,
+.search-input {
+    background: #141414 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #333 !important;
+}
+
+.search-bar:focus,
+.search-input:focus {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 6px rgba(212, 175, 55, 0.5) !important;
+}
+
+/* ========================================
+   11. TABS & NAVIGATION
+   ======================================== */
+
+/* Tab container */
+.tabs,
+.tab-container {
+    background: transparent !important;
+    border-bottom: 1px solid #2A2A2A !important;
+}
+
+/* Inactive tab */
+.tab,
+.tab-item {
+    background: #141414 !important;
+    color: #B3B3B3 !important;
+    border: 1px solid #333 !important;
+}
+
+.tab:hover,
+.tab-item:hover {
+    background: #1c1c1c !important;
+    color: #D4AF37 !important;
+    border-color: #D4AF37 !important;
+}
+
+/* Active tab */
+.tab.active,
+.tab-item.active {
+    background: #000000 !important;
+    color: #D4AF37 !important;
+    border: 1px solid #D4AF37 !important;
+    border-bottom: none !important;
+}
+
+/* ========================================
+   12. MODALS & OVERLAYS
+   ======================================== */
+
+/* Modal overlay */
+.modal-overlay {
+    background: rgba(0, 0, 0, 0.85) !important;
+}
+
+/* Modal content */
+.modal-content,
+.modal-body {
+    background: #111111 !important;
+    border: 2px solid #D4AF37 !important;
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.3) !important;
+}
+
+/* Modal header */
+.modal-header {
+    background: #000000 !important;
+    border-bottom: 1px solid #D4AF37 !important;
+}
+
+.modal-title {
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   13. SCROLLBAR STYLING
+   ======================================== */
+
+/* Scrollbar track */
+::-webkit-scrollbar {
+    width: 8px !important;
+    height: 8px !important;
+}
+
+::-webkit-scrollbar-track {
+    background: #0a0a0a !important;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #D4AF37 !important;
+    border-radius: 4px !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #FFD700 !important;
+}
+
+/* ========================================
+   14. TOOLTIPS & POPOVERS
+   ======================================== */
+
+/* Tooltip */
+.tooltip,
+.popover {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #FFFFFF !important;
+}
+
+/* ========================================
+   15. BADGES & TAGS
+   ======================================== */
+
+/* Badge */
+.badge,
+.tag {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   16. ENSURE TEXT VISIBILITY
+   ======================================== */
+
+/* All headings */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: #FFFFFF !important;
+}
+
+/* Paragraphs */
+p {
+    color: #B3B3B3 !important;
+}
+
+/* Strong/bold text */
+strong,
+b {
+    color: #D4AF37 !important;
+}
+
+/* Links */
+a {
+    color: #D4AF37 !important;
+}
+
+a:hover {
+    color: #FFD700 !important;
+}
+
+/* ========================================
+   17. INLINE STYLE OVERRIDES
+   ======================================== */
+
+/* Override inline white backgrounds */
+[style*="background: white"],
+[style*="background: #fff"],
+[style*="background-color: white"],
+[style*="background-color: #fff"] {
+    background: #111111 !important;
+    background-color: #111111 !important;
+}
+
+/* Override inline light backgrounds */
+[style*="background: #f"],
+[style*="background-color: #f"] {
+    background: #111111 !important;
+    background-color: #111111 !important;
+}
+
+/* ========================================
+   18. SPECIFIC MARKET PAGE COMPONENTS
+   ======================================== */
+
+/* Market summary */
+.market-summary {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+}
+
+/* Stock ticker */
+.stock-ticker {
+    background: #000000 !important;
+    color: #FFFFFF !important;
+}
+
+/* Price display */
+.price-display {
+    color: #FFFFFF !important;
+    font-family: 'Consolas', monospace !important;
+}
+
+/* Volume display */
+.volume-display {
+    color: #B3B3B3 !important;
+}
+
+/* Market status */
+.market-status {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   19. GRID LAYOUTS
+   ======================================== */
+
+/* Grid container */
+.grid,
+.grid-container {
+    background: transparent !important;
+}
+
+/* Grid items */
+.grid-item {
+    background: #111111 !important;
+    border: 1px solid #2A2A2A !important;
+}
+
+.grid-item:hover {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2) !important;
+}

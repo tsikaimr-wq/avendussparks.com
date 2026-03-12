@@ -1,0 +1,426 @@
+/* ========================================
+   WITHDRAW PAGE - COMPREHENSIVE BLACK & GOLD FIX
+   Scope: Withdraw page component only
+   ======================================== */
+
+/* ========================================
+   1. TOP HEADER BAR
+   ======================================== */
+
+/* Top header bar */
+.navbar,
+header.navbar {
+    background: #0B0B0B !important;
+    border-bottom: 1px solid #D4AF37 !important;
+    color: #FFFFFF !important;
+}
+
+/* Back button */
+.navbar .back-btn,
+header.navbar .back-btn {
+    color: #FFFFFF !important;
+}
+
+.navbar .back-btn:hover,
+header.navbar .back-btn:hover {
+    color: #D4AF37 !important;
+}
+
+/* Page title in navbar */
+.navbar h1,
+header.navbar h1 {
+    color: #FFFFFF !important;
+}
+
+/* ========================================
+   2. WITHDRAW RECORDS SECTION
+   ======================================== */
+
+/* Withdraw Records Card */
+.white-card {
+    background: #111111 !important;
+    border: 1px solid #2a2a2a !important;
+    color: #FFFFFF !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Records header */
+.records-header {
+    border-bottom: 1px solid #2a2a2a !important;
+    padding-bottom: 1rem !important;
+}
+
+/* Withdraw Records title - Gold */
+.records-title {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+}
+
+.records-title i {
+    color: #D4AF37 !important;
+}
+
+/* Refresh button - Gold bordered circle */
+.refresh-btn {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    transition: all 0.2s ease !important;
+}
+
+.refresh-btn:hover {
+    background: rgba(212, 175, 55, 0.1) !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.5) !important;
+}
+
+.refresh-btn i {
+    color: #D4AF37 !important;
+}
+
+/* ========================================
+   3. FILTER PILLS - REMOVE BLUE
+   ======================================== */
+
+/* Filter pills container */
+.filter-pills {
+    margin-bottom: 1.5rem !important;
+}
+
+/* Inactive filter pills */
+.pill {
+    background: #141414 !important;
+    border: 1px solid #333 !important;
+    color: #B3B3B3 !important;
+    transition: all 0.2s ease !important;
+}
+
+.pill:hover {
+    background: #1c1c1c !important;
+    border-color: #D4AF37 !important;
+    color: #D4AF37 !important;
+}
+
+/* Active filter pill - Gold */
+.pill.active {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    box-shadow: 0 0 8px rgba(212, 175, 55, 0.3) !important;
+}
+
+/* ========================================
+   4. RECORD ITEMS - FIX TEXT VISIBILITY
+   ======================================== */
+
+/* Record item container */
+.record-item {
+    background: #0a0a0a !important;
+    border: 1px solid #2a2a2a !important;
+    color: #FFFFFF !important;
+    transition: all 0.2s ease !important;
+}
+
+.record-item:hover {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 10px rgba(212, 175, 55, 0.2) !important;
+}
+
+/* Record bank name/title - White */
+.record-bank {
+    color: #FFFFFF !important;
+    font-weight: 700 !important;
+}
+
+/* Record date/time - Gray */
+.record-date {
+    color: #B3B3B3 !important;
+    font-size: 0.75rem !important;
+}
+
+/* Record amount - Gold */
+.record-amount {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    font-family: 'Consolas', monospace !important;
+}
+
+/* Status badges */
+.status-badge {
+    border-radius: 2px !important;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    padding: 0.2rem 0.6rem !important;
+}
+
+.status-badge.approved,
+.status-badge.success {
+    background: rgba(16, 185, 129, 0.1) !important;
+    color: #10b981 !important;
+    border: 1px solid rgba(16, 185, 129, 0.3) !important;
+}
+
+.status-badge.pending {
+    background: rgba(212, 175, 55, 0.1) !important;
+    color: #D4AF37 !important;
+    border: 1px solid rgba(212, 175, 55, 0.3) !important;
+}
+
+.status-badge.rejected {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #ef4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+}
+
+/* ========================================
+   5. FORM SECTION
+   ======================================== */
+
+/* Section titles */
+.section-title {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+}
+
+/* Submit Withdrawal button */
+.submit-btn,
+button.submit-btn,
+#withdrawSubmitBtn {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    transition: all 0.2s ease !important;
+}
+
+.submit-btn:hover,
+button.submit-btn:hover,
+#withdrawSubmitBtn:hover {
+    background: rgba(212, 175, 55, 0.1) !important;
+    box-shadow: 0 0 12px rgba(212, 175, 55, 0.6) !important;
+}
+
+.submit-btn:disabled,
+button.submit-btn:disabled,
+#withdrawSubmitBtn:disabled {
+    background: #1a1a1a !important;
+    border-color: #555 !important;
+    color: #666 !important;
+    cursor: not-allowed !important;
+    box-shadow: none !important;
+}
+
+/* Add New Bank link - Gold */
+a[href="bank_accounts.html"] {
+    color: #D4AF37 !important;
+    font-weight: 600 !important;
+}
+
+a[href="bank_accounts.html"]:hover {
+    color: #FFD700 !important;
+}
+
+/* Labels */
+label {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+}
+
+/* ========================================
+   6. INPUT FOCUS STATES - REMOVE BLUE
+   ======================================== */
+
+/* Remove blue focus rings from inputs */
+input:focus,
+select:focus,
+textarea:focus,
+.reg-input:focus,
+#withdrawAmountInput:focus,
+#withdrawPinInput:focus,
+#withdrawBankSelect:focus {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 6px rgba(212, 175, 55, 0.5) !important;
+    outline: none !important;
+}
+
+/* Input fields */
+input,
+select,
+textarea,
+.reg-input {
+    background: #141414 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #333 !important;
+}
+
+/* Select dropdown */
+select,
+#withdrawBankSelect {
+    background: #141414 !important;
+    color: #FFFFFF !important;
+    border: 1px solid #333 !important;
+}
+
+select:focus,
+#withdrawBankSelect:focus {
+    border-color: #D4AF37 !important;
+    box-shadow: 0 0 6px rgba(212, 175, 55, 0.5) !important;
+}
+
+/* Account selector */
+.account-selector {
+    background: #141414 !important;
+    border: 1px solid #333 !important;
+    color: #FFFFFF !important;
+}
+
+.account-selector:hover {
+    border-color: #D4AF37 !important;
+}
+
+.account-info h4 {
+    color: #FFFFFF !important;
+}
+
+.account-info p {
+    color: #10b981 !important;
+}
+
+/* Currency tag */
+.currency-tag {
+    color: #B3B3B3 !important;
+}
+
+/* ========================================
+   7. WARNING/ERROR BOXES
+   ======================================== */
+
+/* Warning box */
+.warning-box {
+    background: rgba(239, 68, 68, 0.1) !important;
+    border: 2px solid rgba(239, 68, 68, 0.3) !important;
+}
+
+.warning-title {
+    color: #ef4444 !important;
+}
+
+.warning-text {
+    color: #ef4444 !important;
+}
+
+.balance-tag {
+    background: rgba(239, 68, 68, 0.1) !important;
+    color: #ef4444 !important;
+    border: 1px solid rgba(239, 68, 68, 0.3) !important;
+}
+
+/* Error footer */
+.error-footer {
+    color: #D4AF37 !important;
+}
+
+/* Policy text */
+.policy-text {
+    color: #B3B3B3 !important;
+}
+
+/* ========================================
+   8. TERMS COLUMN
+   ======================================== */
+
+/* Terms title */
+.terms-title {
+    color: #D4AF37 !important;
+    font-weight: 700 !important;
+}
+
+/* Term items */
+.term-item h5 {
+    color: #D4AF37 !important;
+}
+
+.term-item p {
+    color: #B3B3B3 !important;
+}
+
+/* ========================================
+   9. REMOVE ALL BLUE UTILITY CLASSES
+   ======================================== */
+
+/* Override any blue text classes */
+[class*="text-blue"] {
+    color: #D4AF37 !important;
+}
+
+/* Override any blue background classes */
+[class*="bg-blue"] {
+    background: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+}
+
+/* Override any blue border classes */
+[class*="border-blue"] {
+    border-color: #D4AF37 !important;
+}
+
+/* ========================================
+   10. INLINE STYLE OVERRIDES
+   ======================================== */
+
+/* Override inline blue styles */
+[style*="color: #3b82f6"],
+[style*="color: #2563eb"],
+[style*="color: #1e56a0"] {
+    color: #D4AF37 !important;
+}
+
+[style*="background: #3b82f6"],
+[style*="background: #2563eb"],
+[style*="background: #1e56a0"],
+[style*="background-color: #3b82f6"],
+[style*="background-color: #2563eb"],
+[style*="background-color: #1e56a0"] {
+    background: #000000 !important;
+    background-color: #000000 !important;
+    border: 1px solid #D4AF37 !important;
+}
+
+[style*="border-color: #3b82f6"],
+[style*="border-color: #2563eb"],
+[style*="border-color: #1e56a0"] {
+    border-color: #D4AF37 !important;
+}
+
+/* ========================================
+   11. ENSURE TEXT VISIBILITY
+   ======================================== */
+
+/* Make sure all text is visible on dark backgrounds */
+.container,
+.left-col,
+aside {
+    color: #FFFFFF !important;
+}
+
+/* All headings */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+    color: #FFFFFF !important;
+}
+
+/* Paragraphs */
+p {
+    color: #B3B3B3 !important;
+}
+
+/* Strong/bold text */
+strong,
+b {
+    color: #D4AF37 !important;
+}

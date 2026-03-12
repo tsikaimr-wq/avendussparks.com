@@ -1,0 +1,1994 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Avendus Capital - Premium Trading Platform</title>
+    <meta name="description"
+        content="Access real-time market summaries, breaking news, and personalized stock recommendations on our premium financial dashboard.">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="settings-panel-fix.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://s3.tradingview.com/tv.js"></script>
+    <script src="db.js?v=1.0.6"></script>
+    <script src="db_patch.js?v=1.0.4"></script>
+    <script src="market_data.js?v=1.0.7"></script>
+    <style>
+        /* Indices styling */
+        .index-mini-card {
+            background: #1a1a1a;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .index-mini-card.active {
+            border-color: var(--gold-primary, #d4af37) !important;
+            background: rgba(212, 175, 55, 0.05) !important;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.1);
+            transform: translateY(-2px);
+        }
+
+        /* Chart specific */
+        .mini-tf-btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: #1a1a1a;
+            font-size: 11px;
+            font-weight: 800;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+
+        .mini-tf-btn.active {
+            background: var(--gold-primary, #d4af37);
+            color: #000;
+            border-color: var(--gold-primary, #d4af37);
+        }
+
+        .mini-tf-btn:hover:not(.active) {
+            border-color: #666;
+            color: #fff;
+        }
+
+        /* Sector cards */
+        .sector-card {
+            background: #1a1a1a;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .sector-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--gold-primary, #d4af37);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Exchange tabs for Gainers/Losers */
+        .exchange-tab {
+            cursor: pointer;
+            padding: 4px 12px;
+            border-radius: 6px;
+            color: #666;
+            font-weight: 800;
+            font-size: 0.7rem;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+
+        .exchange-tab.active {
+            background: rgba(212, 175, 55, 0.15);
+            color: var(--gold-primary, #d4af37);
+            border-color: rgba(212, 175, 55, 0.3);
+        }
+
+        /* Layout modifications */
+        .market-content-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            gap: 1.5rem;
+            padding: 0 0 1.5rem;
+            align-items: start;
+        }
+
+        @media (max-width: 1200px) {
+            .market-content-grid {
+                grid-template-columns: 1fr 320px;
+            }
+
+            .left-col {
+                display: none;
+            }
+        }
+
+        @media (max-width: 900px) {
+            .market-content-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .right-col {
+                width: 100%;
+            }
+        }
+
+        #homepage-notification-btn {
+            position: fixed;
+            bottom: 90px;
+            right: 30px;
+            z-index: 9999;
+            background: linear-gradient(135deg, #d4af37, #f5d76e);
+            color: #000;
+            width: 55px;
+            height: 55px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 15px rgba(212, 175, 55, 0.6);
+            cursor: pointer;
+            transition: 0.3s ease;
+        }
+
+        #homepage-notification-btn:hover {
+            transform: scale(1.1);
+        }
+
+        /* Carousel, Recommendation & Modal Styles */
+        .breaking-news .card-header {
+            padding: 1.5rem 2rem 1rem;
+            margin-bottom: 0;
+            background: transparent;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .news-carousel-container {
+            position: relative;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .news-carousel-track {
+            display: flex;
+            transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+            will-change: transform;
+        }
+
+        .news-slide-card {
+            min-width: 100%;
+            flex-shrink: 0;
+            text-decoration: none;
+            color: inherit;
+            position: relative;
+            display: block;
+            height: 320px;
+        }
+
+        .news-slide-card:hover .news-image img {
+            transform: scale(1.05);
+        }
+
+        .news-image {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .news-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.8s ease;
+        }
+
+        .news-image-overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.95) 0%, rgba(0, 0, 0, 0.4) 60%, transparent 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding: 2.5rem 2rem;
+        }
+
+        .recommendation-item {
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+            transition: background 0.2s;
+            text-decoration: none;
+        }
+
+        .recommendation-item:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .rec-thumb {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+
+        .rec-content h4 {
+            margin: 0 0 4px 0;
+            font-size: 0.95rem;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .rec-content p {
+            margin: 0;
+            font-size: 0.8rem;
+            color: #64748b;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        /* Recommendation Detail Modal */
+        .rec-detail-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .rec-detail-content {
+            background: #111;
+            width: 100%;
+            max-width: 600px;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            position: relative;
+        }
+
+        .rec-detail-image {
+            width: 100%;
+            height: 300px;
+            object-fit: cover;
+        }
+
+        .rec-detail-body {
+            padding: 2rem;
+        }
+
+        .rec-detail-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 1rem;
+            line-height: 1.3;
+        }
+
+        .rec-detail-desc {
+            font-size: 1rem;
+            line-height: 1.6;
+            color: #94a3b8;
+            margin-bottom: 2rem;
+        }
+
+        .rec-detail-close {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            width: 36px;
+            height: 36px;
+            background: rgba(0, 0, 0, 0.5);
+            border: none;
+            border-radius: 50%;
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            z-index: 10;
+        }
+
+        .rec-detail-close:hover {
+            background: rgba(212, 175, 55, 0.8);
+            color: #000;
+            transform: scale(1.1);
+        }
+
+        .news-badge {
+            position: absolute;
+            top: 1.5rem;
+            left: 1.5rem;
+            background: var(--gold-primary, #d4af37);
+            color: #000;
+            padding: 0.3rem 0.8rem;
+            font-size: 0.7rem;
+            font-weight: 800;
+            border-radius: 2px;
+            letter-spacing: 1px;
+            z-index: 5;
+        }
+
+        .news-meta {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 0.8rem;
+        }
+
+        .news-time {
+            font-size: 0.75rem;
+            color: var(--gold-primary, #d4af37);
+            font-weight: 700;
+        }
+
+        .news-image-overlay h3 {
+            font-size: 1.5rem;
+            color: #fff;
+            margin: 0 0 0.8rem 0;
+            line-height: 1.25;
+            font-weight: 700;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .news-image-overlay p {
+            font-size: 0.95rem;
+            color: rgba(255, 255, 255, 0.8);
+            line-height: 1.5;
+            margin: 0;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .nav-arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(212, 175, 55, 0.4);
+            color: var(--gold-primary, #d4af37);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.3s;
+            opacity: 0;
+        }
+
+        .news-carousel-container:hover .nav-arrow {
+            opacity: 1;
+        }
+
+        .nav-arrow:hover {
+            background: var(--gold-primary, #d4af37);
+            color: #000;
+            box-shadow: 0 0 20px rgba(212, 175, 55, 0.4);
+        }
+
+        .nav-arrow.prev {
+            left: 1rem;
+        }
+
+        .nav-arrow.next {
+            right: 1rem;
+        }
+
+        .news-dots-container {
+            position: absolute;
+            bottom: 1.5rem;
+            right: 2rem;
+            display: flex;
+            gap: 8px;
+            z-index: 10;
+        }
+
+        .news-dot {
+            width: 8px;
+            height: 8px;
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .news-dot.active {
+            width: 24px;
+            background: var(--gold-primary, #d4af37);
+            border-radius: 4px;
+            box-shadow: 0 0 10px rgba(212, 175, 55, 0.5);
+        }
+
+        @media (max-width: 768px) {
+            .news-slide-card {
+                height: 300px;
+            }
+
+            .news-image-overlay h3 {
+                font-size: 1.2rem;
+            }
+
+            .news-image-overlay p {
+                font-size: 0.85rem;
+            }
+
+            .nav-arrow {
+                width: 36px;
+                height: 36px;
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="search-container">
+                    <!-- Improved trap for browser autofill -->
+                    <div style="position: absolute; left: -9999px; top: -9999px;">
+                        <input type="text" name="fake_user" autocomplete="username">
+                        <input type="password" name="fake_pass" autocomplete="current-password">
+                    </div>
+
+                    <i data-lucide="search" class="search-icon"></i>
+                    <input type="text" placeholder="Search Stocks (e.g. RELIANCE, TCS)..." class="search-input"
+                        id="globalSearchInput" autocomplete="off">
+                    <div id="searchResults" class="search-results-dropdown"></div>
+                </div>
+            </div>
+            <nav class="nav">
+                <a href="index.html" class="nav-item active" id="navHome" onclick="setActiveNav(this)"><i
+                        data-lucide="home"></i> Home</a>
+                <a href="javascript:void(0)" onclick="handleGuestClick('market.html'); setActiveNav(this)"
+                    class="nav-item" id="navMarket"><i data-lucide="trending-up"></i> Market</a>
+                <a href="javascript:void(0)" onclick="handleGuestClick('market.html?view=discover'); setActiveNav(this)"
+                    class="nav-item" id="navDiscover"><i data-lucide="compass"></i> Discover</a>
+                <a href="javascript:void(0)"
+                    onclick="handleGuestClick('market.html?view=portfolio'); setActiveNav(this)" class="nav-item"
+                    id="navPortfolio"><i data-lucide="briefcase"></i> Portfolio</a>
+                <a href="javascript:void(0)" onclick="handleGuestClick('market.html?view=me'); setActiveNav(this)"
+                    class="nav-item" id="navMe"><i data-lucide="user"></i> Me</a>
+            </nav>
+            <div class="header-right">
+                <button class="settings-btn" id="top-notif-btn" onclick="toggleMessageCenter()">
+                    <i data-lucide="bell"></i>
+                    <div class="notif-badge"></div>
+                </button>
+                <button class="settings-btn" id="top-support-btn" onclick="openCS()" title="Customer Service"
+                    style="position: relative;">
+                    <div class="csr-badge" id="csrHeaderBadge" style="display: none;"></div>
+                    <i data-lucide="headset"></i>
+                </button>
+                <button class="settings-btn" id="top-settings-btn" onclick="openSettings()"><i
+                        data-lucide="settings"></i></button>
+            </div>
+        </header>
+
+        <!-- Premium Video Featured Section -->
+        <div class="video-promo-section">
+            <div class="video-container" id="videoWrapper">
+                <canvas id="matrixCanvas"></canvas>
+
+                <!-- Video Overlays -->
+                <div class="video-overlay">
+                    <div class="video-text-content">
+                        <span class="badge">Exclusive Highlight</span>
+                        <h1>Avendus Capital</h1>
+                        <p class="tagline">Invest now for the future. Join now.</p>
+                        <div class="video-actions" id="promoActions">
+                            <div style="display: flex; justify-content: center; width: 100%;">
+                                <a href="login.html" class="join-btn-large"
+                                    style="text-decoration: none; display: flex; align-items: center; justify-content: center;">Login</a>
+                            </div>
+                            <button class="learn-more-btn">Learn More</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Portfolio Summary (shown when logged in) -->
+        <div class="portfolio-summary-bar" id="portfolioBar" style="display: none;">
+            <div class="user-greeting">
+                <div class="user-avatar">U</div>
+                <div class="user-text">
+                    <h3>Welcome User</h3>
+                    <p>Start your investment journey.</p>
+                </div>
+            </div>
+
+            <!-- Removed portfolio stats per user request -->
+
+
+            <div class="action-btns">
+                <a href="deposit.html" class="btn-deposit"><i data-lucide="plus-circle"></i> Deposit</a>
+                <a href="javascript:void(0)" onclick="openWithdrawPage()" class="btn-withdraw"><i
+                        data-lucide="minus-circle"></i> Withdraw</a>
+            </div>
+        </div>
+
+
+        <!-- Main Content -->
+        <main class="main-grid" style="display: block; padding: 1.5rem; max-width: 1400px; margin: 0 auto;">
+
+            <!-- Market Summary - Full Width Grid -->
+            <section class="card market-summary" style="margin-bottom: 1.5rem;">
+                <div class="card-header">
+                    <div class="header-icon"><i data-lucide="activity"></i></div>
+                    <h2>Market Summary</h2>
+                </div>
+                <div class="market-cards-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                    <div class="stock-card"
+                        style="display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 2rem 1rem;"
+                        onclick="window.location.href='market.html?view=market'">
+                        <div class="stock-info"
+                            style="display: flex; justify-content: center; gap: 10px; align-items: center; margin: 0;">
+                            <img src="https://flagcdn.com/w40/in.png" width="24" alt="India" class="flag-icon"
+                                style="margin: 0;">
+                            <span class="stock-name" style="font-size: 1.6rem; font-weight: 700;">SENSEX</span>
+                        </div>
+                    </div>
+                    <div class="stock-card"
+                        style="display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 2rem 1rem;"
+                        onclick="window.location.href='market.html?view=market'">
+                        <div class="stock-info"
+                            style="display: flex; justify-content: center; gap: 10px; align-items: center; margin: 0;">
+                            <img src="https://flagcdn.com/w40/in.png" width="24" alt="India" class="flag-icon"
+                                style="margin: 0;">
+                            <span class="stock-name" style="font-size: 1.6rem; font-weight: 700;">NIFTY 50</span>
+                        </div>
+                    </div>
+                    <div class="stock-card"
+                        style="display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 2rem 1rem;"
+                        onclick="window.location.href='market.html?view=market'">
+                        <div class="stock-info"
+                            style="display: flex; justify-content: center; gap: 10px; align-items: center; margin: 0;">
+                            <img src="https://flagcdn.com/w40/in.png" width="24" alt="India" class="flag-icon"
+                                style="margin: 0;">
+                            <span class="stock-name" style="font-size: 1.6rem; font-weight: 700;">NIFTY BANK</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+
+            <!-- About + Breaking News - 2 Column Grid -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+
+
+                <!-- Breaking News + Recommendation (Right) -->
+                <div style="display: flex; flex-direction: column; gap: 1.5rem;">
+                    <section class="card breaking-news" style="padding: 0; overflow: hidden; position: relative;">
+
+
+                        <!-- TODO:- [x] Fix missing image inside recommendation detail modal (`index.html`)
+    - [x] Add `onerror` fallback to `recDetailImage` element
+    - [x] Align fallback URL with recommendation list items
+- [x] Fix missing recommendation images on Home page
+ (`index.html`)
+    - [x] Update "The Green Energy Revolution" image source
+    - [x] Update "Biotech & Longevity" image source
+    - [x] Add `onerror` handler to recommendation thumbnails
+- [x] Expand Recommendation list to 10 items (`index.html`)
+ -->
+                        <!-- TODO: - [x] Add `recommendationDetailModal` HTML and CSS -->
+                        <!-- TODO: - [x] Update `loadRecommendations()` with article-style cards -->
+                        <!-- TODO: - [/] Implement `openRecommendationDetail(id)` to show modal -->
+                        <!-- TODO: - [x] Remove `MarketEngine` stock rendering from recommendations -->
+                        <!-- TODO: - [/] Verify no redirects occur on click -->
+
+                        <!-- Recommendation Detail Modal -->
+                        <div id="recommendationDetailModal" class="rec-detail-modal"
+                            onclick="if(event.target === this) closeRecommendationDetail()">
+                            <div class="rec-detail-content">
+                                <button class="rec-detail-close" onclick="closeRecommendationDetail()"><i
+                                        data-lucide="x" size="20"></i></button>
+                                <img id="recDetailImage" src="" alt="Detail" class="rec-detail-image"
+                                    onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600'">
+                                <div class="rec-detail-body">
+                                    <h2 id="recDetailTitle" class="rec-detail-title">Title</h2>
+                                    <p id="recDetailDesc" class="rec-detail-desc">Description</p>
+                                    <button class="logout-btn"
+                                        style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); color: #000; width: 100%;"
+                                        onclick="closeRecommendationDetail()">Close</button>
+                                </div>
+                            </div>
+                        </div>
+
+
+                        <div class="card-header">
+                            <div class="header-icon blue"><i data-lucide="newspaper"></i></div>
+                            <h2>Breaking News</h2>
+                        </div>
+
+                        <div class="news-carousel-container" id="newsSection">
+                            <div class="news-carousel-track" id="newsTrack">
+                                <!-- News Item 1 -->
+                                <a href="article.html?id=1" class="news-slide-card">
+                                    <div class="news-image">
+                                        <img src="https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?auto=format&fit=crop&q=80&w=800"
+                                            alt="Nifty 50 News"
+                                            onerror="this.src='https://images.unsplash.com/photo-1611974765270-ca1258634369?auto=format&fit=crop&q=80&w=800'">
+                                        <span class="news-badge">MARKET UPDATE</span>
+                                    </div>
+                                    <div class="news-image-overlay">
+                                        <div class="news-meta">
+                                            <span class="news-time">2 hours ago</span>
+                                        </div>
+                                        <h3>Nifty 50 Hits Lifetime High of 25,600+ Amid Global Bull Run</h3>
+                                        <p>India's benchmark index continues its upward trajectory as institutional
+                                            investors show renewed confidence in Indian equities following global easing
+                                            signals.</p>
+                                    </div>
+                                </a>
+
+                                <!-- News Item 2 -->
+                                <a href="article.html?id=2" class="news-slide-card">
+                                    <div class="news-image">
+                                        <img src="https://images.unsplash.com/photo-1473341304170-971dccb5ac1e?auto=format&fit=crop&q=80&w=800"
+                                            alt="RIL Green Energy"
+                                            onerror="this.src='https://images.unsplash.com/photo-1611974765270-ca1258634369?auto=format&fit=crop&q=80&w=800'">
+                                        <span class="news-badge">RELIANCE INC</span>
+                                    </div>
+                                    <div class="news-image-overlay">
+                                        <div class="news-meta">
+                                            <span class="news-time">5 hours ago</span>
+                                        </div>
+                                        <h3>Reliance Announces ₹75,000 Cr Roadmap for Green Hydrogen</h3>
+                                        <p>The conglomerate focuses on massive energy transition aiming for net-zero
+                                            emissions by 2035 with cutting-edge tech investments.</p>
+                                    </div>
+                                </a>
+
+                                <!-- News Item 3 -->
+                                <a href="article.html?id=3" class="news-slide-card">
+                                    <div class="news-image">
+                                        <img src="https://images.unsplash.com/photo-1526304640581-d334cdbbf45e?auto=format&fit=crop&q=80&w=800"
+                                            alt="RBI Policy"
+                                            onerror="this.src='https://images.unsplash.com/photo-1611974765270-ca1258634369?auto=format&fit=crop&q=80&w=800'">
+                                        <span class="news-badge">RBI POLICY</span>
+                                    </div>
+                                    <div class="news-image-overlay">
+                                        <div class="news-meta">
+                                            <span class="news-time">8 hours ago</span>
+                                        </div>
+                                        <h3>RBI Maintains Repo Rate at 6.5%, Focuses on Inflation Target</h3>
+                                        <p>Governor Shaktikanta Das emphasizes price stability while supporting
+                                            sustainable growth in the latest MPC meeting.</p>
+                                    </div>
+                                </a>
+
+                                <!-- News Item 4 -->
+                                <a href="article.html?id=4" class="news-slide-card">
+                                    <div class="news-image">
+                                        <img src="https://images.unsplash.com/photo-1501167786227-4cba60f6d58f?auto=format&fit=crop&q=80&w=800"
+                                            alt="Banking Sector"
+                                            onerror="this.src='https://images.unsplash.com/photo-1611974765270-ca1258634369?auto=format&fit=crop&q=80&w=800'">
+                                        <span class="news-badge">BANKING</span>
+                                    </div>
+                                    <div class="news-image-overlay">
+                                        <div class="news-meta">
+                                            <span class="news-time">10 hours ago</span>
+                                        </div>
+                                        <h3>Banking Stocks Surge as NPA Levels Hit Decade Low</h3>
+                                        <p>Private and public sector banks witness strong credit growth as domestic
+                                            demand stays resilient across rural markets.</p>
+                                    </div>
+                                </a>
+                            </div>
+
+                            <!-- Navigation -->
+                            <div class="nav-arrow prev" onclick="moveNews(-1, event)"><i data-lucide="chevron-left"></i>
+                            </div>
+                            <div class="nav-arrow next" onclick="moveNews(1, event)"><i data-lucide="chevron-right"></i>
+                            </div>
+
+                            <!-- Indicators -->
+                            <div class="news-dots-container" id="newsDots">
+                                <div class="news-dot active" onclick="jumpToNews(0, event)"></div>
+                                <div class="news-dot" onclick="jumpToNews(1, event)"></div>
+                                <div class="news-dot" onclick="jumpToNews(2, event)"></div>
+                                <div class="news-dot" onclick="jumpToNews(3, event)"></div>
+                            </div>
+                        </div>
+
+                        <!-- Local Script for Carousel Logic -->
+                        <script>
+                            (function () {
+                                let currentIndex = 0;
+                                const track = document.getElementById('newsTrack');
+                                const dots = document.querySelectorAll('.news-dot');
+                                const totalSlides = 4;
+                                let autoPlay;
+
+                                function updateNews() {
+                                    if (!track) return;
+                                    track.style.transform = `translateX(-${currentIndex * 100}%)`;
+                                    dots.forEach((dot, i) => {
+                                        dot.classList.toggle('active', i === currentIndex);
+                                    });
+                                }
+
+                                window.moveNews = function (dir, event) {
+                                    if (event) {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                    }
+                                    currentIndex = (currentIndex + dir + totalSlides) % totalSlides;
+                                    updateNews();
+                                    resetTimer();
+                                };
+
+                                window.jumpToNews = function (idx, event) {
+                                    if (event) {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                    }
+                                    currentIndex = idx;
+                                    updateNews();
+                                    resetTimer();
+                                };
+
+                                function startTimer() {
+                                    autoPlay = setInterval(() => {
+                                        currentIndex = (currentIndex + 1) % totalSlides;
+                                        updateNews();
+                                    }, 5000);
+                                }
+
+                                function resetTimer() {
+                                    clearInterval(autoPlay);
+                                    startTimer();
+                                }
+
+                                // Interactive Pause on Hover
+                                const container = document.getElementById('newsSection');
+                                if (container) {
+                                    container.addEventListener('mouseenter', () => clearInterval(autoPlay));
+                                    container.addEventListener('mouseleave', () => startTimer());
+                                }
+
+                                // Start on load
+                                setTimeout(() => {
+                                    if (window.lucide) lucide.createIcons();
+                                    startTimer();
+                                }, 1000);
+                            })();
+                        </script>
+                    </section>
+
+                    <section class="card recommendation" id="recommendationSection">
+                        <div class="card-header" id="recommendationHeader" style="cursor: pointer;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <div class="header-icon blue"><i data-lucide="thumbs-up"></i></div>
+                                <h2>Recommendation</h2>
+                            </div>
+                            <i data-lucide="chevron-down" id="recommendationChevron"></i>
+                        </div>
+                        <div class="recommendation-list" id="recommendationList"
+                            style="display: none; max-height: 0; overflow: hidden;">
+                            <!-- Recommendations will be loaded dynamically by loadRecommendations() -->
+                        </div>
+                        <style>
+                            .recommendation-item {
+                                text-decoration: none !important;
+                                color: #ffffff !important;
+                                display: flex;
+                                align-items: center;
+                                gap: 1rem;
+                                padding: 1rem;
+                                border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                                transition: background 0.2s;
+                                pointer-events: auto !important;
+                                position: relative;
+                                z-index: 5;
+                            }
+
+                            .recommendation-item:hover {
+                                background: rgba(255, 255, 255, 0.03);
+                            }
+
+                            .recommendation-item h4 {
+                                color: #ffffff !important;
+                                transition: color 0.2s;
+                                margin: 0 0 4px 0;
+                                font-size: 1rem;
+                                font-weight: 600;
+                            }
+
+                            .recommendation-item:hover h4 {
+                                color: #d4af37 !important;
+                            }
+
+                            .recommendation-item p {
+                                color: #a0a0a0 !important;
+                                font-size: 0.85rem;
+                                margin: 0;
+                            }
+
+                            .recommendation-item:last-child {
+                                border-bottom: none;
+                            }
+
+                            .rec-thumb {
+                                width: 80px;
+                                height: 60px;
+                                object-fit: cover;
+                                border-radius: 8px;
+                                flex-shrink: 0;
+                            }
+
+                            /* Robust Toggle Styling */
+                            .recommendation.recommendation-expanded #recommendationList {
+                                display: block !important;
+                                max-height: 2000px !important;
+                            }
+
+                            .recommendation.recommendation-expanded #recommendationChevron {
+                                transform: rotate(180deg);
+                            }
+                        </style>
+                        <script>
+                            (function () {
+                                // Use a safe check for symbol to prevent ReferenceError
+                                const currentSymbol = typeof currentActiveSymbol !== 'undefined' ? currentActiveSymbol : 'NIFTY1!';
+
+                                if (currentSymbol === 'BSE:SENSEX') document.getElementById('cardSensex')?.classList.add('active');
+                                else if (currentSymbol === 'NSE:NIFTY' || currentSymbol === 'NIFTY1!') document.getElementById('cardNifty')?.classList.add('active');
+                                else if (currentSymbol === 'NSE:NIFTYBANK') document.getElementById('cardBankNifty')?.classList.add('active');
+
+                                const section = document.getElementById('recommendationSection');
+                                const header = document.getElementById('recommendationHeader');
+                                const list = document.getElementById('recommendationList');
+
+                                function toggle() {
+                                    const isExpanded = section.classList.toggle('recommendation-expanded');
+                                    // Also set local state directly just in case class is removed by external script
+                                    if (isExpanded) {
+                                        list.style.display = 'block';
+                                        list.style.maxHeight = '2000px';
+                                        sessionStorage.setItem('rec_expanded', 'true');
+                                        // Load content if it's empty
+                                        if (list.children.length === 0 || list.innerHTML.trim() === '') {
+                                            if (typeof loadRecommendations === 'function') loadRecommendations();
+                                        }
+                                    } else {
+                                        list.style.maxHeight = '0';
+                                        setTimeout(() => {
+                                            if (!section.classList.contains('recommendation-expanded')) {
+                                                list.style.display = 'none';
+                                            }
+                                        }, 400);
+                                        sessionStorage.setItem('rec_expanded', 'false');
+                                    }
+                                }
+
+                                if (header) {
+                                    header.addEventListener('click', (e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        toggle();
+                                    });
+                                }
+
+                                // PERSISTENCE LOGIC: Ensure sync scripts don't reset the state
+                                if (sessionStorage.getItem('rec_expanded') === 'true') {
+                                    section.classList.add('recommendation-expanded');
+                                    list.style.display = 'block';
+                                    list.style.maxHeight = '2000px';
+                                }
+
+                                // Sync Guard: Observe class changes to prevent external reset
+                                const observer = new MutationObserver((mutations) => {
+                                    mutations.forEach((mutation) => {
+                                        if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
+                                            const shouldBeExpanded = sessionStorage.getItem('rec_expanded') === 'true';
+                                            if (shouldBeExpanded && !section.classList.contains('recommendation-expanded')) {
+                                                console.log("Sync Guard: Restoring Recommendation State");
+                                                section.classList.add('recommendation-expanded');
+                                            }
+                                        }
+                                    });
+                                });
+                                observer.observe(section, { attributes: true });
+                            })();
+                        </script>
+                    </section>
+                </div>
+            </div>
+
+            <!-- Recommendation Alert (for guests) -->
+            <div class="market-auth-prompt" id="marketAuthPrompt" style="margin-bottom: 1.5rem;">
+                <p>Please log in to view more premium insights</p>
+                <a href="login.html" class="login-btn-small">Login to Continue</a>
+            </div>
+        </main>
+
+        <!-- Exclusive Offers Section -->
+        <section class="exclusive-offers-section" style="padding: 1.5rem; max-width: 1400px; margin: 0 auto;">
+            <div class="card-header"
+                style="padding-left: 0.5rem; background: transparent; border: none; margin-bottom: 1rem;">
+                <div class="header-icon blue" style="background: #e0f2fe; color: #0ea5e9;">
+                    <i data-lucide="sparkles"></i>
+                </div>
+                <h2 style="font-size: 1.3rem; font-weight: 800; color: #1e293b; letter-spacing: -0.5px;">
+                    Exclusive
+                    Offers</h2>
+            </div>
+            <div class="offers-grid" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem;">
+                <div class="offer-card">
+                    <div class="offer-img-wrapper">
+                        <img src="https://images.pexels.com/photos/6770610/pexels-photo-6770610.jpeg?auto=compress&cs=tinysrgb&w=600"
+                            alt="Equity Trading">
+                    </div>
+                    <div class="offer-info">
+                        <h3>Equity Trading</h3>
+                        <p>Invest in leading companies and grow with the stock market.</p>
+                    </div>
+                </div>
+                <div class="offer-card">
+                    <div class="offer-img-wrapper">
+                        <img src="https://images.pexels.com/photos/8386440/pexels-photo-8386440.jpeg?auto=compress&cs=tinysrgb&w=600"
+                            alt="Robo Advisory">
+                    </div>
+                    <div class="offer-info">
+                        <h3>Robo Advisory</h3>
+                        <p>AI-powered, personalised investment strategies made simple.</p>
+                    </div>
+                </div>
+                <div class="offer-card">
+                    <div class="offer-img-wrapper">
+                        <img src="https://images.pexels.com/photos/164501/pexels-photo-164501.jpeg?auto=compress&cs=tinysrgb&w=600"
+                            alt="Mutual Funds">
+                    </div>
+                    <div class="offer-info">
+                        <h3>Mutual Funds</h3>
+                        <p>Diversify your portfolio with professionally managed fund options.</p>
+                    </div>
+                </div>
+                <div class="offer-card">
+                    <div class="offer-img-wrapper">
+                        <img src="https://images.pexels.com/photos/6801874/pexels-photo-6801874.jpeg?auto=compress&cs=tinysrgb&w=600"
+                            alt="Online Trading Experience">
+                    </div>
+                    <div class="offer-info">
+                        <h3>Online Trading Experience</h3>
+                        <p>Online Trading Experience</p>
+                    </div>
+                </div>
+                <div class="offer-card">
+                    <div class="offer-img-wrapper">
+                        <img src="https://images.pexels.com/photos/186461/pexels-photo-186461.jpeg?auto=compress&cs=tinysrgb&w=600"
+                            alt="Exchange Traded Funds">
+                    </div>
+                    <div class="offer-info">
+                        <h3>Exchange Traded Funds</h3>
+                        <p>Trade diversified baskets of assets at low cost.</p>
+                    </div>
+                </div>
+                <div class="offer-card">
+                    <div class="offer-img-wrapper">
+                        <img src="https://images.pexels.com/photos/7788009/pexels-photo-7788009.jpeg?auto=compress&cs=tinysrgb&w=600"
+                            alt="Bonds & Debt">
+                    </div>
+                    <div class="offer-info">
+                        <h3>Bonds & Debt</h3>
+                        <p>Earn stable returns with safe, fixed-income instruments.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-left">
+                © 2025 Avendus Capital. Secure. Transparent. Reliable.
+            </div>
+            <div class="footer-right" style="display: none !important;">
+                <span class="timezone">
+                    <img src="https://flagcdn.com/w40/in.png" width="20" alt="India" class="flag-icon"> 12:51:09
+                    GMT+5:30
+                </span>
+                <a href="#" class="cookie-pref">Cookie Preference</a>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Modals -->
+    <div id="topAlertContainer" class="top-alert-container">
+        <div class="top-alert">
+            <i data-lucide="alert-circle"></i>
+            <span>Please sign in to continue.</span>
+            <i data-lucide="x" class="close-alert" onclick="closeAlert()"></i>
+        </div>
+    </div>
+
+    <div id="messageCenterOverlay" class="message-center-overlay" onclick="toggleMessageCenter()"></div>
+    <div id="messageCenter" class="message-center-modal">
+        <div class="mc-header">
+            <div class="mc-title-row">
+                <span class="mc-title">Notifications</span>
+                <span class="mc-subtitle" id="msgCount">10 Messages</span>
+            </div>
+            <button class="mc-close" onclick="toggleMessageCenter()"><i data-lucide="x" size="24"></i></button>
+        </div>
+        <div class="mc-actions">
+            <button class="mc-btn" onclick="makeAllRead()">Make all read</button>
+            <button class="mc-btn delete-all" onclick="deleteAllMessages()">Delete all</button>
+        </div>
+        <div class="mc-list" id="mcList">
+            <div class="mc-item">
+                <div class="mc-dot unread"></div>
+                <div class="mc-content">
+                    <div class="mc-msg-title">IPO Announcement – Armour Security IPO（QIB）</div>
+                    <div class="mc-time">14-01-2026 15:10:23</div>
+                    <div class="mc-tag">IPO:NEW</div>
+                    <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
+                </div>
+            </div>
+            <div class="mc-item">
+                <div class="mc-dot unread"></div>
+                <div class="mc-content">
+                    <div class="mc-msg-title">Important Notice</div>
+                    <div class="mc-time">12-01-2026 09:32:02</div>
+                    <div class="mc-tag">TEXT</div>
+                    <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="settings-modal" onclick="if(event.target == this) closeSettings()">
+        <div class="settings-content">
+            <button class="settings-close" onclick="closeSettings()"><i data-lucide="x" size="24"></i></button>
+            <div class="settings-header">
+                <div class="avatar-circle" id="settingsAvatar">U</div>
+                <div class="settings-name" id="settingsName"
+                    style="font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-top: 0.5rem;">User Name</div>
+                <div class="settings-phone" id="settingsPhone"
+                    style="font-size: 0.9rem; color: #64748b; margin-top: 0.2rem; display: none;"></div>
+                <div class="badge-row">
+                    <div class="s-badge vip"><i data-lucide="shield-check" size="18"></i> VIP: <span
+                            id="settingsVip">0</span></div>
+                    <div class="s-badge credit"><i data-lucide="crown" size="18"></i> Credit Score: <span
+                            id="settingsCredit">100</span></div>
+                </div>
+            </div>
+            <div class="settings-list">
+                <div class="settings-item" onclick="toggleUserProfile()">
+                    <div class="settings-item-icon"><i data-lucide="user" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">User Profile</div>
+                        <div class="settings-item-desc">Update your profile information.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="userProfileChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="userProfileSubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openEditNameModal()">
+                        <i data-lucide="edit-3" size="18"></i> Update Name
+                    </div>
+                    <div class="submenu-item" onclick="openAvatarModal()">
+                        <i data-lucide="image" size="18"></i> Update Avatar
+                    </div>
+                    <div class="submenu-item" onclick="openKYCModal()">
+                        <i data-lucide="file-check" size="18"></i> View KYC
+                    </div>
+                </div>
+                <div class="settings-item" onclick="toggleSecurityMenu()">
+                    <div class="settings-item-icon"><i data-lucide="lock" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Security</div>
+                        <div class="settings-item-desc">Update your system security settings.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="securityChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="securitySubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openWithdrawalPinModal()">
+                        <i data-lucide="shield-check" size="18"></i> Withdrawal PIN
+                    </div>
+                    <div class="submenu-item" onclick="openResetPassword()">
+                        <i data-lucide="key" size="18"></i> Change Login Password
+                    </div>
+                </div>
+                <div class="settings-item" onclick="window.location.href='bank_accounts.html'">
+                    <div class="settings-item-icon"><i data-lucide="landmark" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Bank Accounts</div>
+                        <div class="settings-item-desc">Manage bank accounts and info</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+                <div class="settings-item" onclick="openCS()">
+                    <div class="settings-item-icon"><i data-lucide="headset" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Customer Service</div>
+                        <div class="settings-item-desc">Contact customer service</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+
+            </div>
+            <div class="logout-btn-container">
+                <button class="logout-btn" onclick="DB.logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Service Modal (Fixed Bottom-Right) -->
+    <div id="csModal">
+        <!-- Maximized Content -->
+        <div class="cs-modal-content">
+            <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 8px; z-index: 100;">
+                <button onclick="minimizeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="minus" size="18"></i>
+                </button>
+                <button onclick="closeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(239, 68, 68, 0.2)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="x" size="18"></i>
+                </button>
+            </div>
+
+            <div class="settings-header"
+                style="margin-bottom: 0; padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid #222;">
+                <h2 style="font-size: 1.3rem; font-weight: 700; color: #d4af37; margin: 0;">Customer Service</h2>
+                <div style="height: 2px; width: 30px; background: #d4af37; margin-top: 5px;"></div>
+            </div>
+
+            <div id="chatBox"
+                style="flex: 1; overflow-y: auto; padding: 1.5rem; background: #0c0c0c; display: flex; flex-direction: column; gap: 1rem;">
+            </div>
+
+            <div id="csImagePreviewArea"
+                style="display: none; padding: 0.5rem 1.5rem; background: #1a1a1a; border-top: 1px solid #333; gap: 0.5rem; align-items: center;">
+            </div>
+
+            <div
+                style="display: flex; gap: 0.5rem; align-items: center; padding: 1.2rem 1.5rem; background: #111; border-top: 1px solid #222;">
+                <input type="file" id="csImageInput" accept="image/*" style="display: none;"
+                    onchange="handleCSImageUpload(this)">
+                <button onclick="document.getElementById('csImageInput').click()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="image" size="22"></i>
+                </button>
+                <button onclick="toggleEmojiPicker()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; position: relative; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="smile" size="22"></i>
+                    <div id="emojiPicker"
+                        style="display: none; position: absolute; bottom: 50px; left: -10px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 0.75rem; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 180px; z-index: 100;">
+                        <span onclick="insertEmoji('👍')" style="cursor: pointer; font-size: 1.4rem;">👍</span>
+                        <span onclick="insertEmoji('👋')" style="cursor: pointer; font-size: 1.4rem;">👋</span>
+                        <span onclick="insertEmoji('😊')" style="cursor: pointer; font-size: 1.4rem;">😊</span>
+                        <span onclick="insertEmoji('😂')" style="cursor: pointer; font-size: 1.4rem;">😂</span>
+                        <span onclick="insertEmoji('❤️')" style="cursor: pointer; font-size: 1.4rem;">❤️</span>
+                        <span onclick="insertEmoji('🔥')" style="cursor: pointer; font-size: 1.4rem;">🔥</span>
+                        <span onclick="insertEmoji('🎉')" style="cursor: pointer; font-size: 1.4rem;">🎉</span>
+                        <span onclick="insertEmoji('💰')" style="cursor: pointer; font-size: 1.4rem;">💰</span>
+                    </div>
+                </button>
+                <input type="text" id="csInput" placeholder="Type a message..."
+                    style="flex: 1; padding: 0.7rem 1rem; background: #050505; border: 1px solid #333; border-radius: 10px; color: white; outline: none; font-family: 'Outfit', sans-serif; font-size: 0.9rem;">
+                <button onclick="sendCSMessage()"
+                    style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); color: #000; border: none; padding: 0.7rem 1.2rem; border-radius: 10px; font-weight: 800; cursor: pointer; transition: opacity 0.2s;"
+                    onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Send</button>
+            </div>
+        </div>
+
+        <!-- Minimized Bar -->
+        <div id="csMinimizedBar" onclick="maximizeCS()">
+            <div
+                style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: rgba(212,175,55,0.1); border-radius: 50%;">
+                <i data-lucide="message-circle" size="14"></i>
+            </div>
+            <span style="font-size: 0.9rem;">Customer Service</span>
+            <i data-lucide="chevron-up" size="18" style="margin-left: auto; opacity: 0.7;"></i>
+        </div>
+    </div>
+
+    <!-- Reset Password Modal (Logged-In) -->
+    <div id="resetPasswordModal" class="center-popup-modal" onclick="if(event.target == this) closeResetPassword()">
+        <div class="center-popup-content" style="max-width: 450px;">
+            <div class="popup-header">
+                <h2>Reset Password</h2>
+                <button class="popup-close" onclick="closeResetPassword()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Current
+                        Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="currentPass" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('currentPass', this)"></i>
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                        Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="newPassInternal" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('newPassInternal', this)"></i>
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 2rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                        New Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="confirmPassInternal" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('confirmPassInternal', this)"></i>
+                    </div>
+                </div>
+                <button class="logout-btn" style="background: #3b82f6;" onclick="handleInternalReset()">Update
+                    Password</button>
+                <button class="logout-btn" style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                    onclick="closeResetPassword()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Withdrawal PIN Modal -->
+    <div id="withdrawalPinModal" class="center-popup-modal"
+        onclick="if(event.target == this) closeWithdrawalPinModal()">
+        <div class="center-popup-content" style="max-width: 450px;">
+            <div class="popup-header">
+                <h2 id="wpModalTitle">Withdrawal PIN</h2>
+                <button class="popup-close" onclick="closeWithdrawalPinModal()"><i data-lucide="x"
+                        size="24"></i></button>
+            </div>
+            <div class="popup-body">
+                <p id="wpModalDesc" style="font-size: 0.9rem; color: #64748b; margin-bottom: 1.5rem;">Set or update your
+                    4-6 digit withdrawal PIN.</p>
+                <div style="padding: 1rem 0;">
+                    <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                        <label
+                            style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                            Withdrawal PIN (4-6 digits)</label>
+                        <input type="password" id="wpNewPin" class="reg-input" maxlength="6" pattern="\d*"
+                            inputmode="numeric" placeholder="Enter New PIN"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                    </div>
+                    <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                        <label
+                            style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                            New PIN</label>
+                        <input type="password" id="wpConfirmPin" class="reg-input" maxlength="6" pattern="\d*"
+                            inputmode="numeric" placeholder="Confirm New PIN"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                    </div>
+                    <div class="reg-input-group" style="margin-bottom: 2rem;">
+                        <label
+                            style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Verify
+                            Login Password</label>
+                        <div class="reg-password-wrapper" style="position: relative;">
+                            <input type="password" id="wpLoginPass" class="reg-input" placeholder="Enter Login Password"
+                                style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                            <i data-lucide="eye-off"
+                                style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                                onclick="toggleInternalPass('wpLoginPass', this)"></i>
+                        </div>
+                    </div>
+                    <button id="wpSubmitBtn" class="logout-btn" style="background: #fb923c;"
+                        onclick="handleWithdrawalPinSubmit()">Update
+                        Withdrawal PIN</button>
+                    <button class="logout-btn" style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                        onclick="closeWithdrawalPinModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Avatar Modal -->
+    <div id="avatarModal" class="center-popup-modal">
+        <div class="center-popup-content avatar-form" style="max-width: 400px;">
+            <div class="popup-header"
+                style="width:100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="font-size: 1.25rem; font-weight: 700;">Update Avatar</h2>
+                <button class="popup-close" onclick="closeAvatarModal()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body" style="display:flex; flex-direction:column; align-items:center; width: 100%;">
+                <div class="avatar-preview-lg" id="avatarPreviewContainer"
+                    onclick="document.getElementById('avatarInput').click()">
+                    <i data-lucide="user" size="64" style="color:#cbd5e1;" id="avatarPlaceholderIcon"></i>
+                    <img id="avatarPreviewImg" src="" style="display:none;">
+                    <div class="avatar-change-overlay">Change Image</div>
+                </div>
+                <input type="file" id="avatarInput" hidden onchange="previewAvatar(this)" accept="image/*">
+                <div style="width: 100%; margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    <button class="btn-primary" onclick="uploadAvatar()">Save Changes</button>
+                    <button class="btn-secondary" onclick="closeAvatarModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KYC Modal -->
+    <div id="kycModal" class="center-popup-modal">
+        <div class="center-popup-content">
+            <div class="popup-header">
+                <h2>View KYC</h2>
+                <button class="popup-close" onclick="closeKYCModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="kyc-form-grid">
+                    <div class="kyc-field-label">Full Name</div>
+                    <input type="text" id="kycName" class="kyc-field-input" placeholder="Enter Full Name">
+                    <div class="kyc-field-label">Mobile Number</div>
+                    <input type="text" id="kycMobile" class="kyc-field-input" placeholder="Enter Mobile Number">
+                    <div class="kyc-field-label">ID Number</div>
+                    <input type="text" id="kycIdNum" class="kyc-field-input" placeholder="Enter ID Number">
+                    <div class="kyc-field-label">Submitted On</div>
+                    <input type="text" id="kycSubmitted" class="kyc-field-input" readonly style="background: #f8fafc;">
+                    <div class="kyc-field-label">Approval Status</div>
+                    <input type="text" id="kycApproved" class="kyc-field-input" readonly style="background: #f8fafc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycFrontInput').click()">
+                        <div class="plus-icon">+ Front</div>
+                        <img id="kycFrontPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycFrontInput" hidden
+                            onchange="previewKYCImage(this, 'kycFrontPreview')">
+                    </div>
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycBackInput').click()">
+                        <div class="plus-icon">+ Back</div>
+                        <img id="kycBackPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycBackInput" hidden onchange="previewKYCImage(this, 'kycBackPreview')">
+                    </div>
+                </div>
+                <button class="btn-submit" onclick="submitKYC()" style="margin-top: 1.5rem; width: 100%;">Submit
+                    Verification</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="js/credit_notifier.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            if (typeof initCarousel === 'function') initCarousel();
+            checkAuthState();
+            syncUserData();
+
+            // Background Database Price Sync (Auto-Sync official prices)
+            if (window.DB && typeof window.DB.checkAndSyncPrices === 'function') {
+                window.DB.checkAndSyncPrices();
+            }
+
+
+            // Persist CS Modal State
+            if (localStorage.getItem('avendus_cs_open') === 'true') {
+                window.openCS();
+            }
+
+            // Auto-refresh data when user switches back to this tab
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') {
+                    console.log("Tab visible, syncing user data...");
+                    syncUserData();
+                }
+            });
+            window.addEventListener('focus', () => {
+                console.log("Window focused, syncing user data...");
+                syncUserData();
+            });
+        });
+
+        function checkAuthState() {
+            const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+            const loggedIn = !!user;
+
+            // Header & Hero
+            const portBar = document.getElementById('portfolioBar');
+            if (portBar) portBar.style.display = loggedIn ? 'flex' : 'none';
+            const promo = document.getElementById('promoActions');
+            if (promo) promo.style.display = loggedIn ? 'none' : 'flex';
+
+            // Sidebar Auth Prompt
+            const authPrompt = document.getElementById('marketAuthPrompt');
+            if (authPrompt) authPrompt.style.display = loggedIn ? 'none' : 'block';
+
+            // Feature Locks
+            const assetsLock = document.getElementById('assetsLockOverlay');
+            if (assetsLock) assetsLock.style.display = loggedIn ? 'none' : 'flex';
+
+            const chartLock = document.querySelector('.auth-lock-overlay');
+            if (chartLock) chartLock.style.display = loggedIn ? 'none' : 'flex';
+
+            // Stock Lists (Gainers/Losers)
+            document.querySelectorAll('.auth-locked-content').forEach(el => {
+                if (el.closest('.auth-locked-container')) return; // handled by parent overlay if exists
+                // We handle these by only calling switchExchange if logged in or showing placeholders
+            });
+
+            if (loggedIn) {
+                if (typeof syncUserData === 'function') syncUserData();
+                setTimeout(() => {
+                    if (typeof startChatListener === 'function') startChatListener();
+                    updateCSRVisibility();
+                }, 1000);
+            }
+        }
+
+        function playNotificationSound() {
+            try {
+                // More reliable notification sound
+                const audio = new Audio('https://notificationsounds.com/storage/sounds/file-sounds-1150-pristine.mp3');
+                audio.volume = 0.5;
+                const playPromise = audio.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(e => console.log("Audio blocked. Interact with page first."));
+                }
+            } catch (e) { }
+        }
+
+        // Page specific initialization
+        window.addEventListener('load', () => {
+            const updateCSRVisibility = () => {
+                const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+                const btn = document.getElementById('floatingCSR');
+                if (btn) btn.style.display = user ? 'flex' : 'none';
+            };
+            updateCSRVisibility();
+            // Matrix Hero Animation
+            // Matrix Hero Animation (Slow & Cinematic)
+            (function () {
+                const canvas = document.getElementById('matrixCanvas');
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                let width, height;
+                const symbols = ['₹', '%', 'NIFTY', 'SENSEX', 'BUY', 'SELL', 'NSE', 'BSE', '+1.25%', '-0.87%', '78,250', '24,500'];
+                const fontSize = 18; // Larger for elegance
+                let columns = 0;
+                let drops = []; // Stores {y, speed, offset}
+
+                function resize() {
+                    width = canvas.width = canvas.parentElement.offsetWidth;
+                    height = canvas.height = canvas.parentElement.offsetHeight;
+                    columns = Math.floor(width / fontSize);
+                    drops = [];
+                    for (let i = 0; i < columns; i++) {
+                        drops[i] = {
+                            y: Math.random() * -100,
+                            speed: 0.15 + Math.random() * 0.35, // Very slow descent
+                            offset: Math.random() * 100 // For unique sine wave drift
+                        };
+                    }
+                }
+
+                let lastTime = 0;
+                const fps = 30; // Smooth cinematic framerate
+                const interval = 1000 / fps;
+
+                function animate(currentTime) {
+                    requestAnimationFrame(animate);
+
+                    const delta = currentTime - lastTime;
+                    if (delta < interval) return;
+
+                    lastTime = currentTime - (delta % interval);
+
+                    // Soft fade trail - reduced alpha for longer, smoother trails
+                    ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+                    ctx.fillRect(0, 0, width, height);
+
+                    ctx.font = '500 ' + fontSize + 'px "Exo 2", sans-serif'; // Premium font if available, else standard
+
+                    for (let i = 0; i < drops.length; i++) {
+                        const text = symbols[Math.floor(Math.random() * symbols.length)];
+
+                        // Subtle horizontal drift
+                        const drift = Math.sin((Date.now() / 2000) + drops[i].offset) * 2;
+                        const x = i * fontSize + drift;
+                        const y = drops[i].y * fontSize;
+
+                        // Premium Gold Palette
+                        const colorRandom = Math.random();
+                        if (colorRandom > 0.6) ctx.fillStyle = '#d4af37'; // Gold
+                        else if (colorRandom > 0.3) ctx.fillStyle = '#b8860b'; // Dark Goldenrod
+                        else ctx.fillStyle = 'rgba(212, 175, 55, 0.4)'; // Faint Gold
+
+                        ctx.fillText(text, x, y);
+
+                        // Reset when off screen
+                        if (y > height && Math.random() > 0.98) {
+                            drops[i].y = -5;
+                            drops[i].speed = 0.15 + Math.random() * 0.35; // New random speed
+                        }
+
+                        drops[i].y += drops[i].speed;
+                    }
+                }
+
+                window.addEventListener('resize', resize);
+                resize();
+                requestAnimationFrame(animate);
+            })();
+
+            if (typeof syncUserData === 'function') syncUserData();
+
+            // Hero Interactive Glow
+            const heroAnimate = document.getElementById('heroAnimate');
+            const mouseGlow = document.getElementById('mouseGlow');
+            if (heroAnimate && mouseGlow) {
+                heroAnimate.addEventListener('mousemove', (e) => {
+                    const rect = heroAnimate.getBoundingClientRect();
+                    const x = e.clientX - rect.left;
+                    const y = e.clientY - rect.top;
+                    mouseGlow.style.left = x + 'px';
+                    mouseGlow.style.top = y + 'px';
+                    mouseGlow.style.opacity = '0.6';
+                });
+                heroAnimate.addEventListener('mouseleave', () => {
+                    mouseGlow.style.opacity = '0';
+                });
+            }
+
+            // Initialize Market Components
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+            loadWidget('NIFTY1!');
+            switchExchange('gainers', 'NSE');
+            switchExchange('losers', 'NSE');
+            loadRecommendations();
+        });
+
+        // --- MARKET DATA & CHART LOGIC (GLOBAL SCOPE) ---
+        let currentWidget = null;
+        let currentActiveSymbol = 'NIFTY1!';
+        let currentInterval = 'D';
+
+        const indexData = {
+            'BSE:SENSEX': {
+                price: 83580.40, basePrice: 83313.93, low: 83250.27, high: 83784.17, open: 83757.54, close: 83817.69, sym: "SENSEX",
+                cardValId: 'valSensexCard', cardChgId: 'chgSensexCard'
+            },
+            'NIFTY1!': {
+                price: 25660.25, basePrice: 25776.00, low: 25600.00, high: 25800.00, open: 25750.00, close: 25776.00, sym: "NIFTY 50",
+                cardValId: 'valNiftyCard', cardChgId: 'chgNiftyCard'
+            },
+            'NSE:NIFTYBANK': {
+                price: 51234.75, basePrice: 50822.45, low: 50700.00, high: 51500.00, open: 50900.00, close: 50822.45, sym: "BANK NIFTY",
+                cardValId: 'valBankNiftyCard', cardChgId: 'chgBankNiftyCard'
+            }
+        };
+
+        const stockData = {
+            gainers: {
+                NSE: [
+                    { t: 'NIRAJISPAT', n: 'Niraj Ispat Industries', p: '₹257.41', c: '+20.00%' },
+                    { t: 'PRESSTONIC', n: 'Presstonic Engineering', p: '₹53.20', c: '+19.82%' },
+                    { t: 'IZMO', n: 'IZMO Limited', p: '₹841.45', c: '+18.48%' }
+                ],
+                BSE: [
+                    { t: 'HDFCBANK', n: 'HDFC Bank Ltd', p: '₹1,540.20', c: '+2.45%' },
+                    { t: 'RELIANCE', n: 'Reliance Industries', p: '₹2,985.40', c: '+1.80%' }
+                ]
+            },
+            losers: {
+                NSE: [
+                    { t: 'DHARIWAL', n: 'Dhariwalcorp Limited', p: '₹78.70', c: '-79.61%' },
+                    { t: 'CLEDUCATE', n: 'CL Educate Limited', p: '₹59.08', c: '-20.00%' }
+                ],
+                BSE: [
+                    { t: 'ZOMATO', n: 'Zomato Limited', p: '₹255.40', c: '-4.20%' },
+                    { t: 'PAYTM', n: 'One 97 Communications', p: '₹712.10', c: '-3.15%' }
+                ]
+            }
+        };
+
+        function loadWidget(symbol) {
+            const container = document.getElementById('tradingview_widget');
+            if (!container) return;
+            container.innerHTML = '';
+
+            // No more Investing.com Fallback - use TradingView for everything
+
+            if (typeof TradingView === 'undefined') return;
+
+            let targetSymbol = symbol;
+
+            // Handle Index Symbol Mapping for TradingView
+            const indexMap = {
+                'NIFTY1!': 'BSE:SNSX50',
+                'NSE:NIFTY': 'BSE:SNSX50',
+                'NIFTYBANK': 'BSE:BANK',
+                'NSE:NIFTYBANK': 'BSE:BANK',
+                'NSE:BANKNIFTY': 'BSE:BANK',
+                'BSE:SENSEX': 'BSE:SENSEX',
+                'SENSEX': 'BSE:SENSEX',
+                'NSE:INDIAVIX': 'NSE:INDIAVIX',
+                'INDIAVIX': 'NSE:INDIAVIX',
+                'NSE:MIDCPNIFTY': 'BSE:MID150',
+                'NIFMDCP100': 'BSE:MID150',
+                'NSE:NIFMDCP100': 'BSE:MID150',
+                'NSE:SMLCAP100': 'BSE:SML250',
+                'NIFSMCP100': 'BSE:SML250',
+                'NSE:NIFSMCP100': 'BSE:SML250'
+            };
+
+            if (indexMap[symbol]) {
+                targetSymbol = indexMap[symbol];
+            } else if (symbol.toUpperCase().endsWith('.NS') || symbol.toUpperCase().endsWith('.BO')) {
+                // TradingView BSE Fix for Indian Stocks (NSE -> BSE feed)
+                const ticker = symbol.split('.')[0];
+                targetSymbol = `BSE:${ticker}`;
+            }
+
+            currentWidget = new TradingView.widget({
+                "autosize": true,
+                "symbol": targetSymbol,
+                "interval": "D",
+                "timezone": "Etc/UTC",
+                "theme": "dark",
+                "style": "3",
+                "locale": "en",
+                "toolbar_bg": "#111111",
+                "enable_publishing": false,
+                "allow_symbol_change": true,
+                "container_id": "tradingview_widget",
+                "hide_side_toolbar": false,
+                "withdateranges": true,
+                "save_image": true,
+                "details": true,
+                "hotlist": true,
+                "calendar": true,
+                "overrides": {
+                    "paneProperties.background": "#111111",
+                    "paneProperties.vertGridProperties.color": "#1f1f1f",
+                    "paneProperties.horzGridProperties.color": "#1f1f1f",
+                    "scalesProperties.textColor": "#94a3b8",
+                    "mainSeriesProperties.areaStyle.linecolor": "#d4af37",
+                    "mainSeriesProperties.areaStyle.color1": "rgba(212, 175, 55, 0.2)",
+                    "mainSeriesProperties.areaStyle.color2": "rgba(212, 175, 55, 0.05)"
+                }
+            });
+        }
+
+        function updateChart(symbol, title) {
+            if (!indexData[symbol]) return;
+            currentActiveSymbol = symbol;
+
+            document.querySelectorAll('.index-mini-card').forEach(c => {
+                c.classList.toggle('active', c.innerText.includes(title));
+            });
+
+            const d = indexData[symbol];
+            const diff = d.price - d.basePrice;
+            const pct = (diff / d.basePrice) * 100;
+            const isUp = diff >= 0;
+
+            if (document.getElementById('indexPrice')) document.getElementById('indexPrice').innerText = d.price.toLocaleString('en-IN');
+            if (document.getElementById('valSymbol')) document.getElementById('valSymbol').innerText = d.sym;
+
+            const hChg = document.getElementById('heroChange');
+            if (hChg) {
+                hChg.innerText = `${isUp ? '+' : ''}${diff.toFixed(2)} (${isUp ? '+' : ''}${pct.toFixed(2)}%)`;
+                hChg.className = `index-chg ${isUp ? 'green' : 'red'}`;
+            }
+
+            loadWidget(symbol);
+        }
+
+        function updateChartInterval(interval, btn) {
+            currentInterval = interval;
+            document.querySelectorAll('.mini-tf-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            loadWidget(currentActiveSymbol);
+        }
+
+        function switchExchange(type, exchange) {
+            const listId = type === 'gainers' ? 'gainersList' : 'losersList';
+            const listContainer = document.querySelector(`#${listId} .auth-locked-content`);
+            if (!listContainer) return;
+            const data = stockData[type][exchange];
+
+            const section = listContainer.closest('.card');
+            section.querySelectorAll('.exchange-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.innerText === exchange);
+            });
+
+            listContainer.innerHTML = data.map(s => `
+                <div class="stock-row" style="display: flex; justify-content: space-between; padding: 1rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer;">
+                    <div>
+                        <div style="font-weight: 700; font-size: 0.9rem; color: #fff;">${s.t}</div>
+                        <div style="font-size: 0.75rem; color: #666;">${s.n}</div>
+                    </div>
+                    <div style="text-align: right;">
+                        <div style="font-weight: 800; font-size: 0.9rem; color: #fff;">${s.p}</div>
+                        <div class="index-chg ${type === 'gainers' ? 'green' : 'red'}" style="font-size: 0.8rem; font-weight: 700; color: ${type === 'gainers' ? '#00ff88' : '#ff3b3b'};">${s.c}</div>
+                    </div>
+                </div>
+            `).join('');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        /**
+         * Dynamic Recommendations Engine
+         * Fetches article-style recommendations from a curated list
+         */
+        const recommendationArticles = {
+            "5": {
+                title: "2026 Financial Outlook: Trends to Watch",
+                desc: "Explore the latest trends and predictions for the 2026 financial markets, including interest rate projections and sector-specific growth opportunities.",
+                content: "Explore the latest trends and predictions for the 2026 financial markets, including interest rate projections and sector-specific growth opportunities. Experts suggest a shift towards defensive stocks in the latter half of the year, while maintaining exposure to high-growth emerging tech sectors. Institutional capital is increasingly flowing into sustainable infrastructure and AI-driven efficiency gains across the manufacturing base.",
+                img: "https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600"
+            },
+            "6": {
+                title: "Top 5 High-Yield Dividend Stocks",
+                desc: "Discover the most reliable dividend-paying companies in India that provide consistent returns and long-term stability for your portfolio.",
+                content: "Discover the most reliable dividend-paying companies in India that provide consistent returns and long-term stability for your portfolio. This list focuses on companies with a track record of increasing dividends even during market downturns, ensuring a steady stream of income for retail investors. Utilities and consumer staples remain the pillars of this strategy, offering a hedge against broader market volatility.",
+                img: "https://images.unsplash.com/photo-1579621970563-ebec7560ff3e?auto=format&fit=crop&q=80&w=600"
+            },
+            "7": {
+                title: "The Green Energy Revolution",
+                desc: "As India pivots to renewable energy, these companies are well-positioned to lead the transition and deliver exceptional market returns.",
+                content: "As India pivots to renewable energy, these companies are well-positioned to lead the transition and deliver exceptional market returns. Massive government subsidies and international environmental commitments are driving unprecedented local investment into wind, solar, and green hydrogen infrastructure. The transition represents one of the largest sectoral shifts in the Indian economy this decade.",
+                img: "https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?auto=format&fit=crop&q=80&w=600"
+            },
+            "9": {
+                title: "Small-cap Hidden Gems",
+                desc: "Identify under-the-radar small-cap companies with strong fundamentals and innovative products that could be the next market leaders.",
+                content: "Identify under-the-radar small-cap companies with strong fundamentals and innovative products that could be the next market leaders. These companies operate in niche segments with high entry barriers and are currently trading at significant discounts to their larger peers. Alpha opportunities remain abundant for those willing to do deep fundamental research in overlooked industrial sub-sectors.",
+                img: "https://images.unsplash.com/photo-1543286386-713bdd548da4?auto=format&fit=crop&q=80&w=600"
+            },
+            "10": {
+                title: "AI in Wealth Management",
+                desc: "Learn how artificial intelligence is transforming portfolio management and personal finance for the modern investor.",
+                content: "Artificial intelligence is no longer a futuristic concept but a primary driver of modern wealth management. Algorithms are now capable of processing vast amounts of unstructured data to identify patterns that human analysts might miss. From automated tax-loss harvesting to hyper-personalized risk assessments, AI is democratizing high-end financial strategies for a broader audience.",
+                img: "https://images.unsplash.com/photo-1677442136019-21780ecad995?auto=format&fit=crop&q=80&w=600"
+            },
+            "11": {
+                title: "Institutional Crypto Adoption",
+                desc: "Major financial institutions are increasingly integrating digital assets into their core offerings. Here's what it means for you.",
+                content: "The entry of major institutional players into the digital asset space marks a significant turning point for market maturity. With the launch of spot ETFs and institutional-grade custody solutions, the barriers between traditional finance and decentralized assets are dissolving. This trend suggests a move towards a more regulated, stable, and integrated global financial ecosystem.",
+                img: "https://images.unsplash.com/photo-1621761191319-c6fb62004040?auto=format&fit=crop&q=80&w=600"
+            },
+            "12": {
+                title: "Global Supply Chain Logistics",
+                desc: "Investigate the companies streamlining global trade and logistics in a post-pandemic economic environment.",
+                content: "Supply chain resilience has become a top priority for global corporations. Companies specializing in logistical optimization, automated warehousing, and multi-modal transport are seeing unprecedented demand. As global trade routes evolve and near-shoring becomes more prevalent, the backbone of the global economy is undergoing a massive technological and structural overhaul.",
+                img: "https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&q=80&w=600"
+            },
+            "13": {
+                title: "Biotech & Longevity",
+                desc: "The intersection of biology and technology is creating massive opportunities for life-extension and medical breakthroughs.",
+                content: "The biotechnology sector is experiencing a renaissance, driven by genomics and AI-assisted drug discovery. Focus is shifting towards 'longevity' - the science of extending healthy human lifespan. This emerging field represents a multi-trillion dollar opportunity as the global population ages and the demand for preventative, rather than just reactive, healthcare skyrockets.",
+                img: "https://images.unsplash.com/photo-1576086213369-97a306dca1c5?auto=format&fit=crop&q=80&w=600"
+            },
+            "14": {
+                title: "Critical Minerals Supercycle",
+                desc: "Why lithium, cobalt, and copper are becoming the new oil in the race for global electrification.",
+                content: "The global transition to electric vehicles and renewable energy is creating an insatiable demand for critical minerals. Experts suggest we are entering a long-term 'supercycle' for commodities like lithium, cobalt, and copper. Secured supply chains for these materials have become a matter of national security and economic sovereignty, driving massive investments into mining and refining infrastructure.",
+                img: "https://images.unsplash.com/photo-1519451241324-20b4ea2c4220?auto=format&fit=crop&q=80&w=600"
+            },
+            "15": {
+                title: "Real Estate & REITs",
+                desc: "Diversify your portfolio with real estate investment trusts focusing on data centers and logistics hubs.",
+                content: "Traditional commercial real estate may be facing headwinds, but specialized segments like data centers, cold storage, and logistics hubs are booming. REITs (Real Estate Investment Trusts) offer a liquid way to gain exposure to these high-yield, mission-critical assets. As the digital economy grows, the physical infrastructure supporting it has become an essential component of a diversified institutional portfolio.",
+                img: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&q=80&w=600"
+            }
+        };
+
+        function loadRecommendations() {
+            const listContainer = document.getElementById('recommendationList');
+            if (!listContainer) return;
+
+            // Render from curated article list
+            const ids = Object.keys(recommendationArticles);
+            listContainer.innerHTML = ids.map(id => {
+                const item = recommendationArticles[id];
+                return `
+                    <div class="recommendation-item" onclick="openRecommendationDetail('${id}')">
+                        <img src="${item.img}" class="rec-thumb" alt="${item.title}" onerror="this.onerror=null; this.src='https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=600'">
+                        <div class="rec-content">
+                            <h4>${item.title}</h4>
+                            <p>${item.desc}</p>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function openRecommendationDetail(id) {
+            const item = recommendationArticles[id];
+            if (!item) return;
+
+            document.getElementById('recDetailImage').src = item.img;
+            document.getElementById('recDetailTitle').textContent = item.title;
+            document.getElementById('recDetailDesc').innerHTML = item.content.replace(/\n/g, '<br><br>');
+
+            const modal = document.getElementById('recommendationDetailModal');
+            modal.style.display = 'flex';
+            document.body.style.overflow = 'hidden'; // Prevent background scroll
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeRecommendationDetail() {
+            const modal = document.getElementById('recommendationDetailModal');
+            modal.style.display = 'none';
+            document.body.style.overflow = ''; // Restore scroll
+        }
+
+        // --- AUTH GUARD FOR HOME PAGE ---
+        /**
+         * Guard function to prevent actions for unauthenticated users.
+         * Shows a top alert banner if the user is not logged in.
+         */
+        function requireAuth(e) {
+            const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+            if (!user) {
+                if (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
+
+                // Show Top Alert Banner (styled like the existing system)
+                const alertContainer = document.getElementById('topAlertContainer');
+                if (alertContainer) {
+                    const alertSpan = alertContainer.querySelector('.top-alert span');
+                    if (alertSpan) alertSpan.innerText = "Please sign in to continue.";
+
+                    alertContainer.style.display = 'block';
+
+                    // Auto-hide after 3 seconds
+                    if (window._authAlertTimer) clearTimeout(window._authAlertTimer);
+                    window._authAlertTimer = setTimeout(() => {
+                        alertContainer.style.display = 'none';
+                    }, 3000);
+                }
+                return false;
+            }
+            return true;
+        }
+
+        // Initialize guards on DOM load
+        document.addEventListener('DOMContentLoaded', () => {
+            const guardedIds = [
+                'globalSearchInput',
+                'top-notif-btn',
+                'top-support-btn',
+                'top-settings-btn',
+                'homepage-notification-btn'
+            ];
+
+            guardedIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) {
+                    // Use capturing phase (true) to intercept BEFORE inline onclick attributes
+                    el.addEventListener('click', requireAuth, true);
+                    el.addEventListener('mousedown', requireAuth, true);
+
+                    // Specific guard for search input focus and typing
+                    if (id === 'globalSearchInput') {
+                        el.addEventListener('focus', requireAuth, true);
+                        el.addEventListener('keydown', requireAuth, true);
+                    }
+                }
+            });
+        });
+    </script>
+
+    <!-- Notification Bell Floating Button -->
+    <!-- Notification Bell Floating Button -->
+    <div id="homepage-notification-btn" onclick="toggleMessageCenter()">
+        <div
+            style="position:relative; display:flex; align-items:center; justify-content:center; width:100%; height:100%;">
+            <i data-lucide="bell" size="24" color="#000000"></i>
+            <div id="msgBadge"
+                style="position:absolute; top:12px; right:12px; background:#ef4444; color:white; width:10px; height:10px; border-radius:50%; display:none; border:2px solid white;">
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating CSR Button -->
+    <div class="floating-csr" onclick="openCS()" id="floatingCSR" style="display: none;">
+        <div class="csr-badge" id="csrMsgBadge" style="display: none;"></div>
+        <i data-lucide="headset"></i>
+        <span>Support</span>
+    </div>
+
+
+    <div id="editNameModal" class="center-popup-modal">
+        <div class="center-popup-content" style="max-width: 400px;">
+            <div class="popup-header">
+                <h2>Update Name</h2>
+                <button class="popup-close" onclick="closeEditNameModal()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                        Name</label>
+                    <input type="text" id="editNameInput" class="reg-input" placeholder="Enter your name"
+                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <button class="logout-btn" id="saveNameBtn" style="background: #3b82f6;" onclick="saveName()">Save
+                        Name</button>
+                    <button class="logout-btn" style="background: #f1f5f9; color: #64748b;"
+                        onclick="closeEditNameModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        // Fix homepage redirect logic
+        (function () {
+            // Check if user is logged in
+            const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+
+            if (user) {
+                // Only redirect to market if:
+                // 1. No referrer (direct visit)
+                // 2. AND we are not avoiding redirects explicitly
+
+                if (!document.referrer) {
+                    // Optional: Redirect to market for direct visits by logged-in users
+                    // window.location.href = 'market.html';
+                }
+            }
+        })();
+    </script>
+</body>
+
+</html>

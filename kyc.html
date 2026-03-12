@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KYC Verification - Avendus Capital</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>const supabasejs = window.supabase;</script>
+    <script src="db.js"></script>
+    <script src="script.js"></script>
+    <style>
+        body {
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+
+        .kyc-container {
+            max-width: 800px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        .kyc-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
+            border: 1px solid #f1f5f9;
+        }
+
+        .kyc-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+        }
+
+        .kyc-header h1 {
+            font-size: 2rem;
+            font-weight: 800;
+            color: #1e56a0;
+            margin-bottom: 0.5rem;
+        }
+
+        .kyc-header p {
+            color: #64748b;
+        }
+
+        /* Stepper */
+        .stepper {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3rem;
+            position: relative;
+        }
+
+        .stepper::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #e2e8f0;
+            z-index: 0;
+        }
+
+        .step {
+            width: 40px;
+            height: 40px;
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            z-index: 1;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .step.active {
+            border-color: #3b82f6;
+            color: #3b82f6;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+        }
+
+        .step.completed {
+            background: #3b82f6;
+            border-color: #3b82f6;
+            color: white;
+        }
+
+        .step-label {
+            position: absolute;
+            top: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #64748b;
+        }
+
+        .step.active .step-label {
+            color: #3b82f6;
+        }
+
+        /* Form Sections */
+        .kyc-section {
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .kyc-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .input-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            color: #475569;
+        }
+
+        .form-input {
+            padding: 0.8rem 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .form-input:focus {
+            border-color: #3b82f6;
+        }
+
+        /* Upload Area */
+        .upload-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .upload-box {
+            border: 2px dashed #e2e8f0;
+            border-radius: 15px;
+            padding: 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: #f8fafc;
+        }
+
+        .upload-box:hover {
+            border-color: #3b82f6;
+            background: #f0f7ff;
+        }
+
+        .upload-box i {
+            color: #3b82f6;
+            margin-bottom: 1rem;
+        }
+
+        .upload-box p {
+            font-size: 0.85rem;
+            color: #64748b;
+            font-weight: 500;
+        }
+
+        .btn-group {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 2rem;
+        }
+
+        .btn-kyc {
+            padding: 0.8rem 2rem;
+            border-radius: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .btn-next {
+            background: #3b82f6;
+            color: white;
+            box-shadow: 0 4px 10px rgba(59, 130, 246, 0.3);
+        }
+
+        .btn-next:hover {
+            background: #2563eb;
+            transform: translateY(-2px);
+        }
+
+        .btn-prev {
+            background: #f1f5f9;
+            color: #475569;
+        }
+
+        /* Status View */
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 30px;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+        }
+
+        .status-pending {
+            background: #fff7ed;
+            color: #f97316;
+        }
+
+        .status-approved {
+            background: #ecfdf5;
+            color: #10b981;
+        }
+
+        .status-rejected {
+            background: #fef2f2;
+            color: #ef4444;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="kyc-container">
+        <div class="kyc-card">
+            <div id="kycStatusView" style="display: none; text-align: center;">
+                <div class="kyc-header">
+                    <h1>KYC Verification Status</h1>
+                    <p>Track the progress of your identity verification.</p>
+                </div>
+                <div id="statusIndicator" class="status-badge status-pending">
+                    <i data-lucide="clock"></i> Pending Review
+                </div>
+                <div style="color: #64748b; margin-bottom: 2rem; line-height: 1.6;">
+                    Your documents have been submitted and are currently being reviewed by our compliance team.
+                    This usually takes 24-48 hours. We will notify you once the review is complete.
+                </div>
+                <a href="market.html" class="btn-kyc btn-next"
+                    style="display: inline-block; text-decoration: none;">Back to Dashboard</a>
+            </div>
+
+            <div id="kycFormView">
+                <div class="kyc-header">
+                    <h1>Complete Your KYC</h1>
+                    <p>Please provide your real identity information for account security and legal compliance.</p>
+                </div>
+
+                <div class="stepper">
+                    <div class="step active" id="step1">1 <span class="step-label">Personal Info</span></div>
+                    <div class="step" id="step2">2 <span class="step-label">Upload Documents</span></div>
+                    <div class="step" id="step3">3 <span class="step-label">Verification</span></div>
+                </div>
+
+                <!-- Step 1: Personal Info -->
+                <div class="kyc-section active" id="sec1">
+                    <div class="input-grid">
+                        <div class="form-group">
+                            <label>Full Name</label>
+                            <input type="text" id="fullName" class="form-input" placeholder="Enter Full Name">
+                        </div>
+                        <div class="form-group">
+                            <label>Mobile Number</label>
+                            <input type="text" id="mobileDisplay" class="form-input" placeholder="Enter Mobile Number">
+                        </div>
+                        <div class="form-group" style="grid-column: span 2;">
+                            <label>Residential Address</label>
+                            <input type="text" id="address" class="form-input"
+                                placeholder="House No, Street, City, ZIP">
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <div style="flex-grow: 1;"></div>
+                        <button class="btn-kyc btn-next" onclick="nextStep(2)">Next Step</button>
+                    </div>
+                </div>
+
+                <!-- Step 2: Upload Docs -->
+                <div class="kyc-section" id="sec2">
+                    <div class="form-group" style="margin-bottom: 1.5rem;">
+                        <label>Identity Document Type</label>
+                        <select id="idType" class="form-input">
+                            <option value="Aadhar">Aadhar Card</option>
+                            <option value="PAN">PAN Card</option>
+                            <option value="Passport">Passport</option>
+                            <option value="Driving License">Driving License</option>
+                        </select>
+                    </div>
+                    <div class="upload-container">
+                        <div class="upload-box" onclick="document.getElementById('idFrontInput').click()">
+                            <i data-lucide="image-plus" size="32"></i>
+                            <p id="idFrontLabel">Upload ID Front Copy</p>
+                            <input type="file" id="idFrontInput" style="display: none;" accept="image/*"
+                                onchange="updateFileLabel(this, 'idFrontLabel')">
+                        </div>
+                        <div class="upload-box" onclick="document.getElementById('idBackInput').click()">
+                            <i data-lucide="image-plus" size="32"></i>
+                            <p id="idBackLabel">Upload ID Back Copy</p>
+                            <input type="file" id="idBackInput" style="display: none;" accept="image/*"
+                                onchange="updateFileLabel(this, 'idBackLabel')">
+                        </div>
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn-kyc btn-prev" onclick="nextStep(1)">Previous</button>
+                        <button class="btn-kyc btn-next" onclick="nextStep(3)">Next Step</button>
+                    </div>
+                </div>
+
+                <!-- Step 3: Verification -->
+                <div class="kyc-section" id="sec3">
+                    <div style="text-align: center; margin-bottom: 2rem;">
+                        <div class="upload-box" style="width: 250px; margin: 0 auto;"
+                            onclick="document.getElementById('selfieInput').click()">
+                            <i data-lucide="user-square" size="48"></i>
+                            <p id="selfieLabel">Take a Selfie with ID</p>
+                            <input type="file" id="selfieInput" style="display: none;" accept="image/*"
+                                onchange="updateFileLabel(this, 'selfieLabel')">
+                        </div>
+                    </div>
+                    <p style="font-size: 0.8rem; color: #64748b; text-align: center; margin-bottom: 2rem;">
+                        Please ensure your face and ID details are clearly visible in the photo.
+                    </p>
+                    <div class="btn-group">
+                        <button class="btn-kyc btn-prev" onclick="nextStep(2)">Previous</button>
+                        <button class="btn-kyc btn-next" onclick="submitKYC()">Submit Verification</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        lucide.createIcons();
+        const user = DB.getCurrentUser();
+        if (!user) window.location.href = 'login.html';
+
+        document.getElementById('mobileDisplay').value = user.mobile || '';
+        if (user.kyc === 'Approved' || user.kyc === 'Pending') {
+            showStatus(user.kyc);
+        }
+
+        function nextStep(n) {
+            document.querySelectorAll('.kyc-section').forEach(s => s.classList.remove('active'));
+            document.getElementById('sec' + n).classList.add('active');
+
+            document.querySelectorAll('.step').forEach(s => {
+                const id = parseInt(s.id.replace('step', ''));
+                if (id < n) s.className = 'step completed';
+                else if (id === n) s.className = 'step active';
+                else s.className = 'step';
+            });
+            lucide.createIcons();
+        }
+
+        function updateFileLabel(input, labelId) {
+            if (input.files && input.files[0]) {
+                document.getElementById(labelId).textContent = input.files[0].name;
+            }
+        }
+
+        async function submitKYC() {
+            const btn = document.querySelector('#sec3 .btn-next');
+            const originalText = btn.textContent;
+            btn.textContent = 'Submitting...';
+            btn.disabled = true;
+
+            const fullName = document.getElementById('fullName').value;
+            const mobile = document.getElementById('mobileDisplay').value;
+            const address = document.getElementById('address').value;
+            const idType = document.getElementById('idType').value;
+
+            const idFront = document.getElementById('idFrontInput').files[0];
+            const idBack = document.getElementById('idBackInput').files[0];
+            const selfie = document.getElementById('selfieInput').files[0];
+
+            if (!fullName || !mobile || !idFront || !selfie) {
+                alert("Please fill in all details and upload documents.");
+                btn.textContent = originalText;
+                btn.disabled = false;
+                return;
+            }
+
+            try {
+                const res = await DB.submitKYC(
+                    user.id,
+                    fullName,
+                    mobile,
+                    null, // idNumber not in this form, or maybe add it?
+                    idFront,
+                    idBack,
+                    selfie,
+                    { address, id_type: idType }
+                );
+
+                if (res.success) {
+                    user.kyc = 'Pending';
+                    user.mobile = mobile;
+                    user.full_name = fullName;
+                    localStorage.setItem(DB.CURRENT_USER_KEY, JSON.stringify(user));
+                    showStatus('Pending');
+                } else {
+                    alert("Submission failed: " + (res.error?.message || "Unknown error"));
+                    btn.textContent = originalText;
+                    btn.disabled = false;
+                }
+            } catch (err) {
+                console.error("KYC ERROR:", err);
+                alert("System error during submission.");
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        function showStatus(status) {
+            document.getElementById('kycFormView').style.display = 'none';
+            document.getElementById('kycStatusView').style.display = 'block';
+
+            const indicator = document.getElementById('statusIndicator');
+            if (status === 'Approved') {
+                indicator.className = 'status-badge status-approved';
+                indicator.innerHTML = '<i data-lucide="check-circle"></i> Verification Approved';
+            } else if (status === 'Rejected') {
+                indicator.className = 'status-badge status-rejected';
+                indicator.innerHTML = '<i data-lucide="x-circle"></i> Verification Rejected';
+            }
+            lucide.createIcons();
+        }
+    </script>
+</body>
+
+</html>

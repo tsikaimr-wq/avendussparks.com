@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avendus Capital - Premium Trading Platform</title>
+    <meta name="description"
+        content="Access real-time market summaries, breaking news, and personalized stock recommendations on our premium financial dashboard.">
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="settings-panel-fix.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="db.js"></script>
+</head>
+
+<body>
+    <div class="app-wrapper">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <div class="search-container">
+                    <!-- Hidden inputs to "trap" browser autofill -->
+                    <input type="text" name="fake_user" style="display:none" aria-hidden="true">
+                    <input type="password" name="fake_pass" style="display:none" aria-hidden="true">
+
+                    <i data-lucide="search" class="search-icon"></i>
+                    <input type="text" placeholder="Ctrl K" class="search-input" autocomplete="off">
+                </div>
+            </div>
+            <nav class="nav">
+                <a href="index.html" class="nav-item active" id="navHome" onclick="setActiveNav(this)"><i
+                        data-lucide="home"></i> Home</a>
+                <a href="javascript:void(0)" onclick="handleGuestClick('market.html'); setActiveNav(this)"
+                    class="nav-item" id="navMarket"><i data-lucide="trending-up"></i> Market</a>
+                <a href="javascript:void(0)" onclick="handleGuestClick('#'); setActiveNav(this)" class="nav-item"
+                    id="navDiscover"><i data-lucide="compass"></i> Discover</a>
+                <a href="javascript:void(0)" onclick="handleGuestClick('#'); setActiveNav(this)" class="nav-item"
+                    id="navPortfolio"><i data-lucide="briefcase"></i> Portfolio</a>
+                <a href="javascript:void(0)" onclick="handleGuestClick('#'); setActiveNav(this)" class="nav-item"
+                    id="navMe"><i data-lucide="user"></i> Me</a>
+            </nav>
+            <div class="header-right">
+                <button class="settings-btn" onclick="toggleMessageCenter()"><i data-lucide="mail"></i></button>
+                <button class="settings-btn" onclick="openSettings()"><i data-lucide="settings"></i></button>
+            </div>
+        </header>
+
+        <!-- Premium Video Featured Section -->
+        <div class="video-promo-section">
+            <div class="video-container" id="videoWrapper">
+                <video id="promoVideo" loop muted playsinline autoplay
+                    poster="https://images.pexels.com/photos/6801874/pexels-photo-6801874.jpeg?auto=compress&cs=tinysrgb&w=3840&h=2160&dpr=1">
+                    <source
+                        src="https://player.vimeo.com/external/494163966.sd.mp4?s=7b9e6f3d9f285d8d0c83a1d6a9e1e8d9b1c9c8a2&profile_id=164"
+                        type="video/mp4">
+                    Your browser does not support the video tag.
+                </video>
+
+                <!-- Video Overlays -->
+                <div class="video-overlay">
+                    <div class="video-text-content">
+                        <span class="badge">Exclusive Highlight</span>
+                        <h1>Avendus Capital</h1>
+                        <p class="tagline">Invest now for the future. Join now.</p>
+                        <div class="video-actions" id="promoActions">
+                            <a href="login.html" class="join-btn-large"
+                                style="text-decoration: none; display: flex; align-items: center; justify-content: center;">Login</a>
+                            <button class="learn-more-btn">Learn More</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Portfolio Summary (shown when logged in) -->
+        <div class="portfolio-summary-bar" id="portfolioBar" style="display: none;">
+            <div class="user-greeting">
+                <div class="user-avatar" id="topAvatar">91</div>
+                <div class="user-text">
+                    <h3 id="topGreeting">User</h3>
+                    <p>Good afternoon — keep going.</p>
+                </div>
+                <button class="view-toggle"><i data-lucide="eye"></i></button>
+            </div>
+
+            <div class="portfolio-stats">
+                <div class="stat-item">
+                    <span class="stat-label">Available Balance</span>
+                    <span class="stat-value green" id="homePortfolioValue">₹0.00</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Invested Value</span>
+                    <span class="stat-value blue">₹0.00</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Today</span>
+                    <span class="stat-value green-subtle">0.00%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">This Week</span>
+                    <span class="stat-value green-subtle">0.00%</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">This Month</span>
+                    <span class="stat-value green-subtle">0.00%</span>
+                </div>
+            </div>
+
+            <div class="action-btns">
+                <a href="deposit.html" class="btn-deposit"><i data-lucide="plus-circle"></i> Deposit</a>
+                <a href="javascript:void(0)" onclick="openWithdrawPage()" class="btn-withdraw"><i
+                        data-lucide="minus-circle"></i> Withdraw</a>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <main class="main-grid">
+            <!-- Left Column: Market Summary -->
+            <section class="card market-summary">
+                <div class="card-header">
+                    <div class="header-icon"><i data-lucide="activity"></i></div>
+                    <h2>Market Summary</h2>
+                </div>
+                <div class="market-cards-grid">
+                    <div class="stock-card"
+                        style="display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 2rem 1rem;"
+                        onclick="window.location.href='market.html?view=market'">
+                        <div class="stock-info"
+                            style="display: flex; justify-content: center; gap: 10px; align-items: center; margin: 0;">
+                            <img src="https://flagcdn.com/w40/in.png" width="24" alt="India" class="flag-icon"
+                                style="margin: 0;">
+                            <span class="stock-name" style="font-size: 1.6rem; font-weight: 700;">SENSEX</span>
+                        </div>
+                    </div>
+                    <div class="stock-card"
+                        style="display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 2rem 1rem;"
+                        onclick="window.location.href='market.html?view=market'">
+                        <div class="stock-info"
+                            style="display: flex; justify-content: center; gap: 10px; align-items: center; margin: 0;">
+                            <img src="https://flagcdn.com/w40/in.png" width="24" alt="India" class="flag-icon"
+                                style="margin: 0;">
+                            <span class="stock-name" style="font-size: 1.6rem; font-weight: 700;">NIFTY 50</span>
+                        </div>
+                    </div>
+                    <div class="stock-card"
+                        style="display: flex; justify-content: center; align-items: center; cursor: pointer; padding: 2rem 1rem;"
+                        onclick="window.location.href='market.html?view=market'">
+                        <div class="stock-info"
+                            style="display: flex; justify-content: center; gap: 10px; align-items: center; margin: 0;">
+                            <img src="https://flagcdn.com/w40/in.png" width="24" alt="India" class="flag-icon"
+                                style="margin: 0;">
+                            <span class="stock-name" style="font-size: 1.6rem; font-weight: 700;">NIFTY BANK</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- About Us Section -->
+            <section class="card about-us-section">
+                <div class="card-header">
+                    <div class="header-icon"><i data-lucide="info"></i></div>
+                    <h2>About Avendus Capital</h2>
+                </div>
+                <div class="about-content" style="padding: 1.5rem; color: #64748b; line-height: 1.6;">
+                    <p>Avendus Capital is a leading financial institution dedicated to providing premium trading and
+                        investment solutions. We offer a comprehensive suite of tools designed to empower traders
+                        globally.</p>
+                </div>
+            </section>
+
+            <!-- Recommendation Alert (for guests) -->
+            <div class="market-auth-prompt" id="marketAuthPrompt">
+                <p>Please log in to view more premium insights</p>
+                <a href="login.html" class="login-btn-small">Login to Continue</a>
+            </div>
+
+            <!-- Right Column: News & Recommendation -->
+            <div class="sidebar">
+                <section class="card breaking-news">
+                    <div class="card-header">
+                        <div class="header-icon blue"><i data-lucide="newspaper"></i></div>
+                        <h2>Breaking News</h2>
+                    </div>
+                    <div class="news-carousel" id="newsCarousel">
+                        <div class="news-slide active">
+                            <img src="https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=800"
+                                alt="News">
+                            <div class="news-slide-overlay">
+                                <span class="news-time">Just Now</span>
+                                <h3>Market Hits New Milestone Amid Global Optimism</h3>
+                            </div>
+                        </div>
+                        <!-- Arrow Controls -->
+                        <button class="carousel-prev" onclick="changeSlide(-1)"><i
+                                data-lucide="chevron-left"></i></button>
+                        <button class="carousel-next" onclick="changeSlide(1)"><i
+                                data-lucide="chevron-right"></i></button>
+                    </div>
+                </section>
+
+                <section class="card recommendation">
+                    <div class="card-header" id="recommendationHeader" style="cursor: pointer;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem;">
+                            <div class="header-icon blue"><i data-lucide="thumbs-up"></i></div>
+                            <h2>Recommendation</h2>
+                        </div>
+                        <i data-lucide="chevron-down" id="recommendationChevron"></i>
+                    </div>
+                    <div class="recommendation-list" id="recommendationList"
+                        style="display: none; max-height: 0; overflow: hidden;">
+                        <div class="rec-item">
+                            <img class="rec-thumb"
+                                src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&q=80&w=200"
+                                alt="Rec">
+                            <div class="rec-content">
+                                <h3>2026 Financial Outlook</h3>
+                                <p>Latest trends and predictions.</p>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="footer-left">
+                © 2025 Avendus Capital. Secure. Transparent. Reliable.
+            </div>
+            <div class="footer-right">
+                <span class="timezone">GMT+5:30</span>
+            </div>
+        </footer>
+    </div>
+
+    <!-- Consolidated Modals -->
+    <div id="settingsModal" class="settings-modal" onclick="if(event.target == this) closeSettings()">
+        <div class="settings-content">
+            <button class="settings-close" onclick="closeSettings()"><i data-lucide="x" size="24"></i></button>
+            <div class="settings-header">
+                <div class="avatar-circle" id="settingsAvatar">U</div>
+                <div class="settings-name" id="settingsName"
+                    style="font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-top: 0.5rem;">User Name</div>
+                <div class="settings-phone" id="settingsPhone"
+                    style="font-size: 0.9rem; color: #64748b; margin-top: 0.2rem;">+91</div>
+                <div class="badge-row">
+                    <div class="s-badge vip"><i data-lucide="shield-check" size="18"></i> VIP: 0</div>
+                    <div class="s-badge credit"><i data-lucide="crown" size="18"></i> Credit Score: 100</div>
+                </div>
+            </div>
+            <div class="settings-list">
+                <div class="settings-item" onclick="toggleUserProfile()">
+                    <div class="settings-item-icon"><i data-lucide="user" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">User Profile</div>
+                        <div class="settings-item-desc">Update your profile information.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="userProfileChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="userProfileSubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openEditNameModal()">
+                        <i data-lucide="edit-3" size="18"></i> Update Name
+                    </div>
+                    <div class="submenu-item" onclick="openAvatarModal()">
+                        <i data-lucide="image" size="18"></i> Update Avatar
+                    </div>
+                    <div class="submenu-item" onclick="openKYCModal()">
+                        <i data-lucide="file-check" size="18"></i> View KYC
+                    </div>
+                </div>
+                <div class="settings-item" onclick="toggleSecurityMenu()">
+                    <div class="settings-item-icon"><i data-lucide="lock" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Security</div>
+                        <div class="settings-item-desc">Update your system security settings.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="securityChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="securitySubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openWithdrawalPinModal()">
+                        <i data-lucide="shield-check" size="18"></i> Withdrawal PIN
+                    </div>
+                    <div class="submenu-item" onclick="openResetPassword()">
+                        <i data-lucide="key" size="18"></i> Change Login Password
+                    </div>
+                </div>
+                <div class="settings-item" onclick="window.location.href='bank_accounts.html'">
+                    <div class="settings-item-icon"><i data-lucide="landmark" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Bank Accounts</div>
+                        <div class="settings-item-desc">Manage bank accounts and info</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+                <div class="settings-item" onclick="openCS()">
+                    <div class="settings-item-icon"><i data-lucide="headset" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Customer Service</div>
+                        <div class="settings-item-desc">Contact customer service</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+            </div>
+            <div class="logout-btn-container">
+                <button class="logout-btn" onclick="DB.logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Service Modal (Fixed Bottom-Right) -->
+    <div id="csModal">
+        <!-- Maximized Content -->
+        <div class="cs-modal-content">
+            <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 8px; z-index: 100;">
+                <button onclick="minimizeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="minus" size="18"></i>
+                </button>
+                <button onclick="closeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(239, 68, 68, 0.2)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="x" size="18"></i>
+                </button>
+            </div>
+
+            <div class="settings-header"
+                style="margin-bottom: 0; padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid #222;">
+                <h2 style="font-size: 1.3rem; font-weight: 700; color: #d4af37; margin: 0;">Customer Service</h2>
+                <div style="height: 2px; width: 30px; background: #d4af37; margin-top: 5px;"></div>
+            </div>
+
+            <div id="chatBox"
+                style="flex: 1; overflow-y: auto; padding: 1.5rem; background: #0c0c0c; display: flex; flex-direction: column; gap: 1rem;">
+            </div>
+
+            <div id="csImagePreviewArea"
+                style="display: none; padding: 0.5rem 1.5rem; background: #1a1a1a; border-top: 1px solid #333; gap: 0.5rem; align-items: center;">
+            </div>
+
+            <div
+                style="display: flex; gap: 0.5rem; align-items: center; padding: 1.2rem 1.5rem; background: #111; border-top: 1px solid #222;">
+                <input type="file" id="csImageInput" accept="image/*" style="display: none;"
+                    onchange="handleCSImageUpload(this)">
+                <button onclick="document.getElementById('csImageInput').click()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="image" size="22"></i>
+                </button>
+                <button onclick="toggleEmojiPicker()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; position: relative; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="smile" size="22"></i>
+                    <div id="emojiPicker"
+                        style="display: none; position: absolute; bottom: 50px; left: -10px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 0.75rem; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 180px; z-index: 100;">
+                        <span onclick="insertEmoji('👍')" style="cursor: pointer; font-size: 1.4rem;">👍</span>
+                        <span onclick="insertEmoji('👋')" style="cursor: pointer; font-size: 1.4rem;">👋</span>
+                        <span onclick="insertEmoji('😊')" style="cursor: pointer; font-size: 1.4rem;">😊</span>
+                        <span onclick="insertEmoji('😂')" style="cursor: pointer; font-size: 1.4rem;">😂</span>
+                        <span onclick="insertEmoji('❤️')" style="cursor: pointer; font-size: 1.4rem;">❤️</span>
+                        <span onclick="insertEmoji('🔥')" style="cursor: pointer; font-size: 1.4rem;">🔥</span>
+                        <span onclick="insertEmoji('🎉')" style="cursor: pointer; font-size: 1.4rem;">🎉</span>
+                        <span onclick="insertEmoji('💰')" style="cursor: pointer; font-size: 1.4rem;">💰</span>
+                    </div>
+                </button>
+                <input type="text" id="csInput" placeholder="Type a message..."
+                    style="flex: 1; padding: 0.7rem 1rem; background: #050505; border: 1px solid #333; border-radius: 10px; color: white; outline: none; font-family: 'Outfit', sans-serif; font-size: 0.9rem;">
+                <button onclick="sendCSMessage()"
+                    style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); color: #000; border: none; padding: 0.7rem 1.2rem; border-radius: 10px; font-weight: 800; cursor: pointer; transition: opacity 0.2s;"
+                    onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Send</button>
+            </div>
+        </div>
+
+        <!-- Minimized Bar -->
+        <div id="csMinimizedBar" onclick="maximizeCS()">
+            <div
+                style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: rgba(212,175,55,0.1); border-radius: 50%;">
+                <i data-lucide="message-circle" size="14"></i>
+            </div>
+            <span style="font-size: 0.9rem;">Customer Service</span>
+            <i data-lucide="chevron-up" size="18" style="margin-left: auto; opacity: 0.7;"></i>
+        </div>
+    </div>
+
+
+    <div id="messageCenterOverlay" class="message-center-overlay" onclick="toggleMessageCenter()"></div>
+    <div id="messageCenter" class="message-center-modal">
+        <div class="mc-header">
+            <h3>Notifications</h3>
+            <button onclick="toggleMessageCenter()"><i data-lucide="x"></i></button>
+        </div>
+        <div id="mcList" class="mc-list" style="padding:2rem; text-align:center; color:#64748b;">No new notifications
+        </div>
+    </div>
+
+    <div id="resetPasswordModal" class="settings-modal" onclick="if(event.target == this) closeResetPassword()">
+        <div class="settings-content" style="max-width: 400px;">
+            <button class="settings-close" onclick="closeResetPassword()"><i data-lucide="x"></i></button>
+            <h2>Reset Password</h2>
+            <div style="display: flex; flex-direction: column; gap:1rem; margin-top:1rem;">
+                <input type="password" id="newPassInternal" placeholder="New Password"
+                    style="padding:0.8rem; border:1px solid #ccc; border-radius:8px;">
+                <input type="password" id="confirmPassInternal" placeholder="Confirm Password"
+                    style="padding:0.8rem; border:1px solid #ccc; border-radius:8px;">
+                <button onclick="handleInternalReset()"
+                    style="background:#3b82f6; color:white; border:none; padding:0.8rem; border-radius:8px;">Update
+                    Password</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="editNameModal" class="center-popup-modal">
+        <div class="center-popup-content" style="max-width: 400px;">
+            <div class="popup-header">
+                <h2>Update Name</h2>
+                <button class="popup-close" onclick="closeEditNameModal()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                        Name</label>
+                    <input type="text" id="editNameInput" class="reg-input" placeholder="Enter your name"
+                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.75rem;">
+                    <button class="logout-btn" id="saveNameBtn" style="background: #3b82f6;" onclick="saveName()">Save
+                        Name</button>
+                    <button class="logout-btn" style="background: #f1f5f9; color: #64748b;"
+                        onclick="closeEditNameModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Withdrawal PIN Modal -->
+    <div id="withdrawalPinModal" class="center-popup-modal"
+        onclick="if(event.target == this) closeWithdrawalPinModal()">
+        <div class="center-popup-content" style="max-width: 450px;">
+            <div class="popup-header">
+                <h2 id="wpModalTitle">Withdrawal PIN</h2>
+                <button class="popup-close" onclick="closeWithdrawalPinModal()"><i data-lucide="x"
+                        size="24"></i></button>
+            </div>
+            <div class="popup-body">
+                <p id="wpModalDesc" style="font-size: 0.9rem; color: #64748b; margin-bottom: 1.5rem;">Set or update your
+                    4-6 digit withdrawal PIN.</p>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                        Withdrawal PIN (4-6 digits)</label>
+                    <input type="password" id="wpNewPin" class="reg-input" maxlength="6" pattern="\d*"
+                        inputmode="numeric" placeholder="Enter New PIN">
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                        New PIN</label>
+                    <input type="password" id="wpConfirmPin" class="reg-input" maxlength="6" pattern="\d*"
+                        inputmode="numeric" placeholder="Confirm New PIN">
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 2rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Verify
+                        Login Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="wpLoginPass" class="reg-input" placeholder="Enter Login Password">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('wpLoginPass', this)"></i>
+                    </div>
+                </div>
+                <button id="wpSubmitBtn" class="logout-btn" style="background: #fb923c;"
+                    onclick="handleWithdrawalPinSubmit()">Update Withdrawal PIN</button>
+                <button class="logout-btn" style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                    onclick="closeWithdrawalPinModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Avatar Modal -->
+    <div id="avatarModal" class="center-popup-modal">
+        <div class="center-popup-content avatar-form" style="max-width: 400px;">
+            <div class="popup-header"
+                style="width:100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="font-size: 1.25rem; font-weight: 700;">Update Avatar</h2>
+                <button class="popup-close" onclick="closeAvatarModal()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body" style="display:flex; flex-direction:column; align-items:center; width: 100%;">
+                <div class="avatar-preview-lg" id="avatarPreviewContainer"
+                    onclick="document.getElementById('avatarInput').click()">
+                    <i data-lucide="user" size="64" style="color:#cbd5e1;" id="avatarPlaceholderIcon"></i>
+                    <img id="avatarPreviewImg" src="" style="display:none;">
+                    <div class="avatar-change-overlay">Change Image</div>
+                </div>
+                <input type="file" id="avatarInput" hidden onchange="previewAvatar(this)" accept="image/*">
+                <div style="width: 100%; margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    <button class="btn-primary" onclick="uploadAvatar()">Save Changes</button>
+                    <button class="btn-secondary" onclick="closeAvatarModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KYC Modal -->
+    <div id="kycModal" class="center-popup-modal">
+        <div class="center-popup-content">
+            <div class="popup-header">
+                <h2>View KYC</h2>
+                <button class="popup-close" onclick="closeKYCModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="kyc-form-grid">
+                    <div class="kyc-field-label">Full Name</div>
+                    <input type="text" id="kycName" class="kyc-field-input" placeholder="Enter Full Name">
+                    <div class="kyc-field-label">Mobile Number</div>
+                    <input type="text" id="kycMobile" class="kyc-field-input" placeholder="Enter Mobile Number">
+                    <div class="kyc-field-label">ID Number</div>
+                    <input type="text" id="kycIdNum" class="kyc-field-input" placeholder="Enter ID Number">
+                    <div class="kyc-field-label">Submitted On</div>
+                    <input type="text" id="kycSubmitted" class="kyc-field-input" readonly style="background: #f8fafc;">
+                    <div class="kyc-field-label">Approval Status</div>
+                    <input type="text" id="kycApproved" class="kyc-field-input" readonly style="background: #f8fafc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycFrontInput').click()">
+                        <div class="plus-icon">+ Front</div>
+                        <img id="kycFrontPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycFrontInput" hidden
+                            onchange="previewKYCImage(this, 'kycFrontPreview')">
+                    </div>
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycBackInput').click()">
+                        <div class="plus-icon">+ Back</div>
+                        <img id="kycBackPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycBackInput" hidden onchange="previewKYCImage(this, 'kycBackPreview')">
+                    </div>
+                </div>
+                <button class="btn-submit" onclick="submitKYC()" style="margin-top: 1.5rem; width: 100%;">Submit
+                    Verification</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="topAlertContainer" class="top-alert-container">
+        Please login to access this feature.
+    </div>
+
+    <!-- Floating Contact -->
+    <div class="cs-floating-tab" onclick="openCS()"
+        style="position:fixed; bottom:2rem; right:2rem; background:#3b82f6; color:white; padding:1rem; border-radius:50px; cursor:pointer; z-index:999; box-shadow:0 4px 12px rgba(0,0,0,0.2);">
+        <i data-lucide="message-circle"></i> Support
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="script.js"></script>
+    <script>
+        lucide.createIcons();
+
+        // Global State
+        let isChatSubscribed = false;
+        const currentUser = typeof DB !== 'undefined' ? DB.getCurrentUser() : null;
+
+        // UI Initialization
+        window.addEventListener('load', () => {
+            const pb = document.getElementById('portfolioBar');
+            const map = document.getElementById('marketAuthPrompt');
+            const pa = document.getElementById('promoActions');
+
+            if (currentUser) {
+                if (pb) pb.style.display = 'flex';
+                if (map) map.style.display = 'none';
+                if (pa) pa.style.display = 'none';
+                syncUserData();
+            } else {
+                if (pb) pb.style.display = 'none';
+                if (pa) pa.style.display = 'flex';
+            }
+        });
+
+        // Recommendation Toggle
+        const recHeader = document.getElementById('recommendationHeader');
+        if (recHeader) {
+            recHeader.addEventListener('click', () => {
+                const list = document.getElementById('recommendationList');
+                const chevron = document.getElementById('recommendationChevron');
+                const isHidden = list.style.display === 'none';
+                list.style.display = isHidden ? 'block' : 'none';
+                list.style.maxHeight = isHidden ? '500px' : '0';
+                chevron.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
+            });
+        }
+
+        function toggleMessageCenter() {
+            if (window.toggleMessageCenter) {
+                window.toggleMessageCenter();
+            } else {
+                document.getElementById('messageCenter').classList.toggle('active');
+                document.getElementById('messageCenterOverlay').classList.toggle('active');
+            }
+        }
+    </script>
+</body>
+
+</html>

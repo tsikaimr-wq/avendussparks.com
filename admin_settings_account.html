@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <title>Avendus Capital - Admin Suite</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>const supabasejs = window.supabase;</script>
+    <script src="db.js"></script>
+    <script src="db_patch.js"></script>
+    <script src="js/admin_auth_guard.js"></script>
+    <script src="js/admin_i18n.js"></script>
+    <style>
+        :root {
+            --sidebar-bg: #ffffff;
+            --main-bg: #f5f7fb;
+            --primary-orange: #f97316;
+            --primary-blue: #3b82f6;
+            --primary-green: #10b981;
+            --border-color: #e2e8f0;
+            --text-dark: #1e293b;
+            --text-muted: #64748b;
+        }
+
+        body {
+            background-color: var(--main-bg);
+            color: var(--text-dark);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            overflow-x: hidden;
+            height: 100vh;
+        }
+
+        aside {
+            width: 260px;
+            background: white;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .logo-area {
+            padding: 20px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo-box {
+            width: 30px;
+            height: 30px;
+            background: #6366f1;
+            border-radius: 6px;
+        }
+
+        .nav-menu {
+            flex-grow: 1;
+            padding: 10px;
+            overflow-y: auto;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 15px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            border-radius: 8px;
+            margin-bottom: 2px;
+            cursor: pointer;
+        }
+
+        .menu-item:hover,
+        .menu-item.active {
+            background: #eff6ff;
+            color: #3b82f6;
+            font-weight: 600;
+        }
+
+        /* Premium Language Switcher */
+        .lang-switcher {
+            display: flex;
+            gap: 8px;
+            margin-right: 15px;
+            align-items: center;
+        }
+
+        .lang-btn {
+            background: rgba(0, 0, 0, 0.05);
+            border: 1px solid #e2e8f0;
+            padding: 4px 10px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            filter: grayscale(1);
+            opacity: 0.6;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }
+
+        .lang-btn:hover {
+            background: rgba(249, 115, 22, 0.1);
+            opacity: 0.9;
+            transform: scale(1.1);
+        }
+
+        .lang-btn.active {
+            filter: grayscale(0);
+            opacity: 1;
+            background: #ffffff;
+            border-color: #f97316;
+            box-shadow: 0 2px 8px rgba(249, 115, 22, 0.2);
+            transform: scale(1.1);
+        }
+
+        main {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            background: white;
+            border-bottom: 1px solid var(--border-color);
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 30px;
+            gap: 20px;
+        }
+
+        .container {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .section-card {
+            background: white;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            box-sizing: border-box;
+            margin-bottom: 20px;
+        }
+
+        .vsl-btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            background: white;
+            transition: all 0.2s;
+        }
+
+        .vsl-btn:hover {
+            background: #f8fafc;
+        }
+
+        .vsl-btn-primary {
+            background: var(--primary-blue);
+            color: white;
+            border: none;
+        }
+
+        .vsl-btn-primary:hover {
+            background: #2563eb;
+        }
+
+        .vsl-btn-danger {
+            background: #ef4444;
+            color: white;
+            border: none;
+        }
+
+        .vsl-btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .vsl-input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+        }
+
+        .vsl-input:focus {
+            border-color: var(--primary-blue);
+            outline: none;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-dark);
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .profile-upload {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .profile-preview {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: #f1f5f9;
+            object-fit: cover;
+        }
+
+        /* Custom Confirm Modal Styling */
+        .confirm-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 9998;
+            backdrop-filter: blur(6px);
+            transition: all 0.3s ease;
+            pointer-events: auto;
+        }
+
+        .confirm-modal-card {
+            background: white;
+            width: 400px;
+            padding: 35px 25px;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            transform: scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            z-index: 9999;
+            pointer-events: auto;
+        }
+
+        .confirm-modal-overlay.active {
+            display: flex;
+        }
+
+        .confirm-modal-overlay.active .confirm-modal-card {
+            transform: scale(1);
+            opacity: 1;
+        }
+
+        .confirm-modal-icon-box {
+            width: 72px;
+            height: 72px;
+            background: #fff1f2;
+            color: #e11d48;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .confirm-modal-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 0 0 10px 0;
+        }
+
+        .confirm-modal-message {
+            font-size: 0.95rem;
+            color: #64748b;
+            line-height: 1.5;
+            margin: 0 0 25px 0;
+        }
+
+        .confirm-modal-footer {
+            display: flex;
+            gap: 12px;
+            width: 100%;
+        }
+
+        .confirm-modal-btn {
+            flex: 1;
+            padding: 12px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .confirm-modal-btn.cancel {
+            background: #f1f5f9;
+            color: #64748b;
+        }
+
+        .confirm-modal-btn.cancel:hover {
+            background: #e2e8f0;
+        }
+
+        .confirm-modal-btn.delete {
+            background: #ef4444;
+            color: white;
+        }
+
+        .confirm-modal-btn.delete:hover {
+            background: #dc2626;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(239, 68, 68, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <aside>
+        <div class="logo-area">
+            <div class="logo-box"></div> <span data-i18n="admin_suite">Admin Suite</span>
+        </div>
+        <nav class="nav-menu">
+            <a href="admin_customer_management.html" class="menu-item" data-i18n="sidebar_front_page"><i
+                    data-lucide="home" size="18"></i> Home</a>
+            <a href="admin_customer_management.html" class="menu-item" data-i18n="sidebar_kyc"><i
+                    data-lucide="user-check" size="18"></i> KYC Auth</a>
+            <a href="admin_customer_management.html" class="menu-item" data-i18n="sidebar_users"><i data-lucide="users"
+                    size="18"></i> Users</a>
+            <a href="admin_customer_management.html" class="menu-item" id="btn_bank_accounts"
+                data-i18n="sidebar_bank_accounts"><i data-lucide="credit-card" size="18"></i> Bank Accounts</a>
+            <a href="admin_customer_management.html" class="menu-item" data-i18n="sidebar_products"><i data-lucide="box"
+                    size="18"></i> Products</a>
+            <a href="admin_customer_management.html" class="menu-item" id="btn_stock057" data-i18n="sidebar_stock057"><i
+                    data-lucide="trending-up" size="18"></i> Stock 057</a>
+            <a href="admin_settings_account.html" class="menu-item active" id="btn_account_settings"
+                data-i18n="sidebar_account_settings" style="display: none;"><i data-lucide="settings" size="18"></i>
+                Account Settings</a>
+
+            <style>
+                .admin-user-menu {
+                    position: relative;
+                    display: inline-block;
+                    cursor: pointer;
+                }
+
+                .admin-trigger {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 5px;
+                    border-radius: 20px;
+                    transition: background 0.2s;
+                }
+
+                .admin-trigger:hover {
+                    background: #f1f5f9;
+                }
+
+                .admin-avatar {
+                    width: 32px;
+                    height: 32px;
+                    background: #3b82f6;
+                    color: white;
+                    border-radius: 50%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    font-weight: 700;
+                    font-size: 0.85rem;
+                }
+
+                .dropdown-arrow {
+                    font-size: 0.7rem;
+                    color: #64748b;
+                }
+
+                .admin-dropdown {
+                    display: none;
+                    position: absolute;
+                    top: 100%;
+                    right: 0;
+                    background: white;
+                    min-width: 160px;
+                    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 5px 0;
+                    z-index: 1000;
+                    margin-top: 5px;
+                }
+
+                .admin-dropdown.active {
+                    display: block;
+                }
+
+                .admin-dropdown a,
+                .admin-dropdown button {
+                    display: block;
+                    width: 100%;
+                    padding: 10px 15px;
+                    text-align: left;
+                    background: none;
+                    border: none;
+                    color: #1e293b;
+                    font-size: 0.9rem;
+                    cursor: pointer;
+                    text-decoration: none;
+                    box-sizing: border-box;
+                    font-family: inherit;
+                }
+
+                .admin-dropdown a:hover,
+                .admin-dropdown button:hover {
+                    background: #f8fafc;
+                    color: #3b82f6;
+                }
+
+                .admin-dropdown hr {
+                    border: 0;
+                    border-top: 1px solid #e2e8f0;
+                    margin: 5px 0;
+                }
+            </style>
+        </nav>
+    </aside>
+
+    <main>
+        <header>
+            <div style="display:flex; align-items:center; gap:15px; margin-left:auto;">
+                <!-- Premium Language Switcher -->
+                <div class="lang-switcher">
+                    <button class="lang-btn" onclick="switchLang('cn')" data-lang="cn" data-i18n-title="lang_cn"
+                        title="中文">🇨🇳</button>
+                    <button class="lang-btn" onclick="switchLang('en')" data-lang="en" data-i18n-title="lang_en"
+                        title="English">🇺🇸</button>
+                </div>
+
+                <div class="admin-user-menu" id="adminUserMenu">
+                    <div class="admin-trigger" onclick="toggleAdminMenu()">
+                        <div class="admin-avatar">AD</div>
+                        <span class="dropdown-arrow">▼</span>
+                    </div>
+
+                    <div class="admin-dropdown" id="adminDropdown">
+                        <a href="admin_settings_account.html"
+                            data-i18n="header_settings">${window.i18n('header_settings', 'Account Settings')}</a>
+
+                        <hr>
+                        <button id="dropdownLogoutBtn" onclick="adminLogout()"
+                            data-i18n="header_logout">${window.i18n('header_logout', 'Logout')}</button>
+                    </div>
+                </div>
+            </div>
+
+            <script>
+                function toggleAdminMenu() {
+                    document.getElementById('adminDropdown').classList.toggle('active');
+                }
+                // Close dropdown when clicking outside
+                window.addEventListener('click', function (e) {
+                    const menu = document.getElementById('adminUserMenu');
+                    const dropdown = document.getElementById('adminDropdown');
+                    if (menu && !menu.contains(e.target)) {
+                        dropdown.classList.remove('active');
+                    }
+                });
+
+                function adminLogout() {
+                    showConfirm(window.i18n('msg_confirm_logout', "Logout from admin terminal?"), () => {
+                        sessionStorage.removeItem('admin_auth');
+                        window.location.href = 'admin_login.html';
+                    }, window.i18n('lbl_confirm_logout', "Confirm Logout"));
+                }
+            </script>
+        </header>
+
+        <div class="container">
+            <div class="section-card">
+                <h2 class="form-group" style="margin-top:0" data-i18n="title_settings">${window.i18n('title_settings',
+                    'Account Settings')}</h2>
+
+                <!-- User Profile -->
+                <h3 class="form-label" style="font-size: 1rem;" data-i18n="title_profile">${window.i18n('title_profile',
+                    'Profile Settings')}</h3>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="lbl_full_name">${window.i18n('lbl_full_name', 'Full
+                            Name')}</label>
+                        <input type="text" id="adminFullName" class="vsl-input" data-i18n="ph_enter_fullname"
+                            placeholder="${window.i18n('ph_enter_fullname', 'Enter full name')}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="lbl_username">${window.i18n('lbl_username',
+                            'Username')}</label>
+                        <input type="text" id="adminUsername" class="vsl-input" readonly
+                            style="background: #f1f5f9; cursor: not-allowed;">
+                    </div>
+                </div>
+                <button id="btnUpdateProfile" class="vsl-btn vsl-btn-primary" style="margin-bottom: 30px;"
+                    data-i18n="btn_save_profile">${window.i18n('btn_save_profile', 'Update Profile')}</button>
+
+                <hr style="border: 0; border-top: 1px solid #e2e8f0; margin-bottom: 25px;">
+
+                <!-- Change Password -->
+                <h3 class="form-label" style="font-size: 1rem;" data-i18n="btn_update_password">
+                    ${window.i18n('btn_update_password', 'Change Password')}</h3>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="lbl_current_pass">${window.i18n('lbl_current_pass',
+                            'Current Password')}</label>
+                        <input type="password" id="currentPassword" class="vsl-input" data-i18n="ph_enter_password"
+                            placeholder="${window.i18n('ph_enter_password', 'Enter password')}">
+                    </div>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="lbl_new_pass">${window.i18n('lbl_new_pass', 'New
+                            Password')}</label>
+                        <input type="password" id="newPassword" class="vsl-input" data-i18n="ph_enter_password"
+                            placeholder="${window.i18n('ph_enter_password', 'Enter password')}">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label" data-i18n="lbl_confirm_pass">${window.i18n('lbl_confirm_pass',
+                            'Confirm New Password')}</label>
+                        <input type="password" id="confirmPassword" class="vsl-input" data-i18n="ph_enter_password"
+                            placeholder="${window.i18n('ph_enter_password', 'Enter password')}">
+                    </div>
+                </div>
+                <button id="btnUpdatePassword" class="vsl-btn vsl-btn-primary"
+                    data-i18n="btn_update_password">${window.i18n('btn_update_password', 'Update Password')}</button>
+            </div>
+        </div>
+    </main>
+
+    <script src="admin_settings_account.js"></script>
+    <script>
+        lucide.createIcons();
+
+        function showConfirm(msg, onConfirm, title) {
+            // Remove duplicates
+            const overlays = document.querySelectorAll('.confirm-modal-overlay');
+            if (overlays.length > 1) {
+                overlays.forEach((ov, idx) => { if (idx > 0) ov.remove(); });
+            }
+
+            const modal = document.getElementById('confirmModal');
+            const msgEl = document.getElementById('confirmModalMsg');
+            const titleEl = document.getElementById('confirmModalTitle');
+            const confirmBtn = document.getElementById('confirmDeleteBtn');
+            const cancelBtn = modal.querySelector('.confirm-modal-btn.cancel');
+
+            if (titleEl) titleEl.textContent = title || window.i18n('modal_confirm_action', "Confirm Action");
+            msgEl.textContent = msg;
+
+            modal.style.display = 'flex';
+            modal.style.zIndex = '9998';
+            modal.style.pointerEvents = 'auto';
+            document.body.style.overflow = 'hidden';
+            document.body.style.pointerEvents = 'none'; // Block background
+
+            setTimeout(() => modal.classList.add('active'), 10);
+
+            // Re-bind buttons to clear old listeners
+            const newConfirmBtn = confirmBtn.cloneNode(true);
+            confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+            newConfirmBtn.addEventListener('click', () => {
+                closeConfirmModal();
+                if (onConfirm) onConfirm();
+            });
+
+            const newCancelBtn = cancelBtn.cloneNode(true);
+            cancelBtn.parentNode.replaceChild(newCancelBtn, cancelBtn);
+            newCancelBtn.addEventListener('click', () => {
+                closeConfirmModal();
+            });
+
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function closeConfirmModal() {
+            const modal = document.getElementById('confirmModal');
+            if (modal) {
+                modal.classList.remove('active');
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                    document.body.style.overflow = '';
+                    document.body.style.pointerEvents = 'auto'; // Restore background
+                }, 300);
+            }
+        }
+
+        function showAlert(type, msg, title) {
+            let modal = document.getElementById('alertModal');
+            if (!modal) {
+                const div = document.createElement('div');
+                div.id = 'alertModal';
+                div.className = 'confirm-modal-overlay';
+                div.innerHTML = `
+                <div class="confirm-modal-card">
+                    <div class="confirm-modal-icon-box" id="alertIconBox">
+                        <i id="alertIcon" data-lucide="info" size="44"></i>
+                    </div>
+                    <h3 id="alertTitle" class="confirm-modal-title" data-i18n="lbl_notification">Notification</h3>
+                    <p id="alertMsg" class="confirm-modal-message"></p>
+                    <div class="confirm-modal-footer" style="justify-content: center;">
+                        <button class="confirm-modal-btn delete" id="alertBtn" onclick="closeAlertModal()" style="background:var(--primary-blue); width: 100%; border:none;">${window.i18n('btn_ok', 'OK')}</button>
+                    </div>
+                </div>`;
+                document.body.appendChild(div);
+                modal = div;
+            }
+
+            const iconEl = document.getElementById('alertIcon') || modal.querySelector('#alertIcon');
+            const iconBox = document.getElementById('alertIconBox') || modal.querySelector('.confirm-modal-icon-box');
+            const titleEl = document.getElementById('alertTitle') || modal.querySelector('#alertTitle');
+            const msgEl = document.getElementById('alertMsg') || modal.querySelector('#alertMsg');
+            const btn = document.getElementById('alertBtn') || modal.querySelector('#alertBtn');
+
+            let iconName = 'info';
+            let defaultTitle = window.i18n('lbl_notification', 'Notification');
+            let color = '#3b82f6';
+            let bgColor = '#eff6ff'; // light blue
+
+            if (type === 'success') {
+                iconName = 'check-circle';
+                color = '#10b981';
+                bgColor = '#ecfdf5'; // light green
+                defaultTitle = window.i18n('modal_success', 'Success');
+            } else if (type === 'error') {
+                iconName = 'x-circle';
+                color = '#ef4444';
+                bgColor = '#fef2f2'; // light red
+                defaultTitle = window.i18n('status_error', 'Error');
+            } else if (type === 'warning') {
+                iconName = 'alert-triangle';
+                color = '#f59e0b';
+                bgColor = '#fffbeb'; // light yellow
+                defaultTitle = window.i18n('status_warning', 'Warning');
+            }
+
+            if (iconEl) {
+                iconEl.setAttribute('data-lucide', iconName);
+                iconEl.style.color = color;
+            }
+            if (iconBox) {
+                iconBox.style.background = bgColor;
+            }
+            if (titleEl) titleEl.textContent = title || defaultTitle;
+            if (msgEl) msgEl.textContent = msg;
+            if (btn) btn.style.background = color;
+
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('active'), 10);
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function closeAlertModal() {
+            const modal = document.getElementById('alertModal');
+            if (modal) {
+                modal.classList.remove('active');
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 300);
+            }
+        }
+
+        function switchLang(l) {
+            localStorage.setItem('admin_lang', l);
+            window.applyLanguage(l);
+            // Update active state of buttons
+            document.querySelectorAll('.lang-btn').forEach(b => {
+                b.classList.toggle('active', b.getAttribute('data-lang') === l);
+            });
+        }
+
+        // Initialize language
+        document.addEventListener('DOMContentLoaded', () => {
+            const currentLang = localStorage.getItem('admin_lang') || 'cn';
+            window.applyLanguage(currentLang);
+            document.querySelectorAll('.lang-btn').forEach(b => {
+                b.classList.toggle('active', b.getAttribute('data-lang') === currentLang);
+            });
+            lucide.createIcons();
+        });
+    </script>
+
+    <!-- CONFIRM DELETE MODAL -->
+    <!-- CONFIRM ACTION MODAL -->
+    <div id="confirmModal" class="confirm-modal-overlay">
+        <div class="confirm-modal-card">
+            <div class="confirm-modal-icon-box">
+                <i data-lucide="alert-triangle" size="44"></i>
+            </div>
+            <h3 id="confirmModalTitle" class="confirm-modal-title" data-i18n="modal_confirm_action">
+                ${window.i18n('modal_confirm_action', 'Confirm Action')}</h3>
+            <p id="confirmModalMsg" class="confirm-modal-message"></p>
+            <div class="confirm-modal-footer">
+                <button class="confirm-modal-btn cancel" data-i18n="btn_cancel">${window.i18n('btn_cancel',
+                    'Cancel')}</button>
+                <button id="confirmDeleteBtn" class="confirm-modal-btn delete"
+                    data-i18n="btn_confirm">${window.i18n('btn_confirm', 'Confirm')}</button>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

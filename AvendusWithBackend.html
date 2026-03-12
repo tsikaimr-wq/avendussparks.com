@@ -1,0 +1,2291 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avendus Capital - Admin Suite</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>const supabasejs = window.supabase;</script>
+    <script src="db.js"></script>
+    <style>
+        :root {
+            --sidebar-bg: #ffffff;
+            --main-bg: #f5f7fb;
+            --primary-orange: #f97316;
+            --primary-blue: #3b82f6;
+            --primary-green: #10b981;
+            --border-color: #e2e8f0;
+            --text-dark: #1e293b;
+            --text-muted: #64748b;
+        }
+
+        body {
+            background-color: var(--main-bg);
+            color: var(--text-dark);
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            display: flex;
+            overflow-x: hidden;
+            height: 100vh;
+        }
+
+        aside {
+            width: 260px;
+            background: white;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+        }
+
+        .logo-area {
+            padding: 20px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo-box {
+            width: 30px;
+            height: 30px;
+            background: #6366f1;
+            border-radius: 6px;
+        }
+
+        .nav-menu {
+            flex-grow: 1;
+            padding: 10px;
+            overflow-y: auto;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 15px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.85rem;
+            border-radius: 8px;
+            margin-bottom: 2px;
+            cursor: pointer;
+        }
+
+        .menu-item:hover,
+        .menu-item.active {
+            background: #eff6ff;
+            color: #3b82f6;
+            font-weight: 600;
+        }
+
+        .sub-menu {
+            padding-left: 40px;
+            display: none;
+            margin: 5px 0;
+        }
+
+        .sub-menu.show {
+            display: block;
+        }
+
+        .sub-item {
+            padding: 8px 0;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .sub-item:hover,
+        .sub-item.active {
+            color: var(--primary-orange);
+        }
+
+        main {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        header {
+            background: white;
+            border-bottom: 1px solid var(--border-color);
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding: 0 30px;
+            gap: 20px;
+        }
+
+        .page-tabs {
+            background: #fdfdfd;
+            padding: 5px 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            gap: 5px;
+            overflow-x: auto;
+        }
+
+        .tab-tag {
+            padding: 6px 15px;
+            border: 1px solid var(--border-color);
+            font-size: 0.75rem;
+            border-radius: 4px;
+            background: white;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .tab-tag.active {
+            border-color: var(--primary-orange);
+            color: var(--primary-orange);
+        }
+
+        .container {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .section-card {
+            background: white;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            padding: 20px;
+            min-height: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Unified Buttons */
+        .vsl-btn {
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+            background: white;
+        }
+
+        .vsl-btn.active {
+            border-color: var(--primary-orange);
+            color: var(--primary-orange);
+        }
+
+        .vsl-btn.orange {
+            background: var(--primary-orange);
+            color: white;
+            border: none;
+        }
+
+        .vsl-btn.green {
+            background: var(--primary-green);
+            color: white;
+            border: none;
+        }
+
+        /* Messaging Center Custom */
+        .msg-layout {
+            display: flex;
+            gap: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            height: 600px;
+            margin-top: 15px;
+        }
+
+        .msg-list-pane {
+            width: 380px;
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .msg-search-box {
+            padding: 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .msg-search-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            outline: none;
+            box-sizing: border-box;
+        }
+
+        .msg-items-scroll {
+            flex-grow: 1;
+            overflow-y: auto;
+        }
+
+        .msg-row {
+            padding: 15px;
+            border-bottom: 1px solid #f1f5f9;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .msg-row:hover {
+            background: #f8fafc;
+        }
+
+        .msg-row.active {
+            background: #fff7ed;
+            border-left: 3px solid var(--primary-orange);
+        }
+
+        .msg-row-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .msg-row-title {
+            font-weight: 700;
+            font-size: 0.9rem;
+            color: #1e293b;
+        }
+
+        .msg-row-date {
+            font-size: 0.7rem;
+            color: #94a3b8;
+        }
+
+        .msg-row-preview {
+            font-size: 0.8rem;
+            color: #64748b;
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .msg-content-pane {
+            flex-grow: 1;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: #94a3b8;
+            overflow-y: auto;
+        }
+
+        .msg-view-header {
+            width: 100%;
+            text-align: left;
+            padding-bottom: 20px;
+            border-bottom: 1px solid #f1f5f9;
+            margin-bottom: 20px;
+        }
+
+        /* Stencil Specifics */
+        .stencil-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .stencil-card {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 20px;
+            background: white;
+            cursor: pointer;
+            transition: 0.2s;
+            position: relative;
+            text-align: left;
+        }
+
+        .stencil-card:hover {
+            border-color: var(--primary-orange);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .stencil-card h4 {
+            margin: 0 0 10px 0;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #1e293b;
+        }
+
+        .stencil-tag {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .stencil-preview {
+            font-size: 0.8rem;
+            color: #64748b;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            line-height: 1.5;
+        }
+
+        .filter-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        .filter-btn {
+            padding: 4px 12px;
+            font-size: 0.7rem;
+            border-radius: 4px;
+            background: #e0f2fe;
+            color: #0369a1;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .filter-btn.active {
+            background: #0ea5e9;
+            color: white;
+        }
+
+        .loader {
+            position: fixed;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* KYC Edit Modal Specifics */
+        .kyc-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+        }
+
+        .kyc-modal-card {
+            background: white;
+            width: 800px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            font-size: 0.85rem;
+        }
+
+        .kyc-modal-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #f1f5f9;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-weight: 700;
+            color: #1e293b;
+            font-size: 1rem;
+        }
+
+        .kyc-modal-body {
+            padding: 25px;
+            overflow-y: auto;
+            max-height: 80vh;
+        }
+
+        .kyc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .kyc-form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .kyc-form-group label {
+            color: #64748b;
+            font-weight: 500;
+            font-size: 0.8rem;
+        }
+
+        .kyc-input {
+            padding: 10px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            outline: none;
+            transition: 0.2s;
+            font-family: inherit;
+        }
+
+        .kyc-input:focus {
+            border-color: var(--primary-orange);
+        }
+
+        /* KYC Verification (Table Page) Specifics */
+        .kyc-verify-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 20px;
+        }
+
+        .kyc-verify-filters {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 15px;
+            flex-grow: 1;
+            margin-right: 20px;
+        }
+
+        .kyc-filter-item {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .kyc-filter-item label {
+            font-size: 0.75rem;
+            color: #1e293b;
+            font-weight: 500;
+        }
+
+        .kyc-filter-input {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            background: white;
+        }
+
+        .kyc-status-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .kyc-status-pill {
+            padding: 6px 15px;
+            font-size: 0.75rem;
+            border-radius: 6px;
+            background: white;
+            border: 1px solid #e2e8f0;
+            cursor: pointer;
+            transition: 0.2s;
+            font-weight: 500;
+            color: #64748b;
+        }
+
+        .kyc-status-pill:hover {
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+
+        .kyc-status-pill.active {
+            background: #eff6ff;
+            border-color: #3b82f6;
+            color: #3b82f6;
+        }
+
+        .kyc-table-img {
+            width: 50px;
+            height: 35px;
+            border-radius: 4px;
+            border: 1px solid #e2e8f0;
+            object-fit: cover;
+            background: #f8fafc;
+            cursor: pointer;
+        }
+
+        .kyc-refresh-btn {
+            background: #f97316;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .kyc-badge {
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-weight: 700;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+        }
+
+        .kyc-badge.pending {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .kyc-badge.approved {
+            background: #dcfce7;
+            color: #166534;
+        }
+
+        .kyc-badge.reject {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .kyc-image-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .kyc-img-box {
+            border: 1px dashed #cbd5e1;
+            border-radius: 8px;
+            height: 220px;
+            background: #f8fafc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .kyc-img-box:hover {
+            border-color: var(--primary-orange);
+            background: #f1f5f9;
+        }
+
+        .kyc-plus-icon {
+            color: #94a3b8;
+            width: 32px;
+            height: 32px;
+        }
+
+        .kyc-img-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: none;
+        }
+
+        .kyc-img-remove {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border-radius: 4px;
+            padding: 4px;
+            cursor: pointer;
+            display: none;
+            z-index: 5;
+        }
+
+        .kyc-img-box:hover .kyc-img-remove {
+            display: block;
+        }
+
+        .kyc-img-hint {
+            font-size: 0.7rem;
+            color: #94a3b8;
+            margin-top: 8px;
+            line-height: 1.4;
+        }
+
+        .kyc-status-warning {
+            background: #fff7ed;
+            border: 1px solid #ffedd5;
+            padding: 12px;
+            border-radius: 8px;
+            color: #9a3412;
+            font-size: 0.8rem;
+            margin-top: 20px;
+        }
+
+        .kyc-modal-footer {
+            padding: 20px;
+            border-top: 1px solid #f1f5f9;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .vsl-btn.submit {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 8px 25px;
+            font-weight: 600;
+        }
+
+        .vsl-btn.cancel {
+            background: #ef4444;
+            color: white;
+            border: none;
+            padding: 8px 25px;
+            font-weight: 600;
+        }
+
+        /* Edit btn hover */
+        .btn-edit-wrap {
+            position: relative;
+            display: inline-block;
+        }
+
+        .btn-edit-wrap:hover::after {
+            content: 'Edit';
+            position: absolute;
+            top: -30px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: white;
+            padding: 4px 8px;
+            font-size: 0.7rem;
+            border-radius: 4px;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* Custom Success Modal Styling */
+        .success-modal-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.75);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            backdrop-filter: blur(6px);
+            transition: all 0.3s ease;
+        }
+
+        .success-modal-card {
+            background: white;
+            width: 380px;
+            padding: 35px 25px;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            transform: scale(0.9);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .success-modal-overlay.active {
+            display: flex;
+        }
+
+        .success-modal-overlay.active .success-modal-card {
+            transform: scale(1);
+            opacity: 1;
+        }
+
+        .success-modal-icon-box {
+            width: 72px;
+            height: 72px;
+            background: #ecfdf5;
+            color: #10b981;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+
+        .success-modal-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 0 0 10px 0;
+        }
+
+        .success-modal-message {
+            font-size: 0.95rem;
+            color: #64748b;
+            line-height: 1.5;
+            margin: 0 0 25px 0;
+        }
+
+        .success-modal-btn {
+            width: 100%;
+            padding: 12px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .success-modal-btn:hover {
+            background: #2563eb;
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="loader" id="vslLoader"><i data-lucide="loader-2" class="animate-spin" size="48"></i></div>
+
+    <aside>
+        <div class="logo-area">
+            <div class="logo-box"></div> Avendus Capital
+        </div>
+        <nav class="nav-menu">
+            <div class="menu-item active" id="btn_home" onclick="switchPage('home')"><i data-lucide="home"
+                    size="18"></i> front page</div>
+            <div class="menu-item" id="btn_kyc" onclick="switchPage('kyc')"><i data-lucide="user-check" size="18"></i>
+                Real-name authentication</div>
+            <div class="menu-item" id="btn_users" onclick="switchPage('users')"><i data-lucide="users" size="18"></i>
+                Customer Management</div>
+            <div class="menu-item" onclick="toggleSub('financial')"><i data-lucide="wallet" size="18"></i> Financial
+                Management <i data-lucide="chevron-down" size="14" style="margin-left:auto;"></i></div>
+            <div class="sub-menu" id="financialSub">
+                <div class="sub-item" id="btn_deposits" onclick="switchPage('deposits')">Deposit records</div>
+                <div class="sub-item" id="btn_withdrawals" onclick="switchPage('withdrawals')">Withdrawal records</div>
+                <div class="sub-item" id="btn_loans" onclick="switchPage('loans')">Loan records</div>
+                <div class="sub-item" id="btn_rewards" onclick="switchPage('rewards')">Bonus Points Record</div>
+            </div>
+            <div class="menu-item" onclick="toggleSub('transaction')"><i data-lucide="repeat" size="18"></i> Transaction
+                records <i data-lucide="chevron-down" size="14" style="margin-left:auto;"></i></div>
+            <div class="sub-menu" id="transactionSub">
+                <div class="sub-item" id="btn_stock" onclick="switchPage('stock')">Stock trading</div>
+                <div class="sub-item" id="btn_bulk" onclick="switchPage('bulk')">Large transactions</div>
+                <div class="sub-item" id="btn_ipo" onclick="switchPage('ipo')">IPO</div>
+                <div class="sub-item" id="btn_fund" onclick="switchPage('fund')">Fund trading</div>
+                <div class="sub-item" id="btn_quant" onclick="switchPage('quant')">Quantitative Trading</div>
+            </div>
+            <div
+                style="padding: 15px 15px 5px 15px; font-size: 0.65rem; color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;">
+                Communication</div>
+            <div class="menu-item" id="btn_messages" onclick="switchPage('messages')"><i data-lucide="send"
+                    size="18"></i> Notification Center</div>
+            <div class="menu-item" id="btn_livechat" onclick="switchPage('livechat')"><i data-lucide="message-circle"
+                    size="18"></i> Customer Service Support <span id="chat_badge"
+                    style="display:none; background:red; color:white; font-size:10px; padding:2px 6px; border-radius:10px; margin-left:auto;">0</span>
+            </div>
+        </nav>
+    </aside>
+
+    <main>
+        <header>
+            <div style="font-size: 0.85rem; display: flex; align-items: center; gap: 15px;">
+                Welcome, <b>admin</b>
+                <button onclick="adminLogout()"
+                    style="background:none; border:none; color:#ef4444; font-weight:600; cursor:pointer;"><i
+                        data-lucide="power" size="14"></i> Logout</button>
+            </div>
+        </header>
+
+        <div class="page-tabs" id="tabContainer"></div>
+
+        <div class="container">
+            <!-- DYNAMIC PAGES -->
+            <div id="pageHome" class="vsl-page">
+                <div class="section-card">
+                    <h3>Dashboard Summary</h3>
+                    <div id="stat_summary" style="display:flex; gap:20px;"></div>
+                </div>
+            </div>
+
+            <div id="pageMessages" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h2 style="font-size:1.1rem; margin:0;">Notification Center</h2>
+                        <div style="display:flex; gap:10px;">
+                            <button class="vsl-btn orange" onclick="init()"><i data-lucide="refresh-cw" size="14"></i>
+                                refresh</button>
+                            <button class="vsl-btn green" onclick="openMsgModal()">Create a new notification</button>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:20px;">
+                        <div style="display:flex; gap:10px;">
+                            <button class="vsl-btn active" id="btn_sent" onclick="showMsgSection('sent')">Sent</button>
+                            <button class="vsl-btn" id="btn_stencil"
+                                onclick="showMsgSection('stencil')">Stencil</button>
+                        </div>
+                        <div class="filter-group" id="stencilFilters" style="display:none;">
+                            <button class="filter-btn active">all</button>
+                            <button class="filter-btn">SPO</button>
+                            <button class="filter-btn">CONDITION</button>
+                        </div>
+                    </div>
+
+                    <div id="msgMain" class="msg-layout">
+                        <div class="msg-list-pane">
+                            <div class="msg-search-box">
+                                <input type="text" id="msgSearch" class="msg-search-input" placeholder="Search title..."
+                                    oninput="filterMessages()">
+                            </div>
+                            <div class="msg-items-scroll" id="sentMsgs"></div>
+                        </div>
+                        <div class="msg-content-pane" id="msgContentArea">
+                            <p>Please select one notification to view.</p>
+                        </div>
+                    </div>
+
+                    <div id="msgStencilView" style="display:none;">
+                        <div class="stencil-grid" id="stencilGrid"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Live Chat -->
+            <div id="pageLivechat" class="vsl-page" style="display:none;">
+                <div class="section-card" style="display: flex; flex-direction: column;">
+                    <h2 style="font-size:1.1rem; margin:0 0 15px 0;">Live Chat Support</h2>
+                    <div class="msg-layout" style="height: calc(100vh - 250px);">
+                        <div class="msg-list-pane" style="width: 300px;">
+                            <div class="msg-search-box">
+                                <input type="text" id="chatSearch" class="msg-search-input"
+                                    placeholder="Search user mobile..." oninput="filterChatUsers()">
+                            </div>
+                            <div class="msg-items-scroll" id="chatUserList">
+                                <!-- User list for chat -->
+                            </div>
+                        </div>
+                        <div class="msg-content-pane"
+                            style="flex: 1; padding: 0; display: flex; flex-direction: column;">
+                            <div id="chatHistory"
+                                style="flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 15px; background: #f8fafc;">
+                                <div
+                                    style="height: 100%; display: flex; align-items: center; justify-content: center; color: #94a3b8;">
+                                    Select a user to start chatting
+                                </div>
+                            </div>
+                            <div id="chatInputArea"
+                                style="padding: 20px; border-top: 1px solid var(--border-color); display: none; gap: 10px;">
+                                <input type="text" id="adminChatInput" class="msg-search-input"
+                                    placeholder="Type a message..."
+                                    onkeypress="if(event.key === 'Enter') sendAdminChat()">
+                                <button class="vsl-btn orange" onclick="sendAdminChat()">Send</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- STUBS FOR OTHERS -->
+            <div id="pageKyc" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <div class="kyc-verify-header">
+                        <div class="kyc-verify-filters">
+                            <div class="kyc-filter-item">
+                                <label>Username</label>
+                                <input type="text" id="kf_user" class="kyc-filter-input"
+                                    placeholder="Please enter your username" oninput="filterKyc()">
+                            </div>
+                            <div class="kyc-filter-item">
+                                <label>Customer's Full Name</label>
+                                <input type="text" id="kf_name" class="kyc-filter-input"
+                                    placeholder="Please enter the customer's full name" oninput="filterKyc()">
+                            </div>
+                            <div class="kyc-filter-item">
+                                <label>Customer-Verified Mobile Phone Number</label>
+                                <input type="text" id="kf_phone" class="kyc-filter-input"
+                                    placeholder="Please enter your verified mobile phone number" oninput="filterKyc()">
+                            </div>
+                            <div class="kyc-filter-item">
+                                <label>Salesperson</label>
+                                <input type="text" id="kf_sales" class="kyc-filter-input"
+                                    placeholder="Please enter the business name" oninput="filterKyc()">
+                            </div>
+                        </div>
+                        <button class="kyc-refresh-btn" onclick="init()"><i data-lucide="refresh-cw" size="16"></i>
+                            refresh</button>
+                    </div>
+
+                    <div class="kyc-status-bar">
+                        <div class="kyc-status-pill active" onclick="setStatusFilter('all', this)">all</div>
+                        <div class="kyc-status-pill" onclick="setStatusFilter('Approved', this)">Approved</div>
+                        <div class="kyc-status-pill" onclick="setStatusFilter('Rejected', this)">reject</div>
+                        <div class="kyc-status-pill" onclick="setStatusFilter('Pending', this)">Pending review</div>
+                        <div class="kyc-status-pill" onclick="setStatusFilter('NotSubmitted', this)">Not submitted</div>
+                    </div>
+
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left; border-top: 1px solid #e2e8f0;">
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        Customer (username)</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        state</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        Verify mobile phone number</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        Full name</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        ID number</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        ID photo (front view)</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        ID photo (back)</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        salesperson</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        Application time</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        information</th>
+                                    <th
+                                        style="padding:12px; font-size:0.7rem; color:#1e293b; border-bottom:1px solid #e2e8f0;">
+                                        operate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="kycList"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div id="pageUsers" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Customer Management</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Client</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Name</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Balance</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        VIP</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Credit</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Operate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userList"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div id="pageDeposits" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Deposit records</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        ID</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Amount</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Status</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Time</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Operate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="depList"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div id="pageWithdrawals" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Withdrawal records</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        ID</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Amount</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Bank</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Status</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Time</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Operate</th>
+                                </tr>
+                            </thead>
+                            <tbody id="withList"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Loans -->
+            <div id="pageLoans" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Loan records</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        ID</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Loan Amount</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Status</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="loanList">
+                                <tr>
+                                    <td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No records
+                                        found.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Rewards -->
+            <div id="pageRewards" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Bonus Points Record</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Points</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Type</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="rewardList">
+                                <tr>
+                                    <td colspan="4" style="text-align:center; padding:20px; color:#94a3b8;">No records
+                                        found.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Stock -->
+            <div id="pageStock" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Stock trading</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Symbol</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Side</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Qty</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Price</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stockList">
+                                <tr>
+                                    <td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;">No records
+                                        found.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Bulk -->
+            <div id="pageBulk" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Large transactions</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Asset</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Volume</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="bulkList">
+                                <tr>
+                                    <td colspan="4" style="text-align:center; padding:20px; color:#94a3b8;">No records
+                                        found.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: IPO -->
+            <div id="pageIpo" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>IPO</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        IPO Name</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Status</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Date</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ipoList">
+                                <tr>
+                                    <td colspan="4" style="text-align:center; padding:20px; color:#94a3b8;">No records
+                                        found.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Fund -->
+            <div id="pageFund" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Fund trading</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Fund Name</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Amount</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="fundList">
+                                <tr>
+                                    <td colspan="4" style="text-align:center; padding:20px; color:#94a3b8;">No records
+                                        found.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Page: Quant -->
+            <div id="pageQuant" class="vsl-page" style="display:none;">
+                <div class="section-card">
+                    <h3>Quantitative Trading</h3>
+                    <div class="vsl-table-wrap">
+                        <table class="vsl-table" style="width:100%; border-collapse:collapse;">
+                            <thead>
+                                <tr style="background:#f8fafc; text-align:left;">
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Strategy</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Profit</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        User</th>
+                                    <th
+                                        style="padding:12px; font-size:0.75rem; color:#64748b; border-bottom:2px solid #e2e8f0;">
+                                        Time</th>
+                                </tr>
+                            </thead>
+                            <tbody id="quantList">
+                                <tr>
+                                    <td colspan="4" style="text-align:center; padding:20px; color:#94a3b8;">No records
+                                        found.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- EDIT KYC MODAL -->
+    <div id="editKycModal" class="kyc-modal-overlay">
+        <div class="kyc-modal-card">
+            <div class="kyc-modal-header">
+                <span>Edit KYC</span>
+                <i data-lucide="x" style="cursor:pointer" onclick="closeEditKyc()"></i>
+            </div>
+            <div class="kyc-modal-body">
+                <div class="kyc-grid">
+                    <div class="kyc-form-group">
+                        <label>Username <span style="color:#ef4444">*</span></label>
+                        <input type="text" id="ek_name" class="kyc-input" placeholder="Enter username">
+                    </div>
+                    <div class="kyc-form-group">
+                        <label>Full Name <span style="color:#ef4444">*</span></label>
+                        <input type="text" id="ek_fullname" class="kyc-input" placeholder="Enter full name">
+                    </div>
+                    <div class="kyc-form-group">
+                        <label>ID Card <span style="color:#ef4444">*</span></label>
+                        <input type="text" id="ek_idnum" class="kyc-input" placeholder="Enter ID number">
+                    </div>
+                    <div class="kyc-form-group">
+                        <label>phone number <span style="color:#ef4444">*</span></label>
+                        <input type="text" id="ek_phone" class="kyc-input" placeholder="Enter phone">
+                    </div>
+                    <div class="kyc-form-group">
+                        <label>VIP Level <span style="color:#ef4444">*</span></label>
+                        <input type="number" id="ek_vip" class="kyc-input" placeholder="Enter VIP Level">
+                    </div>
+                    <div class="kyc-form-group">
+                        <label>Credit Score <span style="color:#ef4444">*</span></label>
+                        <input type="number" id="ek_credit" class="kyc-input" placeholder="Enter Credit Score">
+                    </div>
+                </div>
+
+                <div class="kyc-image-grid">
+                    <div>
+                        <label
+                            style="display:block; margin-bottom:8px; font-weight:500; font-size:0.8rem; color:#64748b;">Front
+                            of the document</label>
+                        <div class="kyc-img-box" onclick="document.getElementById('ek_front_file').click()">
+                            <i data-lucide="plus" class="kyc-plus-icon" id="ek_front_plus"></i>
+                            <img id="ek_front_img" src="" alt="Front Image">
+                            <i data-lucide="x" class="kyc-img-remove"
+                                onclick="event.stopPropagation(); removeKycImg('front')"></i>
+                            <input type="file" id="ek_front_file" hidden accept="image/*"
+                                onchange="uploadKycFile(this, 'front')">
+                        </div>
+                        <p class="kyc-img-hint">Supported formats: JPG, PNG, WEBP, GIF, BMP, SVG, ICO, HEIC. Maximum of
+                            1 image.</p>
+                    </div>
+                    <div>
+                        <label
+                            style="display:block; margin-bottom:8px; font-weight:500; font-size:0.8rem; color:#64748b;">Back
+                            of the document</label>
+                        <div class="kyc-img-box" onclick="document.getElementById('ek_back_file').click()">
+                            <i data-lucide="plus" class="kyc-plus-icon" id="ek_back_plus"></i>
+                            <img id="ek_back_img" src="" alt="Back Image">
+                            <i data-lucide="x" class="kyc-img-remove"
+                                onclick="event.stopPropagation(); removeKycImg('back')"></i>
+                            <input type="file" id="ek_back_file" hidden accept="image/*"
+                                onchange="uploadKycFile(this, 'back')">
+                        </div>
+                        <p class="kyc-img-hint">Supported formats: JPG, PNG, WEBP, GIF, BMP, SVG, ICO, HEIC. Maximum of
+                            1 image.</p>
+                    </div>
+                </div>
+
+                <div class="kyc-form-group" style="margin-top:20px;">
+                    <label>Authentication status <span style="color:#ef4444">*</span></label>
+                    <select id="ek_status" class="kyc-input">
+                        <option value="Pending">待审核 (Pending)</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                    </select>
+                </div>
+
+                <div class="kyc-form-group">
+                    <label>Notes (visible to customer)</label>
+                    <textarea id="ek_notes" class="kyc-input" rows="3" placeholder="Please enter a note."></textarea>
+                </div>
+
+                <div class="kyc-status-warning">
+                    Editing customer's real-name information: Authentication status cannot be modified.
+                </div>
+            </div>
+            <div class="kyc-modal-footer">
+                <button class="vsl-btn submit" id="ek_save_btn" onclick="saveEditKyc()">submit</button>
+                <button class="vsl-btn cancel" onclick="closeEditKyc()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VIP & Credit Edit Modal -->
+    <div id="vipCreditModal" class="kyc-modal-overlay">
+        <div class="kyc-modal-card" style="max-width: 400px; padding: 20px;">
+            <div class="kyc-modal-header" style="margin-bottom: 20px;">
+                <span style="font-weight: 700;">Update VIP & Credit</span>
+                <i data-lucide="x" style="cursor:pointer" onclick="closeVipCreditModal()"></i>
+            </div>
+            <div class="kyc-modal-body" style="display: flex; flex-direction: column; gap: 15px;">
+                <div class="kyc-form-group">
+                    <label style="display: block; font-size: 0.8rem; color: #64748b; margin-bottom: 5px;">VIP
+                        Level</label>
+                    <input type="number" id="vc_vip" class="kyc-input" min="0" placeholder="0"
+                        style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                </div>
+                <div class="kyc-form-group">
+                    <label style="display: block; font-size: 0.8rem; color: #64748b; margin-bottom: 5px;">Credit Score
+                        (0-100)</label>
+                    <input type="number" id="vc_credit" class="kyc-input" min="0" max="100" placeholder="100"
+                        style="width: 100%; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px;">
+                </div>
+            </div>
+            <div class="kyc-modal-footer"
+                style="margin-top: 25px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button class="vsl-btn submit" onclick="saveVipCredit()"
+                    style="background: #1e56a0; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">Update</button>
+                <button class="vsl-btn cancel" onclick="closeVipCreditModal()"
+                    style="background: #f1f5f9; color: #64748b; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer;">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- NEW MESSAGE MODAL -->
+    <div id="msgModal" class="loader" style="background:rgba(0,0,0,0.5); z-index:2000;">
+        <div class="section-card" style="width:550px; min-height:auto;">
+            <h3>Create New Message</h3>
+            <select id="msgTarget"
+                style="width:100%; padding:12px; margin-bottom:15px; border-radius:8px; border:1px solid #ddd;"></select>
+            <input id="msgTitle" placeholder="Enter message title"
+                style="width:100%; padding:12px; margin-bottom:15px; border-radius:8px; border:1px solid #ddd;">
+            <textarea id="msgBody" rows="8" placeholder="Enter message content..."
+                style="width:100%; padding:12px; border-radius:8px; border:1px solid #ddd;"></textarea>
+            <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                <button class="vsl-btn"
+                    onclick="document.getElementById('msgModal').style.display='none'">Cancel</button>
+                <button class="vsl-btn green" onclick="sendMsg()">Confirm Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const adminSession = sessionStorage.getItem('admin_auth');
+        if (!adminSession) {
+            window.location.href = 'admin_login.html';
+        } else {
+            try {
+                const adminData = JSON.parse(adminSession);
+                if (!adminData || !adminData.id) window.location.href = 'admin_login.html';
+            } catch (e) {
+                window.location.href = 'admin_login.html';
+            }
+        }
+        lucide.createIcons();
+
+        const PAGE_NAMES = {
+            'home': 'front page', 'kyc': 'Real-name authentication', 'users': 'Customer Management',
+            'deposits': 'Deposit records', 'withdrawals': 'Withdrawal records', 'loans': 'Loan records',
+            'rewards': 'Bonus Points Record', 'stock': 'Stock trading', 'bulk': 'Large transactions',
+            'ipo': 'IPO', 'fund': 'Fund trading', 'quant': 'Quantitative Trading', 'messages': 'Internal messages',
+            'livechat': 'Live Chat Support'
+        };
+        let openTabs = ['home'];
+        let allUsers = [];
+        let allMsgs = [];
+        let allSubmissions = [];
+        let kycStatusFilter = 'all';
+
+        let targetVipUser = null;
+        function openVipCreditEdit(uid, vip, credit) {
+            targetVipUser = uid;
+            document.getElementById('vc_vip').value = vip;
+            document.getElementById('vc_credit').value = credit;
+            document.getElementById('vipCreditModal').style.display = 'flex';
+            setTimeout(() => lucide.createIcons(), 100);
+        }
+
+        function closeVipCreditModal() {
+            document.getElementById('vipCreditModal').style.display = 'none';
+        }
+
+        async function saveVipCredit() {
+            const vipValue = parseInt(document.getElementById('vc_vip').value);
+            const creditValue = parseInt(document.getElementById('vc_credit').value);
+            const userId = targetVipUser;
+
+            if (isNaN(vipValue) || vipValue < 0) {
+                alert("VIP Level cannot be negative.");
+                return;
+            }
+            if (isNaN(creditValue) || creditValue < 0 || creditValue > 100) {
+                alert("Credit Score must be between 0 and 100.");
+                return;
+            }
+
+            if (!userId) {
+                alert("No user selected.");
+                return;
+            }
+
+            console.log("Updating VIP/Credit", userId, vipValue, creditValue);
+            showLoader(true);
+
+            const { data, error } = await DB.getClient()
+                .from('users')
+                .update({
+                    vip: vipValue,
+                    credit_score: creditValue
+                })
+                .eq('id', userId)
+                .select();
+
+            console.log("Update result:", data, error);
+
+            if (error) {
+                alert("Error updating: " + error.message);
+            } else {
+                alert("Updated successfully!");
+                closeVipCreditModal();
+                init(); // Re-fetch and re-render without page reload
+            }
+            showLoader(false);
+        }
+
+        async function init() {
+            showLoader(true);
+            const client = DB.getClient();
+            if (!client) return;
+
+            // Fetch core data first
+            const [{ data: u }, { data: d }, { data: w }, { data: m }, { data: ks }] = await Promise.all([
+                client.from('users').select('*').order('created_at', { ascending: false }),
+                client.from('deposits').select('*, users(mobile,username)').order('created_at', { ascending: false }),
+                client.from('withdrawals').select('*, users(mobile,username)').order('created_at', { ascending: false }),
+                client.from('messages').select('*, users(mobile)').eq('sender', 'Admin').order('created_at', { ascending: false }),
+                client.from('kyc_submissions').select('*').order('submitted_at', { ascending: false })
+            ]);
+
+            // Attempt to fetch additional modules (Safe fetch to handle missing tables)
+            const fetchSafe = async (table) => {
+                try {
+                    const { data, error } = await client.from(table).select('*, users(mobile,username)').order('created_at', { ascending: false });
+                    return error ? null : data;
+                } catch (e) { return null; }
+            };
+
+            const [loans, rewards, stocks, ipos, funds, quants] = await Promise.all([
+                fetchSafe('loans'), fetchSafe('rewards'), fetchSafe('stock_trades'),
+                fetchSafe('ipo_subscriptions'), fetchSafe('fund_trades'), fetchSafe('quant_trades')
+            ]);
+
+            // Render Dashboard Stats
+            if (u) {
+                allUsers = u;
+                document.getElementById('stat_summary').innerHTML = `
+                    <div class="section-card" style="background:#f0f9ff; margin:0; flex:1;">
+                        <div style="font-size:0.75rem;">TOTAL USERS</div>
+                        <h2 style="margin:5px 0 0 0;">${u.length}</h2>
+                    </div>
+                    <div class="section-card" style="background:#f0fdf4; margin:0; flex:1;">
+                        <div style="font-size:0.75rem;">PENDING KYC</div>
+                        <h2 style="margin:5px 0 0 0;">${u.filter(x => x.kyc === 'Pending').length}</h2>
+                    </div>
+                    <div class="section-card" style="background:#fff7ed; margin:0; flex:1;">
+                        <div style="font-size:0.75rem;">PENDING DEPOSITS</div>
+                        <h2 style="margin:5px 0 0 0;">${d ? d.filter(x => x.status === 'Pending').length : 0}</h2>
+                    </div>
+                `;
+
+                // Render User List
+                document.getElementById('userList').innerHTML = u.map(x => `
+                    <tr>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${x.mobile}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${x.username}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">₹${parseFloat(x.balance).toFixed(2)}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                            ${x.vip}
+                            <i data-lucide="edit-3" size="14" style="cursor:pointer; margin-left:5px; color:#3b82f6;" onclick="openVipCreditEdit('${x.id}', ${x.vip}, ${x.credit_score})"></i>
+                        </td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                            ${x.credit_score}
+                            <i data-lucide="edit-3" size="14" style="cursor:pointer; margin-left:5px; color:#3b82f6;" onclick="openVipCreditEdit('${x.id}', ${x.vip}, ${x.credit_score})"></i>
+                        </td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                            <div class="btn-edit-wrap">
+                                <i data-lucide="edit" size="16" style="cursor:pointer" onclick="openKycEdit('${x.id}')"></i>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+
+                document.getElementById('withList').innerHTML = w.map(x => `
+                    <tr>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">#${x.id}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${x.users?.mobile || 'Unknown'}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">₹${parseFloat(x.amount).toFixed(2)}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${x.bank_name}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;"><span style="padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.7rem; background:#fee2e2; color:#991b1b;">${x.status}</span></td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${new Date(x.created_at).toLocaleString()}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                            <div class="btn-edit-wrap">
+                                <i data-lucide="edit" size="16" style="cursor:pointer"></i>
+                            </div>
+                        </td>
+                    </tr>
+                `).join('');
+
+                if (d && document.getElementById('depList')) {
+                    document.getElementById('depList').innerHTML = d.map(x => `
+                        <tr>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;">#${x.id}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${x.users?.mobile || 'Unknown'}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;">₹${parseFloat(x.amount).toFixed(2)}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;"><span style="padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.7rem; background:#fef3c7; color:#92400e;">${x.status}</span></td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${new Date(x.created_at).toLocaleString()}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                                <div class="btn-edit-wrap">
+                                    <i data-lucide="edit" size="16" style="cursor:pointer"></i>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+                }
+            }
+
+            if (ks) allSubmissions = ks;
+            renderKycList();
+
+            // Sync Advanced Tables (Handles placeholders if data is null)
+            const syncTable = (id, data, cols) => {
+                const tbody = document.getElementById(id);
+                if (!tbody) return;
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="${cols}" style="text-align:center; padding:20px; color:#94a3b8;">No records found.</td></tr>`;
+                    return;
+                }
+            };
+
+            syncTable('loanList', loans, 5);
+            syncTable('rewardList', rewards, 4);
+            syncTable('stockList', stocks, 5);
+            syncTable('bulkList', null, 4);
+            syncTable('ipoList', ipos, 4);
+            syncTable('fundList', funds, 4);
+            syncTable('quantList', quants, 4);
+
+            if (m) {
+                allMsgs = m;
+                renderMessages(m);
+            }
+            lucide.createIcons();
+            showLoader(false);
+        }
+
+
+        function setStatusFilter(s, el) {
+            document.querySelectorAll('.kyc-status-pill').forEach(x => x.classList.remove('active'));
+            el.classList.add('active');
+            kycStatusFilter = s;
+            renderKycList();
+        }
+
+        function filterKyc() {
+            renderKycList();
+        }
+
+        function renderKycList() {
+            const list = document.getElementById('kycList');
+            if (!list) return;
+
+            const fu = document.getElementById('kf_user')?.value.toLowerCase();
+            const fn = document.getElementById('kf_name')?.value.toLowerCase();
+            const fp = document.getElementById('kf_phone')?.value.toLowerCase();
+            const fs = document.getElementById('kf_sales')?.value.toLowerCase();
+
+            let data = allUsers.filter(u => {
+                const sub = allSubmissions.find(s => s.user_id === u.id);
+                // Status Filter
+                if (kycStatusFilter !== 'all') {
+                    if (kycStatusFilter === 'NotSubmitted' && sub) return false;
+                    if (kycStatusFilter !== 'NotSubmitted' && u.kyc !== kycStatusFilter) return false;
+                }
+                // String Search Filters
+                if (fu && !(u.username || '').toLowerCase().includes(fu)) return false;
+                if (fn && !(u.full_name || '').toLowerCase().includes(fn)) return false;
+                if (fp && !u.mobile.toLowerCase().includes(fp)) return false;
+                // salesperson check stubbed as salesperson field not in current user schema
+                return true;
+            });
+
+            list.innerHTML = data.map(x => {
+                const sub = allSubmissions.find(s => s.user_id === x.id);
+                const statusClass = x.kyc === 'Approved' ? 'approved' : (x.kyc === 'Rejected' ? 'reject' : 'pending');
+                const statusText = x.kyc === 'Pending' ? '待审核' : x.kyc;
+                return `
+                        <tr>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${x.username || '-'}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;"><span class="kyc-badge ${statusClass}">${statusText}</span></td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${x.mobile}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${x.full_name || '-'}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${x.id_number || '-'}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                                ${sub?.id_front_url ? `<img src="${sub.id_front_url}" class="kyc-table-img" onclick="openKycEdit('${x.id}')">` : `<div class="kyc-table-img" style="display:flex;align-items:center;justify-content:center;"><i data-lucide="image" size="14"></i></div>`}
+                            </td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                                ${sub?.id_back_url ? `<img src="${sub.id_back_url}" class="kyc-table-img" onclick="openKycEdit('${x.id}')">` : `<div class="kyc-table-img" style="display:flex;align-items:center;justify-content:center;"><i data-lucide="image" size="14"></i></div>`}
+                            </td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">-</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${new Date(x.created_at).toLocaleString()}</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">-</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                                <div class="btn-edit-wrap">
+                                    <i data-lucide="edit" size="16" style="cursor:pointer" onclick="openKycEdit('${x.id}')"></i>
+                                </div>
+                            </td>
+                        </tr>
+                    `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+
+        function renderMessages(msgs) {
+            const list = document.getElementById('sentMsgs');
+            if (!msgs.length) { list.innerHTML = '<p style="text-align:center; padding:40px; color:#94a3b8;">No records found.</p>'; return; }
+
+            // Filter: ONLY internal messages (JSON notifications)
+            const filtered = msgs.filter(x => {
+                try {
+                    const p = JSON.parse(x.message);
+                    return p.title !== undefined; // It's a structured notification
+                } catch (e) { return false; }
+            });
+
+            if (!filtered.length) { list.innerHTML = '<p style="text-align:center; padding:40px; color:#94a3b8;">No internal messages sent yet.</p>'; return; }
+
+            list.innerHTML = filtered.map(x => {
+                let p = { title: "No Subject", message: "" };
+                try {
+                    let parsed = JSON.parse(x.message);
+                    p = { ...p, ...parsed };
+
+                    let innerStr = p.message || p.body || p.content || "";
+                    if (typeof innerStr === "string" && innerStr.trim().startsWith("{")) {
+                        try {
+                            let innerParsed = JSON.parse(innerStr);
+                            p = { ...p, ...innerParsed };
+                        } catch (e) { }
+                    }
+                } catch (e) {
+                    p.message = x.message;
+                }
+                const bodyText = p.message || p.body || p.content || "";
+                return `
+                    <div class="msg-row" onclick='viewM(${JSON.stringify(x).replace(/'/g, "&apos;")}, this)'>
+                        <div class="msg-row-top">
+                            <span class="msg-row-title">${p.title || "No Subject"}</span>
+                            <span class="msg-row-date">${new Date(x.created_at).toLocaleString()}</span>
+                        </div>
+                        <div class="msg-row-preview">${bodyText}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function viewM(x, el) {
+            document.querySelectorAll('.msg-row').forEach(r => r.classList.remove('active'));
+            el.classList.add('active');
+            let p = { title: "No Subject", message: "" };
+            try {
+                let parsed = JSON.parse(x.message);
+                p = { ...p, ...parsed };
+
+                let innerStr = p.message || p.body || p.content || "";
+                if (typeof innerStr === "string" && innerStr.trim().startsWith("{")) {
+                    try {
+                        let innerParsed = JSON.parse(innerStr);
+                        p = { ...p, ...innerParsed };
+                    } catch (e) { }
+                }
+            } catch (e) {
+                p.message = x.message;
+            }
+            document.getElementById('msgContentArea').innerHTML = `
+                <div class="msg-view-header">
+                    <h2 style="margin:0 0 10px 0; color:#1e293b;">${p.title || "No Subject"}</h2>
+                    <div style="font-size:0.8rem; color:#94a3b8;">To: ${x.users?.mobile || 'All Users'} | ${new Date(x.created_at).toLocaleString()}</div>
+                </div>
+                <div style="text-align:left; line-height:1.6; color:#475569; width:100%; white-space:pre-wrap;">${p.message || p.body || p.content || ""}</div>
+            `;
+        }
+
+        const STENCILS = [
+            { id: 'spo_new', title: 'Capital Increase / Dividend Announcement', tag: 'spo:new', icon: 'megaphone', body: 'Congratulations! You have been awarded new shares as part of the second public offering.\nShare Name: {{name}}\nCapital Increase Type: Rights Issue\nExpected Yield: {{display_rate}}\nPlease check your account balance and the deadline for making the offer. Your new shares will be added to your portfolio automatically.' },
+            { id: 'ipo_win', title: 'Congratulations on Your IPO Allocation!', tag: 'ipo:win', icon: 'party-popper', body: 'Congratulations! You have successfully been allocated shares in the IPO of {{company_name}}.\nAs a valued investor, we are pleased to notify you that your subscription was successful.' },
+            { id: 'ipo_ann', title: 'IPO Announcement - {{name}}', tag: 'girlfriend:new', icon: 'info', body: 'We are pleased to inform you that the IPO for {{name}} is now open for subscription. Please find the key dates below:\nSubscription Start: {{start_date}}\nListing Date: {{listing_date}}' },
+            { id: 'ipo_list', title: 'IPO Listed now!', tag: 'ipolist', icon: 'trending-up', body: 'IPO listed successfully! The shares are now available for trading in the secondary market.' },
+            { id: 'ipo_pay', title: 'Order payment successful!', tag: 'ipo:pay', icon: 'check-circle', body: 'Your order for {{order_name}} paid successfully. Thank you for using our service.' },
+            { id: 'ipo_fail', title: 'IPO subscription failed', tag: 'ipo:fail', icon: 'alert-triangle', body: 'Unfortunately, the subscription of {{ipo_name}} failed because conditions match failed. Your funds have been returned to your balance.' }
+        ];
+
+        function showMsgSection(s) {
+            document.getElementById('btn_sent').classList.toggle('active', s === 'sent');
+            document.getElementById('btn_stencil').classList.toggle('active', s === 'stencil');
+            document.getElementById('msgMain').style.display = (s === 'sent' ? 'flex' : 'none');
+            document.getElementById('msgStencilView').style.display = (s === 'stencil' ? 'block' : 'none');
+            document.getElementById('stencilFilters').style.display = (s === 'stencil' ? 'flex' : 'none');
+            if (s === 'stencil') renderStencils();
+        }
+
+        function renderStencils() {
+            const grid = document.getElementById('stencilGrid');
+            grid.innerHTML = STENCILS.map(s => `
+                <div class="stencil-card" onclick="useStencil('${s.id}')">
+                    <h4><i data-lucide="${s.icon || 'file-text'}" size="18"></i> ${s.title}</h4>
+                    <span class="stencil-tag">${s.tag}</span>
+                    <div class="stencil-preview">${s.body}</div>
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function useStencil(id) {
+            const s = STENCILS.find(x => x.id === id);
+            if (!s) return;
+            openMsgModal();
+            document.getElementById('msgTitle').value = s.title;
+            document.getElementById('msgBody').value = s.body;
+        }
+
+        function filterMessages() {
+            const q = document.getElementById('msgSearch').value.toLowerCase();
+            const filtered = allMsgs.filter(m => {
+                try { let p = JSON.parse(m.message); return p.title.toLowerCase().includes(q); } catch (e) { return false; }
+            });
+            renderMessages(filtered);
+        }
+
+        function switchPage(p) {
+            if (!openTabs.includes(p)) openTabs.push(p);
+            document.querySelectorAll('.vsl-page').forEach(x => x.style.display = 'none');
+            document.querySelectorAll('.menu-item, .sub-item').forEach(x => x.classList.remove('active'));
+            const pg = document.getElementById('page' + p.charAt(0).toUpperCase() + p.slice(1));
+            if (pg) pg.style.display = 'block';
+            const btn = document.getElementById('btn_' + p); if (btn) btn.classList.add('active');
+            renderTabs();
+            lucide.createIcons();
+        }
+
+        function renderTabs() {
+            const container = document.getElementById('tabContainer');
+            const active = Array.from(document.querySelectorAll('.vsl-page')).find(x => x.style.display !== 'none')?.id.replace('page', '').toLowerCase() || 'home';
+            container.innerHTML = openTabs.map(t => `
+                <div class="tab-tag ${t === active ? 'active' : ''}" onclick="switchPage('${t}')">
+                    ${PAGE_NAMES[t] || t} ${t !== 'home' ? `<i data-lucide="x" size="12" onclick="event.stopPropagation(); closeTab('${t}')"></i>` : ''}
+                </div>
+            `).join('');
+            lucide.createIcons();
+        }
+
+        function closeTab(p) {
+            openTabs = openTabs.filter(t => t !== p);
+            const active = Array.from(document.querySelectorAll('.vsl-page')).find(x => x.style.display !== 'none')?.id.replace('page', '').toLowerCase();
+            if (active === p) switchPage(openTabs[openTabs.length - 1]); else renderTabs();
+        }
+
+        function openMsgModal() {
+            const s = document.getElementById('msgTarget');
+            s.innerHTML = '<option value="all">All Users</option>' + allUsers.map(u => `<option value="${u.id}">${u.mobile}</option>`).join('');
+            document.getElementById('msgModal').style.display = 'flex';
+        }
+
+        let targetKycUser = null;
+
+        async function openKycEdit(uid) {
+            const client = DB.getClient();
+            showLoader(true);
+            const { data: user } = await client.from('users').select('*').eq('id', uid).single();
+            const { data: kyc } = await client.from('kyc_submissions').select('*').eq('user_id', uid).order('submitted_at', { ascending: false }).limit(1).single();
+
+            targetKycUser = uid;
+
+            if (user) {
+                document.getElementById('ek_name').value = user.username || '';
+                document.getElementById('ek_fullname').value = user.full_name || '';
+                document.getElementById('ek_idnum').value = user.id_number || 'No ID set';
+                document.getElementById('ek_phone').value = user.mobile || '';
+                document.getElementById('ek_status').value = user.kyc || 'Pending';
+                document.getElementById('ek_vip').value = user.vip || 0;
+                document.getElementById('ek_credit').value = user.credit_score || 100;
+                document.getElementById('ek_notes').value = '';
+            }
+
+            if (kyc) {
+                if (kyc.id_front_url) {
+                    document.getElementById('ek_front_img').src = kyc.id_front_url;
+                    document.getElementById('ek_front_img').style.display = 'block';
+                    document.getElementById('ek_front_plus').style.display = 'none';
+                } else {
+                    document.getElementById('ek_front_img').style.display = 'none';
+                    document.getElementById('ek_front_plus').style.display = 'block';
+                }
+
+                if (kyc.id_back_url) {
+                    document.getElementById('ek_back_img').src = kyc.id_back_url;
+                    document.getElementById('ek_back_img').style.display = 'block';
+                    document.getElementById('ek_back_plus').style.display = 'none';
+                } else {
+                    document.getElementById('ek_back_img').style.display = 'none';
+                    document.getElementById('ek_back_plus').style.display = 'block';
+                }
+                document.getElementById('ek_idnum').value = user.id_number || kyc.id_number || '';
+            } else {
+                document.getElementById('ek_front_img').style.display = 'none';
+                document.getElementById('ek_front_plus').style.display = 'block';
+                document.getElementById('ek_back_img').style.display = 'none';
+                document.getElementById('ek_back_plus').style.display = 'block';
+            }
+
+            document.getElementById('editKycModal').style.display = 'flex';
+            showLoader(false);
+            setTimeout(() => lucide.createIcons(), 100);
+        }
+
+        function closeEditKyc() {
+            document.getElementById('editKycModal').style.display = 'none';
+        }
+
+        async function saveEditKyc() {
+            if (!targetKycUser) return;
+            showLoader(true);
+            const client = DB.getClient();
+            const updates = {
+                username: document.getElementById('ek_name').value,
+                full_name: document.getElementById('ek_fullname').value,
+                id_number: document.getElementById('ek_idnum').value,
+                mobile: document.getElementById('ek_phone').value,
+                kyc: document.getElementById('ek_status').value,
+                vip: parseInt(document.getElementById('ek_vip').value) || 0,
+                credit_score: parseInt(document.getElementById('ek_credit').value) || 0
+            };
+
+            const kycUpdates = {
+                status: updates.kyc,
+                id_front_url: document.getElementById('ek_front_img').src,
+                id_back_url: document.getElementById('ek_back_img').src
+            };
+
+            // Clean URLs (don't save placeholder or data uris if needed, but here we assume URLs)
+            if (kycUpdates.id_front_url.includes('placeholder')) delete kycUpdates.id_front_url;
+            if (kycUpdates.id_back_url.includes('placeholder')) delete kycUpdates.id_back_url;
+
+            await client.from('users').update(updates).eq('id', targetKycUser);
+
+            // Check if kyc_submissions exists
+            const { data: existing } = await client.from('kyc_submissions').select('id').eq('user_id', targetKycUser).limit(1);
+            if (existing && existing.length > 0) {
+                await client.from('kyc_submissions').update(kycUpdates).eq('user_id', targetKycUser);
+            } else {
+                await client.from('kyc_submissions').insert({ user_id: targetKycUser, ...kycUpdates });
+            }
+
+            showSuccess("Investor KYC details updated successfully!");
+            closeEditKyc();
+            init();
+        }
+
+        function showSuccess(msg) {
+            const modal = document.getElementById('successModal');
+            const msgEl = document.getElementById('successModalMsg');
+            msgEl.textContent = msg;
+            modal.style.display = 'flex';
+            setTimeout(() => modal.classList.add('active'), 10);
+            if (window.lucide) window.lucide.createIcons();
+        }
+
+        function closeSuccessModal() {
+            const modal = document.getElementById('successModal');
+            modal.classList.remove('active');
+            setTimeout(() => {
+                modal.style.display = 'none';
+            }, 300);
+        }
+
+        async function uploadKycFile(input, side) {
+            const file = input.files[0];
+            if (!file) return;
+
+            showLoader(true);
+            const client = DB.getClient();
+            const ext = file.name.split('.').pop();
+            const filePath = `kyc/${targetKycUser}_${side}_${Date.now()}.${ext}`;
+
+            try {
+                const { data, error } = await client.storage.from('kyc').upload(filePath, file);
+                if (error) throw error;
+
+                const { data: { publicUrl } } = client.storage.from('kyc').getPublicUrl(filePath);
+                document.getElementById(`ek_${side}_img`).src = publicUrl;
+                document.getElementById(`ek_${side}_img`).style.display = 'block';
+                document.getElementById(`ek_${side}_plus`).style.display = 'none';
+                alert(`Upload Successful: ${side} side updated.`);
+            } catch (e) {
+                console.error(e);
+                alert("Upload failed. Ensure the 'kyc' bucket exists in Supabase Storage with public access.");
+            } finally {
+                showLoader(false);
+            }
+        }
+
+        function removeKycImg(side) {
+            document.getElementById(`ek_${side}_img`).src = '';
+            document.getElementById(`ek_${side}_img`).style.display = 'none';
+            document.getElementById(`ek_${side}_plus`).style.display = 'block';
+        }
+
+        // Live Chat Logic
+        let currentChatUser = null;
+        let chatUsers = [];
+
+        async function initLiveChat() {
+            const client = DB.getClient();
+            if (!client) return;
+
+            // Fetch all users who have messages
+            const { data: msgs } = await client.from('messages').select('user_id, created_at').order('created_at', { ascending: false });
+
+            // Get unique user IDs
+            const uids = [...new Set(msgs.map(m => m.user_id))];
+            chatUsers = allUsers.filter(u => uids.includes(u.id));
+
+            renderChatUserList();
+
+            // Real-time listener for new messages
+            client.channel('public:messages')
+                .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                    const newMsg = payload.new;
+                    if (newMsg.sender === 'System') return; // Ignore System notices in Admin Chat
+                    if (currentChatUser && newMsg.user_id === currentChatUser.id) {
+                        appendMessage(newMsg);
+                    }
+                    updateChatUserList(newMsg);
+                })
+                .subscribe();
+        }
+
+        function renderChatUserList() {
+            const list = document.getElementById('chatUserList');
+            if (!list) return;
+
+            list.innerHTML = chatUsers.map(u => `
+                <div class="msg-row ${currentChatUser && currentChatUser.id === u.id ? 'active' : ''}" onclick="openChat('${u.id}')">
+                    <div class="msg-row-top">
+                        <span class="msg-row-title">${u.mobile}</span>
+                    </div>
+                    <div class="msg-row-preview">${u.username || 'Investor'}</div>
+                </div>
+            `).join('');
+        }
+
+        async function openChat(uid) {
+            const user = allUsers.find(u => u.id == uid);
+            if (!user) return;
+            currentChatUser = user;
+
+            document.getElementById('chatInputArea').style.display = 'flex';
+            renderChatUserList();
+
+            const msgs = await DB.getMessages(uid);
+            renderChatHistory(msgs);
+        }
+
+        function renderChatHistory(msgs) {
+            const hist = document.getElementById('chatHistory');
+            hist.innerHTML = msgs.filter(m => {
+                // Filter out notification-style JSON messages if they are meant for internal messages only
+                try { JSON.parse(m.message); return false; } catch (e) { return true; }
+            }).map(m => `
+                <div style="align-self: ${m.sender === 'Admin' ? 'flex-end' : 'flex-start'}; 
+                            background: ${m.sender === 'Admin' ? 'var(--primary-orange)' : 'white'}; 
+                            color: ${m.sender === 'Admin' ? 'white' : '#1e293b'}; 
+                            padding: 10px 15px; border-radius: 12px; max-width: 70%; 
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: ${m.sender === 'User' ? '1px solid #e2e8f0' : 'none'};">
+                    <div style="font-size: 0.85rem;">${m.message}</div>
+                    <div style="font-size: 0.65rem; margin-top: 5px; opacity: 0.7; text-align: right;">${new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+            `).join('');
+            hist.scrollTop = hist.scrollHeight;
+        }
+
+        function appendMessage(m) {
+            // Only append if it's not a notification-style JSON
+            try { JSON.parse(m.message); return; } catch (e) { }
+
+            const hist = document.getElementById('chatHistory');
+            const div = document.createElement('div');
+            div.style.cssText = `align-self: ${m.sender === 'Admin' ? 'flex-end' : 'flex-start'}; 
+                                background: ${m.sender === 'Admin' ? 'var(--primary-orange)' : 'white'}; 
+                                color: ${m.sender === 'Admin' ? 'white' : '#1e293b'}; 
+                                padding: 10px 15px; border-radius: 12px; max-width: 70%; 
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.05); border: ${m.sender === 'User' ? '1px solid #e2e8f0' : 'none'};`;
+            div.innerHTML = `
+                <div style="font-size: 0.85rem;">${m.message}</div>
+                <div style="font-size: 0.65rem; margin-top: 5px; opacity: 0.7; text-align: right;">${new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+            `;
+            hist.appendChild(div);
+            hist.scrollTop = hist.scrollHeight;
+        }
+
+        function updateChatUserList(m) {
+            // Logic to move user to top or add if new
+            const uid = m.user_id;
+            const idx = chatUsers.findIndex(u => u.id === uid);
+            if (idx > -1) {
+                const u = chatUsers.splice(idx, 1)[0];
+                chatUsers.unshift(u);
+            } else {
+                const u = allUsers.find(u => u.id === uid);
+                if (u) chatUsers.unshift(u);
+            }
+            renderChatUserList();
+        }
+
+        async function sendAdminChat() {
+            const input = document.getElementById('adminChatInput');
+            const msg = input.value.trim();
+            if (!msg || !currentChatUser) return;
+
+            input.value = '';
+            const res = await DB.sendMessage(currentChatUser.id, msg, 'Admin');
+            if (!res.success) alert("Failed to send message.");
+        }
+
+        function filterChatUsers() {
+            const q = document.getElementById('chatSearch').value.toLowerCase();
+            const filtered = chatUsers.filter(u => u.mobile.includes(q));
+            const list = document.getElementById('chatUserList');
+            list.innerHTML = filtered.map(u => `
+                <div class="msg-row ${currentChatUser && currentChatUser.id === u.id ? 'active' : ''}" onclick="openChat('${u.id}')">
+                    <div class="msg-row-top">
+                        <span class="msg-row-title">${u.mobile}</span>
+                    </div>
+                    <div class="msg-row-preview">${u.username || 'Investor'}</div>
+                </div>
+            `).join('');
+        }
+
+        function switchPage(pageId) {
+            document.querySelectorAll('.vsl-page').forEach(p => p.style.display = 'none');
+            document.getElementById('page' + pageId.charAt(0).toUpperCase() + pageId.slice(1)).style.display = 'block';
+            document.querySelectorAll('.menu-item').forEach(m => m.classList.remove('active'));
+            document.getElementById('btn_' + pageId).classList.add('active');
+
+            if (pageId === 'livechat') {
+                initLiveChat();
+            }
+        }
+
+        async function sendMsg() {
+            const tid = document.getElementById('msgTarget').value;
+            const title = document.getElementById('msgTitle').value;
+            const body = document.getElementById('msgBody').value;
+
+            if (!title || !body) { alert("Please enter both title and message content."); return; }
+
+            // Use 'Admin' sender to satisfy DB constraint, but add flag to distinguish from Chat
+            const m = JSON.stringify({ title: title, body: body, is_notification: true });
+            showLoader(true);
+            const c = DB.getClient();
+
+            let error = null;
+            try {
+                if (tid === 'all') {
+                    const { error: e } = await c.from('messages').insert(allUsers.map(u => ({ user_id: u.id, message: m, sender: 'Admin' })));
+                    error = e;
+                } else {
+                    const { error: e } = await c.from('messages').insert({ user_id: parseInt(tid), message: m, sender: 'Admin' });
+                    error = e;
+                }
+            } catch (err) {
+                error = err;
+            }
+
+            showLoader(false);
+
+            if (error) {
+                console.error("Send Notification Error:", error);
+                alert("Failed to send notification: " + (error.message || error));
+                return;
+            }
+
+            alert("Notification sent successfully to User(s)!");
+            document.getElementById('msgModal').style.display = 'none';
+            init();
+        }
+
+        function adminLogout() { if (confirm("Logout from admin terminal?")) { sessionStorage.removeItem('admin_auth'); window.location.href = 'admin_login.html'; } }
+        function toggleSub(id) { document.getElementById(id + 'Sub').classList.toggle('show'); }
+        function showLoader(s) { document.getElementById('vslLoader').style.display = s ? 'flex' : 'none'; }
+        window.onload = () => { switchPage('home'); init(); };
+    </script>
+    <!-- Message Center Modal -->
+    <div id="messageCenterOverlay" onclick="toggleMessageCenter()"
+        style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2999;">
+    </div>
+    <div id="messageCenter" class="cs-content"
+        style="position:fixed; top:50%; left:50%; transform:translate(-50%, -50%) scale(0.9); opacity:0; transition: all 0.3s; z-index:3000; display:none; flex-direction:column; background:white; width:400px; height:600px; border-radius:16px;">
+        <div class="cs-header"
+            style="background:#1e56a0; color:white; padding:1.25rem; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-weight:700; display:flex; gap:10px; align-items:center;"><i data-lucide="bell"
+                    size="20"></i> Notifications</div>
+            <button onclick="toggleMessageCenter()"
+                style="background:transparent; border:none; color:white; cursor:pointer;"><i data-lucide="x"
+                    size="20"></i></button>
+        </div>
+        <div class="cs-body" id="mcList"
+            style="flex:1; overflow-y:auto; padding:1.5rem; display:flex; flex-direction:column; gap:1rem;">
+            <!-- Messages go here -->
+        </div>
+        <div style="padding:1rem; border-top:1px solid #eee; display:flex; justify-content:space-between;"
+            id="mcFooter">
+            <button onclick="makeAllRead()"
+                style="background:#f1f5f9; border:none; padding:8px 16px; border-radius:6px; font-size:0.8rem; cursor:pointer; color:#64748b;">Mark
+                all read</button>
+            <button onclick="deleteAllMessages()"
+                style="background:#fee2e2; border:none; padding:8px 16px; border-radius:6px; font-size:0.8rem; cursor:pointer; color:#ef4444;">Delete
+                all</button>
+        </div>
+    </div>
+
+    <!-- Notification Bell Floating Button -->
+    <div class="floating-notification-btn" onclick="toggleMessageCenter()"
+        style="bottom: 7rem; right: 2rem; width: 56px; height: 56px; border-radius: 50%; padding:0; justify-content:center; z-index: 1000; position: fixed; display: flex; align-items: center; cursor: pointer;">
+        <div
+            style="position:relative; display:flex; align-items:center; justify-content:center; width:100%; height:100%;">
+            <i data-lucide="bell" size="24"></i>
+            <div id="msgBadge"
+                style="position:absolute; top:12px; right:12px; background:#ef4444; color:white; width:10px; height:10px; border-radius:50%; display:none; border:2px solid white;">
+            </div>
+        </div>
+    </div>
+
+    <!-- SUCCESS MODAL -->
+    <div id="successModal" class="success-modal-overlay">
+        <div class="success-modal-card">
+            <div class="success-modal-icon-box">
+                <i data-lucide="check-circle" size="44"></i>
+            </div>
+            <h3 class="success-modal-title">Success!</h3>
+            <p id="successModalMsg" class="success-modal-message"></p>
+            <button class="success-modal-btn" onclick="closeSuccessModal()">Done</button>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

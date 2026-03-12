@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Withdraw - Avendus Capital</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="settings-panel-fix.css">
+    <link rel="stylesheet" href="portfolio-theme.css">
+    <link rel="stylesheet" href="withdraw-page-fix.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="db.js"></script>
+    <style>
+        body {
+            background-color: #f1f5f9;
+        }
+
+        .navbar {
+            background-color: #1e56a0;
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 2rem;
+        }
+
+        .white-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            color: #1e293b;
+        }
+
+        .warning-box {
+            background: #fef2f2;
+            border: 1px solid #fee2e2;
+            border-radius: 8px;
+            padding: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .warning-title {
+            color: #ef4444;
+            font-weight: 700;
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .warning-text {
+            color: #b91c1c;
+            font-size: 0.9rem;
+            margin-bottom: 0.8rem;
+        }
+
+        .balance-tag {
+            background: white;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            display: inline-flex;
+            gap: 1rem;
+            color: #ef4444;
+            border: 1px solid #fee2e2;
+        }
+
+        .account-selector {
+            border: 2px solid #3b82f6;
+            background: #f0f7ff;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .account-info h4 {
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        .account-info p {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #10b981;
+        }
+
+        .currency-tag {
+            font-size: 0.8rem;
+            color: #64748b;
+            font-weight: 600;
+        }
+
+        .submit-btn {
+            width: 100%;
+            background: #93c5fd;
+            color: white;
+            border: none;
+            padding: 0.8rem;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-bottom: 1rem;
+            pointer-events: auto !important;
+            opacity: 1 !important;
+        }
+
+        .error-footer {
+            color: #f59e0b;
+            font-size: 0.85rem;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .policy-text {
+            color: #64748b;
+            text-align: center;
+            font-size: 0.75rem;
+        }
+
+        /* Records Style */
+        .records-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .records-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #1e56a0;
+            font-weight: 700;
+        }
+
+        .refresh-btn {
+            background: #1e56a0;
+            color: white;
+            border: none;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .filter-pills {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            overflow-x: auto;
+        }
+
+        .pill {
+            padding: 0.3rem 1rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            background: white;
+            color: #64748b;
+        }
+
+        .pill.active {
+            background: #1e56a0;
+            color: white;
+            border-color: #1e56a0;
+        }
+
+        .record-item {
+            border: 1px solid #f1f5f9;
+            border-radius: 12px;
+            padding: 1.2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.8rem;
+        }
+
+        .record-bank {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .record-date {
+            font-size: 0.75rem;
+            color: #94a3b8;
+        }
+
+        .record-amount {
+            font-weight: 700;
+            font-size: 1.1rem;
+            text-align: right;
+        }
+
+        .status-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+            display: inline-block;
+            margin-top: 0.3rem;
+        }
+
+        .status-badge.rejected {
+            background: #fef2f2;
+            color: #ef4444;
+        }
+
+        .status-badge.approved {
+            background: #f0fdf4;
+            color: #10b981;
+        }
+
+        /* Terms */
+        .terms-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+
+        .term-item {
+            margin-bottom: 1.2rem;
+        }
+
+        .term-item h5 {
+            font-size: 0.85rem;
+            font-weight: 700;
+            margin-bottom: 0.4rem;
+            color: #1e293b;
+        }
+
+        .term-item p {
+            font-size: 0.75rem;
+            color: #64748b;
+            line-height: 1.5;
+        }
+
+        /* Custom Modal Styles */
+        .custom-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            z-index: 10000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .custom-modal-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+
+        .custom-modal-box {
+            background: #0f0f0f;
+            border: 1px solid rgba(212, 175, 55, 0.5);
+            box-shadow: 0 0 30px rgba(212, 175, 55, 0.15);
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            transform: scale(0.9);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .custom-modal-overlay.active .custom-modal-box {
+            transform: scale(1);
+        }
+
+        .c-modal-icon-wrapper {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin: 0 auto 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+        }
+
+        .c-modal-icon-wrapper.success {
+            background: rgba(16, 185, 129, 0.1);
+            color: #10b981;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .c-modal-icon-wrapper.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .c-modal-icon-wrapper.warning {
+            background: rgba(212, 175, 55, 0.1);
+            color: #d4af37;
+            border: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .c-modal-message {
+            color: #e2e8f0;
+            font-size: 1.1rem;
+            font-weight: 500;
+            margin-bottom: 2rem;
+            line-height: 1.5;
+        }
+
+        .c-modal-btn {
+            padding: 0.8rem 2.5rem;
+            border-radius: 8px;
+            font-weight: 700;
+            cursor: pointer;
+            border: none;
+            font-size: 1rem;
+            transition: filter 0.2s;
+        }
+
+        .c-modal-btn:hover {
+            filter: brightness(1.1);
+        }
+
+        .c-modal-btn.success {
+            background: #10b981;
+            color: #000;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+        }
+
+        .c-modal-btn.error {
+            background: #ef4444;
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+
+        .c-modal-btn.warning {
+            background: #d4af37;
+            color: #000;
+            box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);
+        }
+    </style>
+
+</head>
+
+<body>
+    <header class="navbar"><a href="#" class="back-btn" onclick="goBackToMarket()"><i
+                data-lucide="chevron-left"></i></a>
+        <h1>Withdraw</h1>
+    </header>
+    <main class="container">
+        <div class="left-col">
+            <section class="white-card">
+                <h2 class="section-title">Trading accounts</h2>
+                <div class="warning-box" id="outstandingWarning" style="display: none; border: 2px solid #ef4444;">
+                    <div class="warning-title" style="display: flex; align-items: center; gap: 0.5rem;"><i
+                            data-lucide="info" size="20"></i>Outstanding balance detected </div>
+                    <p class="warning-text">Your account has an unsettled balance from institutional trading. You cannot
+                        withdraw until this is cleared.</p>
+                    <div class="balance-tag" style="background: white; font-weight: 700;"><span id="wAccountNum">INR-ID
+                            - INR</span><span id="wAmount">• ₹0.00</span></div>
+                </div>
+                <div class="account-selector">
+                    <div class="account-info">
+                        <h4 id="accDisplayId">Main Account</h4>
+                        <p id="accDisplayBal">₹0.00</p>
+                    </div>
+                    <div class="currency-tag">INR</div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;"><label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Withdraw
+                        To</label><select id="withdrawBankSelect" class="reg-input"
+                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none; background: white;">
+                        <option value="">Select Bank Account</option>
+                    </select>
+                    <div style="margin-top: 0.5rem; text-align: right;"><a href="bank_accounts.html"
+                            style="font-size: 0.8rem; color: #3b82f6; text-decoration: none; font-weight: 600;">+Add New
+                            Bank</a></div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;"><label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Withdrawal
+                        Amount</label>
+                    <div style="position: relative;"><span
+                            style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #64748b; font-weight: 700;">₹</span><input
+                            type="number" id="withdrawAmountInput" class="reg-input" placeholder="Min. ₹100.00"
+                            style="width: 100%; padding: 0.8rem 1rem 0.8rem 2rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;"><label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Withdrawal
+                        PIN</label><input type="password" id="withdrawPinInput" class="reg-input"
+                        placeholder="4-6 digit PIN" maxlength="6"
+                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                </div><button class="submit-btn" id="withdrawSubmitBtn">Submit Withdrawal</button>
+                <div class="error-footer" id="withdrawErrorMsg" style="display: none;">You cannot withdraw until
+                    outstanding balances are cleared.</div>
+                <div class="policy-text">By proceeding,
+                    you agree to our deposit terms and conditions.</div>
+            </section>
+            <section class="white-card">
+                <div class="records-header">
+                    <div class="records-title"><i data-lucide="circle-dollar-sign"></i>Withdraw Records</div><button
+                        class="refresh-btn"><i data-lucide="rotate-cw"></i></button>
+                </div>
+                <div class="filter-pills">
+                    <div class="pill active">All</div>
+                    <div class="pill">Success</div>
+                    <div class="pill">Pending</div>
+                    <div class="pill">Rejected</div>
+                </div>
+                <div class="records-list" id="withdrawRecords">
+                    <div style="text-align:center; padding: 2rem; color: #64748b;">Loading records...</div>
+                </div>
+            </section>
+        </div>
+        <aside class="white-card">
+            <h3 class="terms-title">Withdrawal Terms and Conditions</h3>
+            <div class="term-item">
+                <h5>1. Minimum Withdrawal Amount</h5>
+                <p>The minimum withdrawal amount is 100. Requests below this threshold will not be processed.</p>
+            </div>
+            <div class="term-item">
+                <h5>2. Withdrawal Time Window</h5>
+                <p>Withdrawals can be submitted Monday to Friday (excluding public holidays) between 09:30 and 15:00.
+                    Requests made outside of this time window will be processed on the next business day.</p>
+            </div>
+            <div class="term-item">
+                <h5>3. Bank Information Verification</h5>
+                <p>Users must ensure that all bank account information provided is accurate and up-to-date. The company
+                    is not responsible for any failed,
+                    delayed,
+                    or misdirected transfers resulting from incorrect or outdated bank details.</p>
+            </div>
+            <div class="term-item">
+                <h5>4. Settlement Time</h5>
+                <p>Withdrawal requests are typically processed within 24 to 48 hours after approval. The actual
+                    crediting time may vary depending on the policies and processing capabilities of your financial
+                    institution.</p>
+            </div>
+            <div class="term-item">
+                <h5>5. Bank Policies and Conditions</h5>
+                <p>Please note the following conditions regarding bank withdrawals: Processing times and procedures may
+                    vary among financial institutions. Additional identity or compliance verification may be required
+                    before processing certain withdrawals.</p>
+            </div>
+            <div class="term-item">
+                <h5>6. Compliance and Review</h5>
+                <p>All withdrawal requests are subject to compliance checks,
+                    anti-money laundering (AML) monitoring,
+                    and internal risk control procedures. Withdrawals found to be linked to suspicious activity may be
+                    temporarily withheld pending investigation.</p>
+            </div>
+        </aside>
+    </main>
+    < !-- Modals -->
+        <div id="topAlertContainer" class="top-alert-container">
+            <div class="top-alert"><i data-lucide="alert-circle"></i><span>Please sign in to continue.</span><i
+                    data-lucide="x" class="close-alert" onclick="closeAlert()"></i></div>
+        </div>
+        <div id="messageCenterOverlay" class="message-center-overlay" onclick="toggleMessageCenter()"></div>
+        <div id="messageCenter" class="message-center-modal">
+            <div class="mc-header">
+                <div class="mc-title-row"><span class="mc-title">Message Center</span><span class="mc-subtitle"
+                        id="msgCount">10 Messages</span></div><button class="mc-close"
+                    onclick="toggleMessageCenter()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="mc-actions"><button class="mc-btn" onclick="makeAllRead()">Make all read</button><button
+                    class="mc-btn delete-all" onclick="deleteAllMessages()">Delete all</button></div>
+            <div class="mc-list" id="mcList">
+                <div class="mc-item">
+                    <div class="mc-dot unread"></div>
+                    <div class="mc-content">
+                        <div class="mc-msg-title">IPO Announcement – Armour Security IPO（QIB）</div>
+                        <div class="mc-time">14-01-2026 15:10:23</div>
+                        <div class="mc-tag">IPO:NEW</div><button class="mc-delete-item"
+                            onclick="deleteMessage(this)">Delete</button>
+                    </div>
+                </div>
+                <div class="mc-item">
+                    <div class="mc-dot unread"></div>
+                    <div class="mc-content">
+                        <div class="mc-msg-title">Important Notice</div>
+                        <div class="mc-time">12-01-2026 09:32:02</div>
+                        <div class="mc-tag">TEXT</div><button class="mc-delete-item"
+                            onclick="deleteMessage(this)">Delete</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="settingsModal" class="settings-modal" onclick="if(event.target == this) closeSettings()">
+            <div class="settings-content"><button class="settings-close" onclick="closeSettings()"><i data-lucide="x"
+                        size="24"></i></button>
+                <div class="settings-header">
+                    <div class="avatar-circle" id="settingsAvatar">U</div>
+                    <div class="settings-name" id="settingsName"
+                        style="font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-top: 0.5rem;">User Name</div>
+                    <div class="settings-phone" id="settingsPhone"
+                        style="font-size: 0.9rem; color: #64748b; margin-top: 0.2rem;">+91</div>
+                    <div class="badge-row">
+                        <div class="s-badge vip"><i data-lucide="shield-check" size="18"></i>VIP: 0</div>
+                        <div class="s-badge credit"><i data-lucide="crown" size="18"></i>Credit Score: 100</div>
+                    </div>
+                </div>
+                <div class="settings-list">
+                    <div class="settings-item" onclick="toggleUserProfile()">
+                        <div class="settings-item-icon"><i data-lucide="user" size="20"></i></div>
+                        <div class="settings-item-info">
+                            <div class="settings-item-title">User Profile</div>
+                            <div class="settings-item-desc">Update your profile information.</div>
+                        </div><i data-lucide="chevron-down" id="userProfileChevron" class="settings-chevron" size="18"
+                            style="transition: transform 0.2s;"></i>
+                    </div>
+                    <div id="userProfileSubmenu" class="settings-submenu">
+                        <div class="submenu-item" onclick="openEditNameModal()"><i data-lucide="edit-3"
+                                size="18"></i>Update Name </div>
+                        <div class="submenu-item" onclick="openAvatarModal()"><i data-lucide="image"
+                                size="18"></i>Update Avatar </div>
+                        <div class="submenu-item" onclick="openKYCModal()"><i data-lucide="file-check"
+                                size="18"></i>View KYC </div>
+                    </div>
+                    <div class="settings-item" onclick="toggleSecurityMenu()">
+                        <div class="settings-item-icon"><i data-lucide="lock" size="20"></i></div>
+                        <div class="settings-item-info">
+                            <div class="settings-item-title">Security</div>
+                            <div class="settings-item-desc">Update your system security settings.</div>
+                        </div><i data-lucide="chevron-down" id="securityChevron" class="settings-chevron" size="18"
+                            style="transition: transform 0.2s;"></i>
+                    </div>
+                    <div id="securitySubmenu" class="settings-submenu">
+                        <div class="submenu-item" onclick="openWithdrawalPinModal()"><i data-lucide="shield-check"
+                                size="18"></i>Withdrawal PIN </div>
+                        <div class="submenu-item" onclick="openResetPassword()"><i data-lucide="key"
+                                size="18"></i>Change Login Password </div>
+                    </div>
+                    <div class="settings-item" onclick="window.location.href='bank_accounts.html'">
+                        <div class="settings-item-icon"><i data-lucide="landmark" size="20"></i></div>
+                        <div class="settings-item-info">
+                            <div class="settings-item-title">Bank Accounts</div>
+                            <div class="settings-item-desc">Manage bank accounts and info</div>
+                        </div><i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                    </div>
+                    <div class="settings-item" onclick="openCS()">
+                        <div class="settings-item-icon"><i data-lucide="headset" size="20"></i></div>
+                        <div class="settings-item-info">
+                            <div class="settings-item-title">Customer Service</div>
+                            <div class="settings-item-desc">Contact customer service</div>
+                        </div><i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                    </div>
+                </div>
+                <div class="logout-btn-container"><button class="logout-btn" onclick="DB.logout()">Logout</button></div>
+            </div>
+        </div>
+        < !-- Customer Service Modal (Fixed Bottom-Right) -->
+            <div id="csModal">
+                < !-- Maximized Content -->
+                    <div class="cs-modal-content">
+                        <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 8px; z-index: 100;">
+                            <button onclick="minimizeCS()"
+                                style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                                onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+                                onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i data-lucide="minus"
+                                    size="18"></i></button><button onclick="closeCS()"
+                                style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                                onmouseover="this.style.background='rgba(239, 68, 68, 0.2)'"
+                                onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i data-lucide="x"
+                                    size="18"></i></button>
+                        </div>
+                        <div class="settings-header"
+                            style="margin-bottom: 0; padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid #222;">
+                            <h2 style="font-size: 1.3rem; font-weight: 700; color: #d4af37; margin: 0;">Customer Service
+                            </h2>
+                            <div style="height: 2px; width: 30px; background: #d4af37; margin-top: 5px;"></div>
+                        </div>
+                        <div id="chatBox"
+                            style="flex: 1; overflow-y: auto; padding: 1.5rem; background: #0c0c0c; display: flex; flex-direction: column; gap: 1rem;">
+                        </div>
+                        <div id="csImagePreviewArea"
+                            style="display: none; padding: 0.5rem 1.5rem; background: #1a1a1a; border-top: 1px solid #333; gap: 0.5rem; align-items: center;">
+                        </div>
+                        <div
+                            style="display: flex; gap: 0.5rem; align-items: center; padding: 1.2rem 1.5rem; background: #111; border-top: 1px solid #222;">
+                            <input type="file" id="csImageInput" accept="image/*" style="display: none;"
+                                onchange="handleCSImageUpload(this)"><button
+                                onclick="document.getElementById('csImageInput').click()"
+                                style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; transition: transform 0.2s;"
+                                onmouseover="this.style.transform='scale(1.1)'"
+                                onmouseout="this.style.transform='scale(1)'"><i data-lucide="image"
+                                    size="22"></i></button><button onclick="toggleEmojiPicker()"
+                                style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; position: relative; transition: transform 0.2s;"
+                                onmouseover="this.style.transform='scale(1.1)'"
+                                onmouseout="this.style.transform='scale(1)'"><i data-lucide="smile" size="22"></i>
+                                <div id="emojiPicker"
+                                    style="display: none; position: absolute; bottom: 50px; left: -10px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 0.75rem; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 180px; z-index: 100;">
+                                    <span onclick="insertEmoji('👍')"
+                                        style="cursor: pointer; font-size: 1.4rem;">👍</span><span
+                                        onclick="insertEmoji('👋')"
+                                        style="cursor: pointer; font-size: 1.4rem;">👋</span><span
+                                        onclick="insertEmoji('😊')"
+                                        style="cursor: pointer; font-size: 1.4rem;">😊</span><span
+                                        onclick="insertEmoji('😂')"
+                                        style="cursor: pointer; font-size: 1.4rem;">😂</span><span
+                                        onclick="insertEmoji('❤️')"
+                                        style="cursor: pointer; font-size: 1.4rem;">❤️</span><span
+                                        onclick="insertEmoji('🔥')"
+                                        style="cursor: pointer; font-size: 1.4rem;">🔥</span><span
+                                        onclick="insertEmoji('🎉')"
+                                        style="cursor: pointer; font-size: 1.4rem;">🎉</span><span
+                                        onclick="insertEmoji('💰')"
+                                        style="cursor: pointer; font-size: 1.4rem;">💰</span>
+                                </div>
+                            </button><input type="text" id="csInput" placeholder="Type a message..."
+                                style="flex: 1; padding: 0.7rem 1rem; background: #050505; border: 1px solid #333; border-radius: 10px; color: white; outline: none; font-family: 'Outfit', sans-serif; font-size: 0.9rem;"><button
+                                onclick="sendCSMessage()"
+                                style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); color: #000; border: none; padding: 0.7rem 1.2rem; border-radius: 10px; font-weight: 800; cursor: pointer; transition: opacity 0.2s;"
+                                onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Send</button>
+                        </div>
+                    </div>
+                    < !-- Minimized Bar -->
+                        <div id="csMinimizedBar" onclick="maximizeCS()">
+                            <div
+                                style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: rgba(212,175,55,0.1); border-radius: 50%;">
+                                <i data-lucide="message-circle" size="14"></i>
+                            </div><span style="font-size: 0.9rem;">Customer Service</span><i data-lucide="chevron-up"
+                                size="18" style="margin-left: auto; opacity: 0.7;"></i>
+                        </div>
+            </div>
+            < !-- Reset Password Modal (Logged-In) -->
+                <div id="resetPasswordModal" class="center-popup-modal"
+                    onclick="if(event.target == this) closeResetPassword()">
+                    <div class="center-popup-content" style="max-width: 450px;">
+                        <div class="popup-header">
+                            <h2>Reset Password</h2><button class="popup-close" onclick="closeResetPassword()"><i
+                                    data-lucide="x" size="24"></i></button>
+                        </div>
+                        <div class="popup-body">
+                            <div class="reg-input-group" style="margin-bottom: 1.5rem;"><label
+                                    style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Current
+                                    Password</label>
+                                <div class="reg-password-wrapper" style="position: relative;"><input type="password"
+                                        id="currentPass" class="reg-input"
+                                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;"><i
+                                        data-lucide="eye-off"
+                                        style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                                        onclick="toggleInternalPass('currentPass', this)"></i></div>
+                            </div>
+                            <div class="reg-input-group" style="margin-bottom: 1.5rem;"><label
+                                    style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                                    Password</label>
+                                <div class="reg-password-wrapper" style="position: relative;"><input type="password"
+                                        id="newPassInternal" class="reg-input"
+                                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;"><i
+                                        data-lucide="eye-off"
+                                        style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                                        onclick="toggleInternalPass('newPassInternal', this)"></i></div>
+                            </div>
+                            <div class="reg-input-group" style="margin-bottom: 2rem;"><label
+                                    style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                                    New Password</label>
+                                <div class="reg-password-wrapper" style="position: relative;"><input type="password"
+                                        id="confirmPassInternal" class="reg-input"
+                                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;"><i
+                                        data-lucide="eye-off"
+                                        style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                                        onclick="toggleInternalPass('confirmPassInternal', this)"></i></div>
+                            </div><button class="logout-btn" style="background: #3b82f6;"
+                                onclick="handleInternalReset()">Update Password</button><button class="logout-btn"
+                                style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                                onclick="closeResetPassword()">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+                < !-- Withdrawal PIN Modal -->
+                    <div id="withdrawalPinModal" class="center-popup-modal"
+                        onclick="if(event.target == this) closeWithdrawalPinModal()">
+                        <div class="center-popup-content" style="max-width: 450px;">
+                            <div class="popup-header">
+                                <h2 id="wpModalTitle">Withdrawal PIN</h2><button class="popup-close"
+                                    onclick="closeWithdrawalPinModal()"><i data-lucide="x" size="24"></i></button>
+                            </div>
+                            <div class="popup-body">
+                                <p id="wpModalDesc" style="font-size: 0.9rem; color: #64748b; margin-bottom: 1.5rem;">
+                                    Set or update your 4-6 digit withdrawal PIN.</p>
+                                <div class="reg-input-group" style="margin-bottom: 1.5rem;"><label
+                                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                                        Withdrawal PIN (4-6 digits)</label><input type="password" id="wpNewPin"
+                                        class="reg-input" maxlength="6" pattern="\d*" inputmode="numeric"
+                                        placeholder="Enter New PIN"
+                                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                                </div>
+                                <div class="reg-input-group" style="margin-bottom: 1.5rem;"><label
+                                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                                        New PIN</label><input type="password" id="wpConfirmPin" class="reg-input"
+                                        maxlength="6" pattern="\d*" inputmode="numeric" placeholder="Confirm New PIN"
+                                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                                </div>
+                                <div class="reg-input-group" style="margin-bottom: 2rem;"><label
+                                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Verify
+                                        Login Password</label>
+                                    <div class="reg-password-wrapper" style="position: relative;"><input type="password"
+                                            id="wpLoginPass" class="reg-input" placeholder="Enter Login Password"
+                                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;"><i
+                                            data-lucide="eye-off"
+                                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                                            onclick="toggleInternalPass('wpLoginPass', this)"></i></div>
+                                </div><button id="wpSubmitBtn" class="logout-btn" style="background: #fb923c;"
+                                    onclick="handleWithdrawalPinSubmit()">Update Withdrawal PIN</button><button
+                                    class="logout-btn" style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                                    onclick="closeWithdrawalPinModal()">Cancel</button>
+                            </div>
+                        </div>
+                    </div>
+                    < !-- Avatar Modal -->
+                        <div id="avatarModal" class="center-popup-modal">
+                            <div class="center-popup-content avatar-form" style="max-width: 400px;">
+                                <div class="popup-header"
+                                    style="width:100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                                    <h2 style="font-size: 1.25rem; font-weight: 700;">Update Avatar</h2><button
+                                        class="popup-close" onclick="closeAvatarModal()"><i data-lucide="x"
+                                            size="24"></i></button>
+                                </div>
+                                <div class="popup-body"
+                                    style="display:flex; flex-direction:column; align-items:center; width: 100%;">
+                                    <div class="avatar-preview-lg" id="avatarPreviewContainer"
+                                        onclick="document.getElementById('avatarInput').click()"><i data-lucide="user"
+                                            size="64" style="color:#cbd5e1;" id="avatarPlaceholderIcon"></i><img
+                                            id="avatarPreviewImg" src="" style="display:none;">
+                                        <div class="avatar-change-overlay">Change Image</div>
+                                    </div><input type="file" id="avatarInput" hidden onchange="previewAvatar(this)"
+                                        accept="image/*">
+                                    <div
+                                        style="width: 100%; margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                                        <button class="btn-primary" onclick="uploadAvatar()">Save
+                                            Changes</button><button class="btn-secondary"
+                                            onclick="closeAvatarModal()">Cancel</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        < !-- KYC Modal -->
+                            <div id="kycModal" class="center-popup-modal">
+                                <div class="center-popup-content">
+                                    <div class="popup-header">
+                                        <h2>View KYC</h2><button class="popup-close" onclick="closeKYCModal()"><i
+                                                data-lucide="x"></i></button>
+                                    </div>
+                                    <div class="popup-body">
+                                        <div class="kyc-form-grid">
+                                            <div class="kyc-field-label">Full Name</div><input type="text" id="kycName"
+                                                class="kyc-field-input" placeholder="Enter Full Name">
+                                            <div class="kyc-field-label">Mobile Number</div><input type="text"
+                                                id="kycMobile" class="kyc-field-input" placeholder="Enter Mobile Number"
+                                                style="background: #f8fafc;">
+                                            <div class="kyc-field-label">ID Number</div><input type="text" id="kycIdNum"
+                                                class="kyc-field-input" placeholder="Enter ID Number">
+                                            <div class="kyc-field-label">Submitted On</div><input type="text"
+                                                id="kycSubmitted" class="kyc-field-input" readonly
+                                                style="background: #f8fafc;">
+                                            <div class="kyc-field-label">Approval Status</div><input type="text"
+                                                id="kycApproved" class="kyc-field-input" readonly
+                                                style="background: #f8fafc;">
+                                        </div>
+                                        <div
+                                            style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+                                            <div class="kyc-upload-box"
+                                                onclick="document.getElementById('kycFrontInput').click()">
+                                                <div class="plus-icon">+Front</div><img id="kycFrontPreview"
+                                                    style="display:none; width:100%; height:100%; object-fit:cover;"><input
+                                                    type="file" id="kycFrontInput" hidden
+                                                    onchange="previewKYCImage(this, 'kycFrontPreview')">
+                                            </div>
+                                            <div class="kyc-upload-box"
+                                                onclick="document.getElementById('kycBackInput').click()">
+                                                <div class="plus-icon">+Back</div><img id="kycBackPreview"
+                                                    style="display:none; width:100%; height:100%; object-fit:cover;"><input
+                                                    type="file" id="kycBackInput" hidden
+                                                    onchange="previewKYCImage(this, 'kycBackPreview')">
+                                            </div>
+                                        </div><button class="btn-submit" onclick="submitKYC()"
+                                            style="margin-top: 1.5rem; width: 100%;">Submit Verification</button>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Custom Modal Structure -->
+                            <div id="customModalOverlay" class="custom-modal-overlay">
+                                <div class="custom-modal-box">
+                                    <div id="cModalIcon" class="c-modal-icon-wrapper"></div>
+                                    <div id="cModalMessage" class="c-modal-message"></div>
+                                    <button id="cModalBtn" class="c-modal-btn" onclick="closeCustomModal()">OK</button>
+                                </div>
+                            </div>
+                            <script src="script.js"></script>
+                            <script src="js/credit_notifier.js"></script>
+                            <script>
+                                window.showCustomModal = ({ type, message }) => {
+                                    const overlay = document.getElementById('customModalOverlay');
+                                    const icon = document.getElementById('cModalIcon');
+                                    const msg = document.getElementById('cModalMessage');
+                                    const btn = document.getElementById('cModalBtn');
+
+                                    if (!overlay || !icon || !msg || !btn) return;
+
+                                    icon.className = 'c-modal-icon-wrapper ' + type;
+                                    btn.className = 'c-modal-btn ' + type;
+
+                                    if (type === 'success') icon.innerHTML = '<i data-lucide="check-circle" size="40"></i>';
+                                    else if (type === 'error') icon.innerHTML = '<i data-lucide="x-circle" size="40"></i>';
+                                    else icon.innerHTML = '<i data-lucide="alert-triangle" size="40"></i>';
+
+                                    msg.innerText = message;
+                                    overlay.classList.add('active');
+
+                                    if (window.lucide) window.lucide.createIcons();
+
+                                    if (type === 'success') {
+                                        setTimeout(() => {
+                                            closeCustomModal();
+                                        }, 2500);
+                                    }
+                                };
+
+                                window.closeCustomModal = () => {
+                                    const overlay = document.getElementById('customModalOverlay');
+                                    if (overlay) overlay.classList.remove('active');
+                                };
+
+                                document.addEventListener('DOMContentLoaded', async () => {
+                                    const user = DB.getCurrentUser();
+
+                                    if (!user) {
+                                        window.location.href = 'login.html';
+                                        return;
+                                    }
+
+                                    // Sync User Data & Balance
+                                    await syncWithdrawalPage();
+
+                                    // Initial records load
+                                    loadWithdrawals();
+
+                                    // Refresh button
+                                    document.querySelector('.refresh-btn')?.addEventListener('click', loadWithdrawals);
+
+                                    // Filter pills
+                                    document.querySelectorAll('.pill').forEach(pill => {
+                                        pill.addEventListener('click', () => {
+                                            document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+                                            pill.classList.add('active');
+                                            loadWithdrawals(pill.textContent);
+                                        });
+                                    });
+                                });
+
+                                async function syncWithdrawalPage() {
+                                    const user = DB.getCurrentUser();
+                                    const client = DB.getClient();
+                                    if (!client || !user) return;
+
+                                    try {
+                                        const {
+                                            data: dbUser
+                                        }
+
+                                            = await client.from('users').select('*').eq('id', user.id).single();
+
+                                        if (dbUser) {
+                                            const fmt = (val) => new Intl.NumberFormat('en-IN', {
+                                                style: 'currency', currency: 'INR'
+                                            }).format(val || 0);
+
+                                            // 1. Calculate and Show Effective Balance
+                                            const [pD,
+                                                pW,
+                                                pT] = await Promise.all([client.from('deposits').select('amount').eq('user_id', user.id).eq('status', 'Pending'),
+                                                client.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'Pending'),
+                                                client.from('trades').select('total_amount, admin_note').eq('user_id', user.id).eq('status', 'Pending')]);
+
+                                            const lockedDeposits = (pD.data || []).reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+                                            const lockedWithdrawals = (pW.data || []).reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
+                                            const lockedTrades = (pT.data || []).reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0);
+
+                                            // RECONCILIATION: Extract real outstanding debt from trade notes
+                                            const realOutstanding = (pT.data || []).filter(t => (t.admin_note || "").startsWith('OUTSTANDING')).reduce((sum, t) => {
+                                                const total = parseFloat(t.total_amount) || 0;
+                                                const note = t.admin_note || "";
+                                                let paid = 0;
+
+                                                if (note.startsWith('OUTSTANDING:')) {
+                                                    paid = parseFloat(note.split(':')[1]) || 0;
+                                                }
+
+                                                else {
+                                                    paid = total * 0.85;
+                                                }
+
+                                                return sum + (total - paid);
+                                            }
+
+                                                , 0);
+
+                                            let effectiveBalance = (parseFloat(dbUser.balance) || 0) + lockedDeposits - lockedWithdrawals - lockedTrades;
+                                            if (effectiveBalance < 0) effectiveBalance = 0;
+
+                                            const balEl = document.getElementById('accDisplayBal');
+                                            if (balEl) balEl.textContent = fmt(effectiveBalance);
+
+                                            // 2. Handle Outstanding Balance Display
+                                            const outstanding = realOutstanding; // Use the verified calculated value as source of truth
+                                            const warnBox = document.getElementById('outstandingWarning');
+                                            const errorMsg = document.getElementById('withdrawErrorMsg');
+                                            const submitBtn = document.getElementById('withdrawSubmitBtn');
+
+                                            // Silently sync DB if mismatch detected
+                                            if (Math.abs(realOutstanding - (parseFloat(dbUser.outstanding) || 0)) > 1) {
+                                                window.DB.getClient().from('users').update({
+                                                    outstanding: realOutstanding
+
+                                                }).eq('id', dbUser.id).then(() => { });
+                                            }
+
+                                            const accId = 'INR' + (dbUser.mobile ? dbUser.mobile.slice(-5) : 'XXXXX');
+                                            if (document.getElementById('accDisplayId')) document.getElementById('accDisplayId').textContent = accId;
+
+                                            if (outstanding > 0) {
+                                                if (warnBox) warnBox.style.display = 'block';
+                                                if (errorMsg) errorMsg.style.display = 'block';
+
+                                                if (submitBtn) {
+                                                    // Removed disabled logic
+                                                    submitBtn.disabled = false;
+                                                    submitBtn.style.cursor = 'pointer';
+                                                    submitBtn.style.pointerEvents = 'auto';
+                                                    submitBtn.style.opacity = '1';
+                                                }
+
+                                                const wAcc = document.getElementById('wAccountNum');
+                                                const wAmt = document.getElementById('wAmount');
+                                                if (wAcc) wAcc.textContent = accId + ' - INR';
+                                                if (wAmt) wAmt.textContent = '• ' + fmt(outstanding);
+                                            }
+
+                                            else {
+                                                if (warnBox) warnBox.style.display = 'none';
+                                                if (errorMsg) errorMsg.style.display = 'none';
+
+                                                // Enable button if balance > 0
+                                                // Always enable button
+                                                if (submitBtn) {
+                                                    submitBtn.disabled = false;
+                                                    submitBtn.style.background = '#1e56a0';
+                                                    submitBtn.style.cursor = 'pointer';
+                                                    submitBtn.style.pointerEvents = 'auto';
+                                                    submitBtn.style.opacity = '1';
+                                                }
+                                            }
+
+                                            // 3. Load user bank accounts
+                                            const banks = await window.DB.getBankAccounts(dbUser.id);
+                                            const bankSelect = document.getElementById('withdrawBankSelect');
+
+                                            if (bankSelect) {
+                                                const currentVal = bankSelect.value;
+
+                                                bankSelect.innerHTML = '<option value="">Select Bank Account</option>' + banks.map(b => `<option value="${b.id}">${b.bank_name} (${b.account_number.slice(-4)})</option>`).join('');
+                                                if (currentVal) bankSelect.value = currentVal;
+                                            }
+                                        }
+                                    }
+
+                                    catch (e) {
+                                        console.error("Sync Withdrawal Page Error:", e);
+                                    }
+                                }
+
+                                async function handleWithdrawalSubmit() {
+                                    const btn = document.getElementById('withdrawSubmitBtn');
+                                    if (btn.disabled) return;
+
+                                    const bankId = document.getElementById('withdrawBankSelect').value;
+                                    const amount = parseFloat(document.getElementById('withdrawAmountInput').value);
+                                    const pin = document.getElementById('withdrawPinInput').value;
+
+                                    if (!bankId) {
+                                        showCustomModal({ type: 'warning', message: "Please select a bank account." });
+                                        return;
+                                    }
+
+                                    if (isNaN(amount) || amount < 100) {
+                                        showCustomModal({ type: 'warning', message: "Minimum withdrawal amount is ₹100.00" });
+                                        return;
+                                    }
+
+                                    if (!pin) {
+                                        showCustomModal({ type: 'warning', message: "Please enter your withdrawal PIN." });
+                                        return;
+                                    }
+
+                                    const client = window.DB.getClient();
+
+                                    const {
+                                        data: user
+                                    }
+
+                                        = await client.from('users').select('*').eq('id', (window.DB.getCurrentUser()).id).single();
+                                    if (!user) return;
+
+                                    // Simple balance check (Frontend)
+                                    if (amount > (parseFloat(user.balance) || 0)) {
+                                        showCustomModal({ type: 'error', message: "Insufficient Available Balance." });
+                                        return;
+                                    }
+
+                                    // PIN Verification
+                                    if (user.withdrawal_pin && user.withdrawal_pin !== pin) {
+                                        showCustomModal({ type: 'error', message: "Incorrect Withdrawal PIN." });
+                                        return;
+                                    }
+
+                                    btn.disabled = true;
+                                    btn.textContent = "Processing...";
+
+                                    try {
+                                        const bank = (await window.DB.getBankAccounts(user.id)).find(b => b.id == bankId);
+
+                                        const withdrawalData = {
+                                            user_id: user.id,
+                                            amount: amount,
+                                            status: 'Pending',
+                                            bank_name: bank ? bank.bank_name : 'Bank Withdrawal',
+                                            account_number: bank ? bank.account_number : '',
+                                            ifsc: bank ? bank.ifsc : '',
+                                            full_name: bank ? (bank.first_name + ' ' + bank.last_name) : ''
+                                        }
+
+                                            ;
+
+                                        console.log("DB INSERT: withdrawals | status=Pending");
+
+                                        const res = await window.DB.submitWithdrawal(withdrawalData);
+
+                                        if (res.success) {
+                                            // Deduct balance immediately
+                                            const newBalance = (parseFloat(user.balance) || 0) - amount;
+                                            await window.DB.updateUserFinancials(user.id, newBalance);
+
+                                            showCustomModal({ type: 'success', message: "Withdrawal request submitted successfully!" });
+                                            document.getElementById('withdrawAmountInput').value = '';
+                                            document.getElementById('withdrawPinInput').value = '';
+                                            await syncWithdrawalPage();
+                                            await loadWithdrawals();
+                                        }
+
+                                        else {
+                                            showCustomModal({ type: 'error', message: "Failed to submit withdrawal: " + (res.error?.message || "Internal Error") });
+                                        }
+                                    }
+
+                                    catch (e) {
+                                        console.error("Withdrawal Error:", e);
+                                        showCustomModal({ type: 'error', message: "An error occurred. Please try again." });
+                                    }
+
+                                    finally {
+                                        btn.disabled = false;
+                                        btn.textContent = "Submit Withdrawal";
+                                    }
+                                }
+
+                                document.getElementById('withdrawSubmitBtn').addEventListener('click', handleWithdrawalSubmit);
+
+                                async function loadWithdrawals(statusFilter = 'All') {
+                                    const user = DB.getCurrentUser();
+                                    const client = DB.getClient();
+                                    const list = document.getElementById('withdrawRecords');
+                                    if (!client || !user || !list) return;
+
+                                    list.innerHTML = '<div style="padding:20px; text-align:center;">Loading...</div>';
+
+                                    try {
+                                        let query = client.from('withdrawals').select('*').eq('user_id', user.id).order('created_at', {
+                                            ascending: false
+                                        });
+
+                                        if (statusFilter !== 'All') {
+                                            const statusMap = {
+                                                'Success': 'Approved',
+                                                'Pending': 'Pending',
+                                                'Rejected': 'Rejected'
+                                            }
+
+                                                ;
+                                            const mappedStatus = statusMap[statusFilter] || statusFilter;
+                                            query = query.eq('status', mappedStatus);
+                                        }
+
+                                        const {
+                                            data: withdrawals, error
+                                        }
+
+                                            = await query;
+
+                                        if (error) throw error;
+
+                                        if (!withdrawals || withdrawals.length === 0) {
+                                            list.innerHTML = '<div style="padding:20px; text-align:center; color:#64748b;">No withdrawal records found.</div>';
+                                            return;
+                                        }
+
+                                        list.innerHTML = withdrawals.map(w => `
+                    <div class="record-item" style="flex-direction: column; align-items: stretch; gap: 0.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <div class="record-info">
+                                <div class="record-bank">${w.bank_name || 'Bank Withdrawal'}</div>
+                                <div class="record-date">${new Date(w.created_at).toLocaleString('en-IN')}</div>
+                            </div>
+                            <div class="record-status" style="text-align: right;">
+                                <div class="record-amount">₹${parseFloat(w.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                                <span class="status-badge ${(w.status || '').toLowerCase()}">${w.status === 'Approved' ? 'Success' : w.status}</span>
+                            </div>
+                        </div>
+                        ${w.admin_note && !w.admin_note.toLowerCase().includes('by admin') && !w.admin_note.toLowerCase().includes('by customer service') ? `
+                            <div style="font-size: 0.75rem; color: #ef4444; background: #fff1f2; border: 1px solid #fee2e2; padding: 0.6rem; border-radius: 6px; margin-top: 0.5rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+                                <i data-lucide="info" size="14" style="flex-shrink: 0; margin-top: 2px;"></i>
+                                <span><strong>Message:</strong> ${w.admin_note}</span>
+                            </div>
+                        ` : (w.status === 'Approved' ? `
+                            <div style="font-size: 0.75rem; color: #10b981; background: #ecfdf5; border: 1px solid #d1fae5; padding: 0.6rem; border-radius: 6px; margin-top: 0.5rem; display: flex; align-items: flex-start; gap: 0.5rem;">
+                                <i data-lucide="check-circle" size="14" style="flex-shrink: 0; margin-top: 2px;"></i>
+                                <span>Withdrawal processed successfully.</span>
+                            </div>
+                        ` : '')}
+                    </div>
+                `).join('');
+                                        if (window.lucide) window.lucide.createIcons();
+
+                                    }
+
+                                    catch (e) {
+                                        console.error("Load Withdrawals Error:", e);
+                                        list.innerHTML = '<div style="padding:20px; text-align:center; color:#ef4444;">Error loading records.</div>';
+                                    }
+                                }
+
+                            </script>
+                            <script>
+                                function goBackToMarket() {
+                                    const params = new URLSearchParams(window.location.search);
+                                    const from = params.get("from");
+
+                                    if (from === "homepage") {
+                                        window.location.href = "index.html";
+                                        return;
+                                    }
+
+                                    const view = params.get("view") || "market";
+                                    window.location.href = `market.html?view=${view}`;
+                                }
+                            </script>
+</body>
+
+</html>

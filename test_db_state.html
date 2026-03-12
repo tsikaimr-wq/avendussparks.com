@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+
+<body>
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+        const supabaseUrl = 'https://gipxxcfydceahzmqdoks.supabase.co';
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdpcHh4Y2Z5ZGNlYWh6bXFkb2tzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjExNzE3MTAsImV4cCI6MjAzNjI0NzcxMH0.m2kC8p5z31_uX0L53c0YvP2N1z7D91Jc1qH779_03mI';
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        async function test() {
+            const { data, error } = await supabase
+                .from('trades')
+                .select('id, status, outstanding_amount, paid_amount, symbol, total_amount')
+                .eq('user_id', 66)
+                .order('created_at', { ascending: false });
+
+            document.body.innerHTML = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            if (error) document.body.innerHTML += `<div style="color:red">${JSON.stringify(error)}</div>`;
+        }
+        test();
+    </script>
+</body>
+
+</html>

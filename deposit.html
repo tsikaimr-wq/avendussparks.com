@@ -1,0 +1,810 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deposit - Avendus Capital</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="settings-panel-fix.css">
+    <link rel="stylesheet" href="deposit-page-fix.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="db.js"></script>
+    <style>
+        body {
+            background-color: #f1f5f9;
+        }
+
+        .deposit-navbar {
+            background-color: #1e56a0;
+            /* Navy blue from screenshot */
+            color: white;
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .back-btn {
+            color: white;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+        }
+
+        .deposit-container {
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            display: grid;
+            grid-template-columns: 1fr 400px;
+            gap: 2rem;
+        }
+
+        .left-col {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .white-card {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .notice-text {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            color: #475569;
+            margin-bottom: 2rem;
+        }
+
+        .notice-text b {
+            color: #1e293b;
+        }
+
+        .support-btn {
+            display: block;
+            width: 100%;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 0.8rem;
+            border-radius: 8px;
+            font-weight: 500;
+            text-align: center;
+            text-decoration: none;
+            transition: var(--transition);
+        }
+
+        .records-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2rem;
+        }
+
+        .records-title {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #1e56a0;
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .refresh-btn {
+            background: #1e56a0;
+            color: white;
+            border: none;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .filter-pills {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 2rem;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+        }
+
+        .pill {
+            padding: 0.4rem 1.2rem;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            color: #64748b;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .pill.active {
+            background: #1e56a0;
+            color: white;
+            border-color: #1e56a0;
+        }
+
+        .record-item {
+            border: 1px solid #f1f5f9;
+            border-radius: 12px;
+            padding: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .record-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2rem;
+        }
+
+        .record-date {
+            font-size: 0.85rem;
+            color: #64748b;
+        }
+
+        .record-amount-cell {
+            text-align: right;
+        }
+
+        .record-amount {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #1e293b;
+            display: block;
+        }
+
+        .status-badge {
+            display: inline-block;
+            margin-top: 0.4rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #10b981;
+            background: #ecfdf5;
+            padding: 0.2rem 0.6rem;
+            border-radius: 4px;
+        }
+
+        .status-badge.pending {
+            color: #f59e0b;
+            background: #fffbeb;
+        }
+
+        .status-badge.rejected {
+            color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .terms-col h2 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+
+        .terms-content {
+            font-size: 0.8rem;
+            line-height: 1.5;
+            color: #475569;
+        }
+
+        .terms-section {
+            margin-bottom: 1.5rem;
+        }
+
+        .terms-section h3 {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <header class="deposit-navbar">
+        <a href="#" class="back-btn" onclick="goBackFromDeposit()"><i data-lucide="chevron-left"></i></a>
+        <h1>Deposit</h1>
+    </header>
+
+    <main class="deposit-container">
+        <div class="left-col">
+            <section class="white-card">
+                <div class="notice-text">
+                    In accordance with <b>the regulations of the Securities and Exchange Board of India (SEBI)</b>, all
+                    institutional trading funds must undergo the required audits and be deposited into approved
+                    regulatory accounts.<br><br>
+                    Before making a deposit, please book an appointment through the Custom Service section in the app or
+                    contact your dedicated relationship manager for assistance.
+                </div>
+                <a href="#" class="support-btn" onclick="openCS()">Contact support</a>
+            </section>
+
+            <section class="white-card">
+                <div class="records-header">
+                    <div class="records-title">
+                        <i data-lucide="circle-dollar-sign"></i> Deposit Records
+                    </div>
+                    <button class="refresh-btn"><i data-lucide="rotate-cw"></i></button>
+                </div>
+
+                <div class="filter-pills">
+                    <span class="pill active">All</span>
+                    <span class="pill">Success</span>
+                    <span class="pill">Pending</span>
+                    <span class="pill">Rejected</span>
+                </div>
+
+                <div class="records-list" id="recordsList">
+                    <!-- Records will be injected here by JavaScript -->
+                </div>
+            </section>
+        </div>
+
+        <aside class="white-card terms-col">
+            <h2>Deposit Terms and Conditions</h2>
+            <div class="terms-content">
+                <div class="terms-section">
+                    <h3>Minimum Deposit Amount</h3>
+                    <p>The minimum amount required for each deposit is subject to the company's policy and may vary
+                        depending on your account type or jurisdiction. Please refer to the current minimum deposit
+                        threshold before initiating a transaction.</p>
+                </div>
+                <div class="terms-section">
+                    <h3>Deposit Time Window</h3>
+                    <p>Deposits are accepted from Monday to Friday (excluding public holidays), between 09:00 and 22:00.
+                        Transactions made outside these hours will be processed on the next working day.</p>
+                </div>
+                <div class="terms-section">
+                    <h3>Account Verification</h3>
+                    <p>All deposits must originate from a verified bank account that matches the registered name on your
+                        trading account. Deposits from third-party accounts, joint accounts, or unverified sources may
+                        be delayed, returned, or rejected in accordance with compliance requirements.</p>
+                </div>
+                <!-- ... other sections matching the screenshot ... -->
+                <div class="terms-section">
+                    <h3>Settlement Time</h3>
+                    <p>Deposits are typically credited within 24 hours of confirmation. However, actual posting times
+                        may vary depending on the remitting bank's policies, payment network congestion, and the
+                        accuracy of the information provided.</p>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <script src="db.js"></script>
+    <script>
+        lucide.createIcons();
+
+        async function initDeposits() {
+
+
+            // 1. Ensure User Data is Fresh
+            const user = await DB.refreshCurrentUser();
+            if (!user) {
+                console.warn("No user logged in, cannot fetch deposits");
+                return;
+            }
+
+            console.log(`[Deposit] Initializing for User ID: ${user.id}`);
+            const client = DB.getClient();
+            if (!client) {
+                console.warn("DB Client failed to initialize");
+                return;
+            }
+
+            // Fetch function wrapper
+            const fetchData = async () => {
+                const { data, error } = await client
+                    .from('deposits')
+                    .select('*')
+                    .eq('user_id', user.id)
+                    .order('created_at', { ascending: false });
+
+                if (error) {
+                    console.error('[Deposit] Fetch Error:', error);
+                    return [];
+                }
+                console.log(`[Deposit] Fetched ${data ? data.length : 0} records.`);
+                return data || [];
+            };
+
+            // Initial Render
+            const initialData = await fetchData();
+            renderRecords(initialData);
+
+            // Realtime Listener for Deposits
+            client.channel('public:deposits:' + user.id)
+                .on('postgres_changes', {
+                    event: '*',
+                    schema: 'public',
+                    table: 'deposits',
+                    filter: `user_id=eq.${user.id}`
+                }, handleDepositUpdate)
+                .subscribe();
+
+            // Fallback Polling (Every 4s)
+            setInterval(async () => {
+                const pollData = await fetchData();
+                if (pollData) {
+                    const activePill = document.querySelector('.pill.active');
+                    const currentFilter = activePill ? activePill.textContent.trim() : 'All';
+                    renderRecords(pollData, currentFilter);
+                }
+            }, 4000);
+        }
+
+        async function handleDepositUpdate(payload) {
+            console.log('Deposit update received:', payload);
+            const user = DB.getCurrentUser();
+            if (!user) return;
+
+            const client = DB.getClient();
+            const { data: newData } = await client
+                .from('deposits')
+                .select('*')
+                .eq('user_id', user.id)
+                .order('created_at', { ascending: false });
+
+            if (newData) {
+                const activePill = document.querySelector('.pill.active');
+                const currentFilter = activePill ? activePill.textContent.trim() : 'All';
+                renderRecords(newData, currentFilter);
+            }
+        }
+
+
+        function renderRecords(records, filter = 'All') {
+            const list = document.getElementById('recordsList');
+            if (!list) return;
+            list.innerHTML = '';
+
+            if (!records || records.length === 0) {
+                list.innerHTML = '<div style="padding:20px; text-align:center; color:#94a3b8;">No deposit records found.</div>';
+                return;
+            }
+
+            const filtered = filter === 'All'
+                ? records
+                : records.filter(r => {
+                    const status = (r.status || 'Pending');
+                    if (filter === 'Success' || filter === 'Approved') return status === 'Approved';
+                    return status === filter;
+                });
+
+            if (filtered.length === 0) {
+                list.innerHTML = '<div style="padding:20px; text-align:center; color:#94a3b8;">No records match this filter.</div>';
+                return;
+            }
+
+            filtered.forEach(record => {
+                const date = new Date(record.created_at).toLocaleString();
+                const status = record.status || 'Pending';
+
+                // Color mapping
+                let colorStyle = '';
+                if (status === 'Approved') colorStyle = 'background:#dcfce7; color:#166534;';
+                else if (status === 'Rejected') colorStyle = 'background:#fee2e2; color:#991b1b;';
+                else colorStyle = 'background:#fef3c7; color:#92400e;';
+
+                const item = document.createElement('div');
+                item.className = 'record-item';
+                item.innerHTML = `
+                    <div class="record-meta">
+                        <span class="record-date">${date}</span>
+                        <div style="font-size:0.75rem; color:#64748b; margin-top:2px;">Ref: #${record.id}</div> 
+                    </div>
+                    <div class="record-amount-cell">
+                        <span class="record-amount">₹${parseFloat(record.amount).toLocaleString()}</span>
+                        <span style="padding:4px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; ${colorStyle}">${status}</span>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        const pills = document.querySelectorAll('.pill');
+        pills.forEach(pill => {
+            pill.addEventListener('click', async () => {
+                pills.forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+                const user = DB.getCurrentUser();
+                if (user) {
+                    const client = DB.getClient();
+                    const { data } = await client.from('deposits').select('*').eq('user_id', user.id);
+                    renderRecords(data || [], pill.textContent);
+                }
+            });
+        });
+
+        initDeposits();
+
+        function goBackFromDeposit() {
+            window.history.back();
+        }
+    </script>
+    <!-- Modals -->
+    <div id="topAlertContainer" class="top-alert-container">
+        <div class="top-alert">
+            <i data-lucide="alert-circle"></i>
+            <span>Please sign in to continue.</span>
+            <i data-lucide="x" class="close-alert" onclick="closeAlert()"></i>
+        </div>
+    </div>
+
+    <div id="messageCenterOverlay" class="message-center-overlay" onclick="toggleMessageCenter()"></div>
+    <div id="messageCenter" class="message-center-modal">
+        <div class="mc-header">
+            <div class="mc-title-row">
+                <span class="mc-title">Message Center</span>
+                <span class="mc-subtitle" id="msgCount">10 Messages</span>
+            </div>
+            <button class="mc-close" onclick="toggleMessageCenter()"><i data-lucide="x" size="24"></i></button>
+        </div>
+        <div class="mc-actions">
+            <button class="mc-btn" onclick="makeAllRead()">Make all read</button>
+            <button class="mc-btn delete-all" onclick="deleteAllMessages()">Delete all</button>
+        </div>
+        <div class="mc-list" id="mcList">
+            <div class="mc-item">
+                <div class="mc-dot unread"></div>
+                <div class="mc-content">
+                    <div class="mc-msg-title">IPO Announcement – Armour Security IPO（QIB）</div>
+                    <div class="mc-time">14-01-2026 15:10:23</div>
+                    <div class="mc-tag">IPO:NEW</div>
+                    <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
+                </div>
+            </div>
+            <div class="mc-item">
+                <div class="mc-dot unread"></div>
+                <div class="mc-content">
+                    <div class="mc-msg-title">Important Notice</div>
+                    <div class="mc-time">12-01-2026 09:32:02</div>
+                    <div class="mc-tag">TEXT</div>
+                    <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="settings-modal" onclick="if(event.target == this) closeSettings()">
+        <div class="settings-content">
+            <button class="settings-close" onclick="closeSettings()"><i data-lucide="x" size="24"></i></button>
+            <div class="settings-header">
+                <div class="avatar-circle" id="settingsAvatar">U</div>
+                <div class="settings-name" id="settingsName"
+                    style="font-size: 1.1rem; font-weight: 700; color: #1e293b; margin-top: 0.5rem;">User Name</div>
+                <div class="settings-phone" id="settingsPhone"
+                    style="font-size: 0.9rem; color: #64748b; margin-top: 0.2rem;">+91</div>
+                <div class="badge-row">
+                    <div class="s-badge vip"><i data-lucide="shield-check" size="18"></i> VIP: 0</div>
+                    <div class="s-badge credit"><i data-lucide="crown" size="18"></i> Credit Score: 100</div>
+                </div>
+            </div>
+            <div class="settings-list">
+                <div class="settings-item" onclick="toggleUserProfile()">
+                    <div class="settings-item-icon"><i data-lucide="user" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">User Profile</div>
+                        <div class="settings-item-desc">Update your profile information.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="userProfileChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="userProfileSubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openEditNameModal()">
+                        <i data-lucide="edit-3" size="18"></i> Update Name
+                    </div>
+                    <div class="submenu-item" onclick="openAvatarModal()">
+                        <i data-lucide="image" size="18"></i> Update Avatar
+                    </div>
+                    <div class="submenu-item" onclick="openKYCModal()">
+                        <i data-lucide="file-check" size="18"></i> View KYC
+                    </div>
+                </div>
+                <div class="settings-item" onclick="toggleSecurityMenu()">
+                    <div class="settings-item-icon"><i data-lucide="lock" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Security</div>
+                        <div class="settings-item-desc">Update your system security settings.</div>
+                    </div>
+                    <i data-lucide="chevron-down" id="securityChevron" class="settings-chevron" size="18"
+                        style="transition: transform 0.2s;"></i>
+                </div>
+                <div id="securitySubmenu" class="settings-submenu">
+                    <div class="submenu-item" onclick="openWithdrawalPinModal()">
+                        <i data-lucide="shield-check" size="18"></i> Withdrawal PIN
+                    </div>
+                    <div class="submenu-item" onclick="openResetPassword()">
+                        <i data-lucide="key" size="18"></i> Change Login Password
+                    </div>
+                </div>
+                <div class="settings-item" onclick="window.location.href='bank_accounts.html'">
+                    <div class="settings-item-icon"><i data-lucide="landmark" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Bank Accounts</div>
+                        <div class="settings-item-desc">Manage bank accounts and info</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+                <div class="settings-item" onclick="openCS()">
+                    <div class="settings-item-icon"><i data-lucide="headset" size="20"></i></div>
+                    <div class="settings-item-info">
+                        <div class="settings-item-title">Customer Service</div>
+                        <div class="settings-item-desc">Contact customer service</div>
+                    </div>
+                    <i data-lucide="chevron-right" class="settings-chevron" size="18"></i>
+                </div>
+            </div>
+            <div class="logout-btn-container">
+                <button class="logout-btn" onclick="DB.logout()">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customer Service Modal (Fixed Bottom-Right) -->
+    <div id="csModal">
+        <!-- Maximized Content -->
+        <div class="cs-modal-content">
+            <div style="position: absolute; top: 15px; right: 15px; display: flex; gap: 8px; z-index: 100;">
+                <button onclick="minimizeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.1)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="minus" size="18"></i>
+                </button>
+                <button onclick="closeCS()"
+                    style="background: rgba(255,255,255,0.05); border: none; color: #d4af37; cursor: pointer; width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;"
+                    onmouseover="this.style.background='rgba(239, 68, 68, 0.2)'"
+                    onmouseout="this.style.background='rgba(255,255,255,0.05)'">
+                    <i data-lucide="x" size="18"></i>
+                </button>
+            </div>
+
+            <div class="settings-header"
+                style="margin-bottom: 0; padding: 1.5rem 1.5rem 1rem; border-bottom: 1px solid #222;">
+                <h2 style="font-size: 1.3rem; font-weight: 700; color: #d4af37; margin: 0;">Customer Service</h2>
+                <div style="height: 2px; width: 30px; background: #d4af37; margin-top: 5px;"></div>
+            </div>
+
+            <div id="chatBox"
+                style="flex: 1; overflow-y: auto; padding: 1.5rem; background: #0c0c0c; display: flex; flex-direction: column; gap: 1rem;">
+            </div>
+
+            <!-- Image Preview Area -->
+            <div id="csImagePreviewArea"
+                style="display: none; padding: 0.5rem 1.5rem; background: #1a1a1a; border-top: 1px solid #333; gap: 0.5rem; align-items: center;">
+                <!-- Preview thumbnail injected here -->
+            </div>
+
+            <div
+                style="display: flex; gap: 0.5rem; align-items: center; padding: 1.2rem 1.5rem; background: #111; border-top: 1px solid #222;">
+                <input type="file" id="csImageInput" accept="image/*" style="display: none;"
+                    onchange="handleCSImageUpload(this)">
+                <button onclick="document.getElementById('csImageInput').click()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="image" size="22"></i>
+                </button>
+                <button onclick="toggleEmojiPicker()"
+                    style="background: none; border: none; cursor: pointer; color: #d4af37; padding: 0.5rem; position: relative; transition: transform 0.2s;"
+                    onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+                    <i data-lucide="smile" size="22"></i>
+                    <div id="emojiPicker"
+                        style="display: none; position: absolute; bottom: 50px; left: -10px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 0.75rem; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 180px; z-index: 100;">
+                        <span onclick="insertEmoji('👍')" style="cursor: pointer; font-size: 1.4rem;">👍</span>
+                        <span onclick="insertEmoji('👋')" style="cursor: pointer; font-size: 1.4rem;">👋</span>
+                        <span onclick="insertEmoji('😊')" style="cursor: pointer; font-size: 1.4rem;">😊</span>
+                        <span onclick="insertEmoji('😂')" style="cursor: pointer; font-size: 1.4rem;">😂</span>
+                        <span onclick="insertEmoji('❤️')" style="cursor: pointer; font-size: 1.4rem;">❤️</span>
+                        <span onclick="insertEmoji('🔥')" style="cursor: pointer; font-size: 1.4rem;">🔥</span>
+                        <span onclick="insertEmoji('🎉')" style="cursor: pointer; font-size: 1.4rem;">🎉</span>
+                        <span onclick="insertEmoji('💰')" style="cursor: pointer; font-size: 1.4rem;">💰</span>
+                    </div>
+                </button>
+                <input type="text" id="csInput" placeholder="Type a message..."
+                    style="flex: 1; padding: 0.7rem 1rem; background: #050505; border: 1px solid #333; border-radius: 10px; color: white; outline: none; font-family: 'Outfit', sans-serif; font-size: 0.9rem;">
+                <button onclick="sendCSMessage()"
+                    style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); color: #000; border: none; padding: 0.7rem 1.2rem; border-radius: 10px; font-weight: 800; cursor: pointer; transition: opacity 0.2s;"
+                    onmouseover="this.style.opacity='0.9'" onmouseout="this.style.opacity='1'">Send</button>
+            </div>
+        </div>
+
+        <!-- Minimized Bar -->
+        <div id="csMinimizedBar" onclick="maximizeCS()">
+            <div
+                style="position: relative; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px; background: rgba(212,175,55,0.1); border-radius: 50%;">
+                <i data-lucide="message-circle" size="14"></i>
+            </div>
+            <span style="font-size: 0.9rem;">Customer Service</span>
+            <i data-lucide="chevron-up" size="18" style="margin-left: auto; opacity: 0.7;"></i>
+        </div>
+    </div>
+
+
+    <!-- Reset Password Modal (Logged-In) -->
+    <div id="resetPasswordModal" class="center-popup-modal" onclick="if(event.target == this) closeResetPassword()">
+        <div class="center-popup-content" style="max-width: 450px;">
+            <div class="popup-header">
+                <h2>Reset Password</h2>
+                <button class="popup-close" onclick="closeResetPassword()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Current
+                        Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="currentPass" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('currentPass', this)"></i>
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                        Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="newPassInternal" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('newPassInternal', this)"></i>
+                    </div>
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 2rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                        New Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="confirmPassInternal" class="reg-input"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('confirmPassInternal', this)"></i>
+                    </div>
+                </div>
+                <button class="logout-btn" style="background: #3b82f6;" onclick="handleInternalReset()">Update
+                    Password</button>
+                <button class="logout-btn" style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                    onclick="closeResetPassword()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Withdrawal PIN Modal -->
+    <div id="withdrawalPinModal" class="center-popup-modal"
+        onclick="if(event.target == this) closeWithdrawalPinModal()">
+        <div class="center-popup-content" style="max-width: 450px;">
+            <div class="popup-header">
+                <h2 id="wpModalTitle">Withdrawal PIN</h2>
+                <button class="popup-close" onclick="closeWithdrawalPinModal()"><i data-lucide="x"
+                        size="24"></i></button>
+            </div>
+            <div class="popup-body">
+                <p id="wpModalDesc" style="font-size: 0.9rem; color: #64748b; margin-bottom: 1.5rem;">Set or update your
+                    4-6 digit withdrawal PIN.</p>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">New
+                        Withdrawal PIN (4-6 digits)</label>
+                    <input type="password" id="wpNewPin" class="reg-input" maxlength="6" pattern="\d*"
+                        inputmode="numeric" placeholder="Enter New PIN"
+                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 1.5rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Confirm
+                        New PIN</label>
+                    <input type="password" id="wpConfirmPin" class="reg-input" maxlength="6" pattern="\d*"
+                        inputmode="numeric" placeholder="Confirm New PIN"
+                        style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                </div>
+                <div class="reg-input-group" style="margin-bottom: 2rem;">
+                    <label
+                        style="display: block; font-size: 0.9rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem;">Verify
+                        Login Password</label>
+                    <div class="reg-password-wrapper" style="position: relative;">
+                        <input type="password" id="wpLoginPass" class="reg-input" placeholder="Enter Login Password"
+                            style="width: 100%; padding: 0.8rem 1rem; border: 1px solid #e2e8f0; border-radius: 8px; outline: none;">
+                        <i data-lucide="eye-off"
+                            style="position: absolute; right: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8; cursor: pointer;"
+                            onclick="toggleInternalPass('wpLoginPass', this)"></i>
+                    </div>
+                </div>
+                <button id="wpSubmitBtn" class="logout-btn" style="background: #fb923c;"
+                    onclick="handleWithdrawalPinSubmit()">Update
+                    Withdrawal PIN</button>
+                <button class="logout-btn" style="background: #f1f5f9; color: #64748b; margin-top: 1rem;"
+                    onclick="closeWithdrawalPinModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Avatar Modal -->
+    <div id="avatarModal" class="center-popup-modal">
+        <div class="center-popup-content avatar-form" style="max-width: 400px;">
+            <div class="popup-header"
+                style="width:100%; display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="font-size: 1.25rem; font-weight: 700;">Update Avatar</h2>
+                <button class="popup-close" onclick="closeAvatarModal()"><i data-lucide="x" size="24"></i></button>
+            </div>
+            <div class="popup-body" style="display:flex; flex-direction:column; align-items:center; width: 100%;">
+                <div class="avatar-preview-lg" id="avatarPreviewContainer"
+                    onclick="document.getElementById('avatarInput').click()">
+                    <i data-lucide="user" size="64" style="color:#cbd5e1;" id="avatarPlaceholderIcon"></i>
+                    <img id="avatarPreviewImg" src="" style="display:none;">
+                    <div class="avatar-change-overlay">Change Image</div>
+                </div>
+                <input type="file" id="avatarInput" hidden onchange="previewAvatar(this)" accept="image/*">
+                <div style="width: 100%; margin-top: 2rem; display: flex; flex-direction: column; gap: 0.75rem;">
+                    <button class="btn-primary" onclick="uploadAvatar()">Save Changes</button>
+                    <button class="btn-secondary" onclick="closeAvatarModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- KYC Modal -->
+    <div id="kycModal" class="center-popup-modal">
+        <div class="center-popup-content">
+            <div class="popup-header">
+                <h2>View KYC</h2>
+                <button class="popup-close" onclick="closeKYCModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="popup-body">
+                <div class="kyc-form-grid">
+                    <div class="kyc-field-label">Full Name</div>
+                    <input type="text" id="kycName" class="kyc-field-input" placeholder="Enter Full Name">
+                    <div class="kyc-field-label">Mobile Number</div>
+                    <input type="text" id="kycMobile" class="kyc-field-input" placeholder="Enter Mobile Number">
+                    <div class="kyc-field-label">ID Number</div>
+                    <input type="text" id="kycIdNum" class="kyc-field-input" placeholder="Enter ID Number">
+                    <div class="kyc-field-label">Submitted On</div>
+                    <input type="text" id="kycSubmitted" class="kyc-field-input" readonly style="background: #f8fafc;">
+                    <div class="kyc-field-label">Approval Status</div>
+                    <input type="text" id="kycApproved" class="kyc-field-input" readonly style="background: #f8fafc;">
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1.5rem;">
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycFrontInput').click()">
+                        <div class="plus-icon">+ Front</div>
+                        <img id="kycFrontPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycFrontInput" hidden
+                            onchange="previewKYCImage(this, 'kycFrontPreview')">
+                    </div>
+                    <div class="kyc-upload-box" onclick="document.getElementById('kycBackInput').click()">
+                        <div class="plus-icon">+ Back</div>
+                        <img id="kycBackPreview" style="display:none; width:100%; height:100%; object-fit:cover;">
+                        <input type="file" id="kycBackInput" hidden onchange="previewKYCImage(this, 'kycBackPreview')">
+                    </div>
+                </div>
+                <button class="btn-submit" onclick="submitKYC()" style="margin-top: 1.5rem; width: 100%;">Submit
+                    Verification</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+    <script src="js/credit_notifier.js"></script>
+</body>
+
+</html>
