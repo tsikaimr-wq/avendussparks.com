@@ -5183,13 +5183,17 @@
                     const compact = base
                         .replace(/^NSE:|^BSE:/, '')
                         .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
-                    const product = window.MarketEngine?.getProduct?.(symbol)
+                    const product = window.MarketEngine?.getProduct?.(currentProductId)
+                        || window.MarketEngine?.getProduct?.(symbol)
                         || window.MarketEngine?.getProduct?.(compact)
                         || window.MarketEngine?.getProduct?.(`${compact}.NS`)
                         || window.MarketEngine?.getProduct?.(`${compact}.BO`);
                     const fallbackPrice = Number(product?.price);
+                    const fallbackSubPrice = Number(product?.subscription_price);
                     if (Number.isFinite(fallbackPrice) && fallbackPrice > 0) {
                         price = fallbackPrice;
+                    } else if (Number.isFinite(fallbackSubPrice) && fallbackSubPrice > 0) {
+                        price = fallbackSubPrice;
                     }
                 }
 
@@ -5683,13 +5687,16 @@
                 if (!klinePayload) {
                     const quote = await fetchQuoteFromLocalApi(usedSymbol, window.MarketEngine?.getProduct?.(usedSymbol)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
                     const quotePrice = Number(quote?.price);
-                    const productPrice = Number(
-                        window.MarketEngine?.getProduct?.(usedSymbol)?.price ??
-                        window.MarketEngine?.getProduct?.(baseSymbol)?.price
-                    );
+                    const fallbackProduct = window.MarketEngine?.getProduct?.(usedSymbol)
+                        || window.MarketEngine?.getProduct?.(baseSymbol);
+                    const fallbackPrice = Number(fallbackProduct?.price);
+                    const fallbackSubPrice = Number(fallbackProduct?.subscription_price);
+                    const productPrice = (Number.isFinite(fallbackPrice) && fallbackPrice > 0)
+                        ? fallbackPrice
+                        : ((Number.isFinite(fallbackSubPrice) && fallbackSubPrice > 0) ? fallbackSubPrice : null);
                     const seedPrice = Number.isFinite(quotePrice) && quotePrice > 0
                         ? quotePrice
-                        : (Number.isFinite(productPrice) && productPrice > 0 ? productPrice : null);
+                        : productPrice;
                     if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, quote?.symbol || usedSymbol);
                 }
                 if (!klinePayload) throw new Error("No kline data from edge market API");
@@ -6093,6 +6100,11 @@
                     const exchange = s.symbol.includes('NSE') ? 'NSE' : 'BSE';
 
                     if (s.type === 'stock' && (type === 'all' || type === 'stocks')) {
+                        const effectiveStockPrice = (Number.isFinite(Number(s.price)) && Number(s.price) > 0)
+                            ? Number(s.price)
+                            : ((Number.isFinite(Number(s.subscription_price)) && Number(s.subscription_price) > 0)
+                                ? Number(s.subscription_price)
+                                : 0);
                         // Regular stocks in "All" view still look premium but slightly different if mixed
                         return `
                             <div class="premium-trade-card">
@@ -6109,7 +6121,7 @@
                                 <div class="premium-details-grid">
                                     <div class="premium-detail-item">
                                         <span class="label">Unit Price</span>
-                                        <span class="value">₹${s.price.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                        <span class="value">₹${effectiveStockPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                                     </div>
                                     <div class="premium-detail-item">
                                         <span class="label">Status</span>
@@ -6727,6 +6739,17 @@
             const ipoListingEl = document.getElementById('ipoListingDate');
             const ipoSubPriceEl = document.getElementById('ipoSubPrice');
             const ipoProfitEl = document.getElementById('ipoEstProfit');
+            const setLabelText = (id, text) => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = text;
+            };
+            setLabelText('ipoLblProduct', 'Product');
+            setLabelText('ipoLblSubStart', 'Backend Subscription Date');
+            setLabelText('ipoLblSubEnd', 'Backend End Date');
+            setLabelText('ipoLblAllocDate', 'Allocation Date');
+            setLabelText('ipoLblListingDate', 'Listing Date');
+            setLabelText('ipoLblSubPrice', 'Subscription Price (Backend)');
+            setLabelText('ipoLblEstProfit', 'Estimated Profit');
 
             if (ipoNameEl) ipoNameEl.innerText = product.name;
             if (ipoSubStartEl) ipoSubStartEl.innerText = fmtDate(startDateRaw, true);
@@ -8861,7 +8884,7 @@
     </div>
 
     <!-- IPO Subscription Confirmation Modal -->
-    <div id="ipoConfirmModal" class="center-popup-modal" onclick="if(event.target == this) closeIpoConfirm()">
+    <div id="ipoConfirmModal" class="center-popup-modal notranslate" translate="no" onclick="if(event.target == this) closeIpoConfirm()">
         <div class="center-popup-content"
             style="max-width: 480px; padding: 0; overflow: hidden; border: none; border-radius: 20px; background: #111;">
             <div style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); padding: 1.5rem; color: black;">
@@ -8874,32 +8897,32 @@
                 <div
                     style="background: #1a1a1a; border-radius: 16px; padding: 1.5rem; margin-bottom: 1.5rem; border: 1px solid #333;">
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">Product</span>
+                        <span id="ipoLblProduct" style="color: #94a3b8; font-size: 0.9rem;">Product</span>
                         <span id="ipoName" style="font-weight: 700; color: #f8fafc;">-</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">Backend Subscription Date</span>
+                        <span id="ipoLblSubStart" style="color: #94a3b8; font-size: 0.9rem;">Backend Subscription Date</span>
                         <span id="ipoSubStart" style="font-weight: 700; color: #f8fafc;">TBD</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">Backend End Date</span>
+                        <span id="ipoLblSubEnd" style="color: #94a3b8; font-size: 0.9rem;">Backend End Date</span>
                         <span id="ipoSubEnd" style="font-weight: 700; color: #f8fafc;">TBD</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">Allocation Date</span>
+                        <span id="ipoLblAllocDate" style="color: #94a3b8; font-size: 0.9rem;">Allocation Date</span>
                         <span id="ipoAllocDate" style="font-weight: 700; color: #f8fafc;">TBD</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">Listing Date</span>
+                        <span id="ipoLblListingDate" style="color: #94a3b8; font-size: 0.9rem;">Listing Date</span>
                         <span id="ipoListingDate" style="font-weight: 700; color: #f8fafc;">TBD</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">Subscription Price (Backend)</span>
+                        <span id="ipoLblSubPrice" style="color: #94a3b8; font-size: 0.9rem;">Subscription Price (Backend)</span>
                         <span id="ipoSubPrice" style="font-weight: 700; color: #f8fafc;">₹0.00</span>
                     </div>
                     <div
                         style="display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px solid #333;">
-                        <span style="color: #10b981; font-weight: 800;">Estimated Profit</span>
+                        <span id="ipoLblEstProfit" style="color: #10b981; font-weight: 800;">Estimated Profit</span>
                         <span id="ipoEstProfit"
                             style="font-weight: 900; color: #10b981; font-size: 1.1rem;">+0.00%</span>
                     </div>

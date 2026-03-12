@@ -817,13 +817,16 @@
                 if (!klinePayload) {
                     const quote = await fetchQuoteFromLocalApi(usedSymbol, window.MarketEngine?.getProduct?.(usedSymbol)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
                     const quotePrice = Number(quote?.price);
-                    const productPrice = Number(
-                        window.MarketEngine?.getProduct?.(usedSymbol)?.price ??
-                        window.MarketEngine?.getProduct?.(baseSymbol)?.price
-                    );
+                    const fallbackProduct = window.MarketEngine?.getProduct?.(usedSymbol)
+                        || window.MarketEngine?.getProduct?.(baseSymbol);
+                    const fallbackPrice = Number(fallbackProduct?.price);
+                    const fallbackSubPrice = Number(fallbackProduct?.subscription_price);
+                    const productPrice = (Number.isFinite(fallbackPrice) && fallbackPrice > 0)
+                        ? fallbackPrice
+                        : ((Number.isFinite(fallbackSubPrice) && fallbackSubPrice > 0) ? fallbackSubPrice : null);
                     const seedPrice = Number.isFinite(quotePrice) && quotePrice > 0
                         ? quotePrice
-                        : (Number.isFinite(productPrice) && productPrice > 0 ? productPrice : null);
+                        : productPrice;
                     if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, quote?.symbol || usedSymbol);
                 }
                 if (!klinePayload) throw new Error("No kline data from edge market API");
@@ -1463,6 +1466,26 @@
 
                 if (price === null) {
                     price = await window.DB.getCachedMarketPrice(marketSymbol, productName);
+                }
+
+                if (!Number.isFinite(Number(price)) || Number(price) <= 0) {
+                    const base = String(marketSymbol || symbol || '').toUpperCase();
+                    const compact = base
+                        .replace(/^NSE:|^BSE:/, '')
+                        .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+                    const fallbackProduct = window.MarketEngine?.getProduct?.(currentProductId)
+                        || window.MarketEngine?.getProduct?.(marketSymbol)
+                        || window.MarketEngine?.getProduct?.(symbol)
+                        || window.MarketEngine?.getProduct?.(compact)
+                        || window.MarketEngine?.getProduct?.(`${compact}.NS`)
+                        || window.MarketEngine?.getProduct?.(`${compact}.BO`);
+                    const fallbackPrice = Number(fallbackProduct?.price);
+                    const fallbackSubPrice = Number(fallbackProduct?.subscription_price);
+                    if (Number.isFinite(fallbackPrice) && fallbackPrice > 0) {
+                        price = fallbackPrice;
+                    } else if (Number.isFinite(fallbackSubPrice) && fallbackSubPrice > 0) {
+                        price = fallbackSubPrice;
+                    }
                 }
 
                 if (!Number.isFinite(Number(price)) || Number(price) <= 0) return;

@@ -1,5 +1,16 @@
 const API_BASE = 'https://api.stocktv.top';
-const YAHOO_BASE = 'https://query1.finance.yahoo.com';
+const YAHOO_BASES = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
+
+const STOCK_SYMBOL_ALIAS = {
+  RELIANCE: 'RELI',
+  RELIANCENS: 'RELI',
+  ONE97COMMUNICATIONS: 'PAYTM',
+  PAYTM: 'PAYTM',
+  PAYTMNS: 'PAYTM',
+  FSNECOMMERCEVENTURES: 'NYKAA',
+  NYKAA: 'NYKAA',
+  NYKAANS: 'NYKAA',
+};
 
 const INDEX_ALIAS_GROUPS = {
   '^BSESN': ['^BSESN', 'BSESN', 'SENSEX', 'BSE:SENSEX', 'BSE SENSEX'],
@@ -200,32 +211,59 @@ const extractFirst = (payload) => {
   return null;
 };
 
+const getRowSymbolValues = (row) =>
+  [row?.symbol, row?.code, row?.ticker, row?.stockCode, row?.shortCode].filter(Boolean);
+
 const bestMatch = (rows, symbol, opts = {}) => {
   if (!rows || !rows.length) return null;
   if (!symbol) return rows[0] || null;
   const allowName = opts.allowName === true;
+  const rawInput = String(symbol || '').trim().toUpperCase();
   const target = normalizeSymbol(symbol);
   const targetLoose = normalizeMatch(target);
-  const getSymbol = (x) =>
-    normalizeSymbol(x.symbol || x.code || x.ticker || x.stockCode || x.shortCode || '');
-  const getLoose = (x) =>
-    normalizeMatch(x.symbol || x.code || x.ticker || x.stockCode || x.shortCode || x.name || '');
+  const aliasKey = normalizeMatch(rawInput) || targetLoose;
+  const preferredTicker = STOCK_SYMBOL_ALIAS[aliasKey] || STOCK_SYMBOL_ALIAS[targetLoose] || null;
+  const symbolValues = (x) => getRowSymbolValues(x).map((v) => normalizeSymbol(v));
+  const looseSymbolValues = (x) => getRowSymbolValues(x).map((v) => normalizeMatch(v));
   const getNameLoose = (x) => normalizeMatch(x.name || '');
 
-  let found = rows.find((x) => getSymbol(x) === target);
+  if (preferredTicker) {
+    const preferredSymbol = normalizeSymbol(preferredTicker);
+    const preferredLoose = normalizeMatch(preferredSymbol);
+    const aliasMatch = rows.find((x) =>
+      symbolValues(x).includes(preferredSymbol) || looseSymbolValues(x).includes(preferredLoose)
+    );
+    if (aliasMatch) return aliasMatch;
+  }
+
+  let found = rows.find((x) => symbolValues(x).includes(target));
   if (found) return found;
 
-  const looksLikeTicker = /^[A-Z0-9.:-]+$/.test(String(symbol || '').toUpperCase());
+  const looksLikeTicker = /^[A-Z0-9.:-]+$/.test(rawInput) && !/\s/.test(rawInput);
+  found = rows.find((x) => looseSymbolValues(x).includes(targetLoose));
+  if (found) return found;
   if (looksLikeTicker) {
-    found = rows.find((x) => getLoose(x) === targetLoose);
-    if (found) return found;
     if (!allowName) return null;
   }
 
   found = rows.find((x) => getNameLoose(x) === targetLoose);
   if (found) return found;
-  found = rows.find((x) => getNameLoose(x).includes(targetLoose) || targetLoose.includes(getNameLoose(x)));
-  if (found) return found;
+
+  const scored = rows
+    .map((x) => {
+      const nameLoose = getNameLoose(x);
+      if (!nameLoose) return { x, score: -Infinity };
+      let score = -Infinity;
+      if (nameLoose === targetLoose) score = 100;
+      else if (nameLoose.startsWith(targetLoose)) score = 40;
+      else if (nameLoose.includes(targetLoose)) score = 20;
+      else if (targetLoose.includes(nameLoose)) score = 10;
+      if (score > -Infinity) score -= Math.abs(nameLoose.length - targetLoose.length) / 10;
+      return { x, score };
+    })
+    .filter((r) => Number.isFinite(r.score))
+    .sort((a, b) => b.score - a.score);
+  if (scored.length) return scored[0].x;
   return null;
 };
 
@@ -276,33 +314,35 @@ const resolveStock = async (env, { symbol, pid, name }) => {
   }
   if (symbol) {
     const normalized = normalizeSymbol(symbol);
-    const allowName = /[.:]/.test(String(symbol)) || String(symbol).includes(' ') || normalized.length > 6;
+    const inputUpper = String(symbol || '').trim().toUpperCase();
+    const looksLikeTicker = /^[A-Z0-9.:-]+$/.test(inputUpper) && !/\s/.test(inputUpper);
+    const allowName = !looksLikeTicker;
     const bySymbol = await queryStock(env, { symbol: normalized });
     const err = getError(bySymbol);
     if (err) lastError = err;
     const list = extractList(bySymbol);
-    const item = bestMatch(list, symbol, { allowName }) || extractFirst(bySymbol);
+    const item = bestMatch(list, symbol, { allowName });
     if (item) return item;
 
     const bySymbolRaw = await queryStock(env, { symbol });
     const errRaw = getError(bySymbolRaw);
     if (errRaw) lastError = errRaw;
     const listRaw = extractList(bySymbolRaw);
-    const itemRaw = bestMatch(listRaw, symbol, { allowName }) || extractFirst(bySymbolRaw);
+    const itemRaw = bestMatch(listRaw, symbol, { allowName });
     if (itemRaw) return itemRaw;
 
     const byName = await queryStock(env, { name: normalized });
     const errName = getError(byName);
     if (errName) lastError = errName;
     const listName = extractList(byName);
-    const itemName = bestMatch(listName, symbol, { allowName: true }) || extractFirst(byName);
+    const itemName = bestMatch(listName, symbol, { allowName });
     if (itemName) return itemName;
 
     const byNameRaw = await queryStock(env, { name: symbol });
     const errNameRaw = getError(byNameRaw);
     if (errNameRaw) lastError = errNameRaw;
     const listNameRaw = extractList(byNameRaw);
-    const itemNameRaw = bestMatch(listNameRaw, symbol, { allowName: true }) || extractFirst(byNameRaw);
+    const itemNameRaw = bestMatch(listNameRaw, symbol, { allowName });
     if (itemNameRaw) return itemNameRaw;
   }
   const maxPages = Number(env.STOCKTV_MAX_PAGES || 5);
@@ -415,17 +455,20 @@ const getYahooCandidates = ({ symbol, name, indexOnly = false }) => {
 };
 
 const fetchYahooChart = async (symbol, { interval, range }) => {
-  const url = new URL(`${YAHOO_BASE}/v8/finance/chart/${encodeURIComponent(symbol)}`);
-  url.searchParams.set('interval', interval);
-  url.searchParams.set('range', range);
-  url.searchParams.set('includePrePost', 'false');
-  const payload = await json(url);
-  const result = payload?.chart?.result?.[0];
-  if (!result) return null;
-  return {
-    symbol: result?.meta?.symbol || symbol,
-    result,
-  };
+  for (const base of YAHOO_BASES) {
+    const url = new URL(`${base}/v8/finance/chart/${encodeURIComponent(symbol)}`);
+    url.searchParams.set('interval', interval);
+    url.searchParams.set('range', range);
+    url.searchParams.set('includePrePost', 'false');
+    const payload = await json(url);
+    const result = payload?.chart?.result?.[0];
+    if (!result) continue;
+    return {
+      symbol: result?.meta?.symbol || symbol,
+      result,
+    };
+  }
+  return null;
 };
 
 const extractLastFinite = (arr) => {
@@ -529,11 +572,12 @@ const fetchYahooFundamentals = async ({ symbol, name }) => {
   if (!candidates.length) return null;
   const modules = 'summaryDetail,defaultKeyStatistics,financialData,assetProfile,price';
   for (const candidate of candidates) {
-    const url = new URL(`${YAHOO_BASE}/v10/finance/quoteSummary/${encodeURIComponent(candidate)}`);
-    url.searchParams.set('modules', modules);
-    const payload = await json(url);
-    const result = payload?.quoteSummary?.result?.[0];
-    if (result) {
+    for (const base of YAHOO_BASES) {
+      const url = new URL(`${base}/v10/finance/quoteSummary/${encodeURIComponent(candidate)}`);
+      url.searchParams.set('modules', modules);
+      const payload = await json(url);
+      const result = payload?.quoteSummary?.result?.[0];
+      if (!result) continue;
       return {
         success: true,
         symbol: candidate,
