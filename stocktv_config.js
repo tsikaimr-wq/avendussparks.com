@@ -1,5 +1,5 @@
 (function () {
-  window.STOCKTV_WORKER_BASE = window.STOCKTV_WORKER_BASE || 'https://stocktv-proxy.avendusstock.workers.dev';
+window.STOCKTV_WORKER_BASE = window.STOCKTV_WORKER_BASE || 'https://api.avendussparks.com';
   const base = window.STOCKTV_WORKER_BASE.trim();
   if (!base) return;
   window.INDIA_MARKET_API_BASE = base.replace(/\/$/, '');
