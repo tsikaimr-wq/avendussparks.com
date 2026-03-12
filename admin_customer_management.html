@@ -3417,6 +3417,17 @@
             const fetchSafe = async (table, query) => {
                 const { data, error } = await query;
                 if (error) {
+                    const msg = String(error.message || error.details || '');
+                    const isMissingTable =
+                        error.code === 'PGRST205' ||
+                        /Could not find the table/i.test(msg) ||
+                        /relation .* does not exist/i.test(msg);
+                    if (table === 'rewards' && isMissingTable) {
+                        console.warn("Rewards table missing. Continuing without rewards module.");
+                        const rewardsBtn = document.getElementById('btn_rewards');
+                        if (rewardsBtn) rewardsBtn.style.display = 'none';
+                        return [];
+                    }
                     console.error("Fetch error on table:", table, error);
                     return [];
                 }
@@ -4559,23 +4570,22 @@
 
             const filter = input.value.toLowerCase();
             const table = document.getElementById("userList");
+            if (!table) return;
             const tr = table.getElementsByTagName("tr");
 
             for (let i = 0; i < tr.length; i++) {
-                // client id/mobile
-                const tdId = tr[i].getElementsByTagName("td")[0];
-                // username
-                const tdName = tr[i].getElementsByTagName("td")[1];
+                const tds = tr[i].getElementsByTagName("td");
+                if (!tds || tds.length < 2) continue;
 
-                if (tdId || tdName) {
-                    const txtId = tdId.textContent || tdId.innerText;
-                    const txtName = tdName.textContent || tdName.innerText;
+                const tdId = tds[0];
+                const tdName = tds[1];
+                const txtId = String(tdId.textContent || tdId.innerText || '').toLowerCase();
+                const txtName = String(tdName.textContent || tdName.innerText || '').toLowerCase();
 
-                    if (txtId.toLowerCase().indexOf(filter) > -1 || txtName.toLowerCase().indexOf(filter) > -1) {
-                        tr[i].style.display = "";
-                    } else {
-                        tr[i].style.display = "none";
-                    }
+                if (txtId.indexOf(filter) > -1 || txtName.indexOf(filter) > -1) {
+                    tr[i].style.display = "";
+                } else {
+                    tr[i].style.display = "none";
                 }
             }
         }
