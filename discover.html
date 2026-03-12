@@ -4528,7 +4528,7 @@
 
         <div>
             <footer class="footer-market">
-                <div>婕?2025. Reserved.</div>
+                <div>(c) 2025. Reserved.</div>
                 <div class="footer-right">
                     <div style="display: flex; align-items: center; gap: 0.5rem;">
                         <img src="https://flagcdn.com/w20/in.png" width="16"> <span id="realTimeClock">13:59:09
@@ -4811,11 +4811,15 @@
             const supabaseBase = (window.supabaseClient?.supabaseUrl || window.DB?.SUPABASE_URL || window.SUPABASE_URL || '').trim();
             const functionBase = supabaseBase ? `${supabaseBase.replace(/\/$/, '')}/functions/v1` : '';
             const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
-            const fromWindow = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
-                ? [window.INDIA_MARKET_API_BASE.trim()]
-                : [];
-            const preferExternal = window.PREFER_INDIA_MARKET_API_BASE === true;
-            const ordered = preferExternal ? [...fromWindow, functionBase] : [functionBase, ...fromWindow];
+            const localBase = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
+                ? window.INDIA_MARKET_API_BASE.trim()
+                : '';
+            const preferExternal = window.PREFER_INDIA_MARKET_API_BASE !== false;
+            const useEdgeFallback = window.ENABLE_SUPABASE_EDGE_FALLBACK === true;
+            const ordered = [];
+            if (localBase && preferExternal) ordered.push(localBase);
+            if (functionBase && (!localBase || useEdgeFallback)) ordered.push(functionBase);
+            if (localBase && !preferExternal) ordered.push(localBase);
             return [...new Set(ordered.filter(Boolean))];
         }
 
@@ -5462,12 +5466,23 @@
             lucide.createIcons();
 
             if (normalizedType === 'IPO' || normalizedType === 'OTC') {
-                const staticPrice = (initProd && initProd.price) ? initProd.price : 0;
-                const formattedPrice = `₹${staticPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                document.getElementById('detPrice').innerText = formattedPrice;
-                const detBuyPriceEl = document.getElementById("detBuyPrice");
-                if (detBuyPriceEl) detBuyPriceEl.innerText = formattedPrice;
-                updateBuyCalculations();
+                const toNum = (v) => {
+                    const n = Number(String(v ?? '').replace(/,/g, '').replace('%', '').trim());
+                    return Number.isFinite(n) ? n : NaN;
+                };
+                const staticPrice = toNum(
+                    initProd?.subscription_price ??
+                    initProd?.price ??
+                    window.MarketEngine?.getProduct?.(chartSymbol)?.subscription_price ??
+                    window.MarketEngine?.getProduct?.(chartSymbol)?.price
+                );
+                if (Number.isFinite(staticPrice) && staticPrice > 0) {
+                    const formattedPrice = `₹${staticPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    document.getElementById('detPrice').innerText = formattedPrice;
+                    const detBuyPriceEl = document.getElementById("detBuyPrice");
+                    if (detBuyPriceEl) detBuyPriceEl.innerText = formattedPrice;
+                    updateBuyCalculations();
+                }
             } else {
                 await fetchLivePrice(chartSymbol, name || '');
             }
@@ -5505,11 +5520,15 @@
                 const supabaseBase = (window.supabaseClient?.supabaseUrl || window.DB?.SUPABASE_URL || window.SUPABASE_URL || '').trim();
                 const functionBase = supabaseBase ? `${supabaseBase.replace(/\/$/, '')}/functions/v1` : '';
                 const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
-                const fromWindow = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
-                    ? [window.INDIA_MARKET_API_BASE.trim()]
-                    : [];
-                const preferExternal = window.PREFER_INDIA_MARKET_API_BASE === true;
-                const ordered = preferExternal ? [...fromWindow, functionBase] : [functionBase, ...fromWindow];
+                const localBase = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
+                    ? window.INDIA_MARKET_API_BASE.trim()
+                    : '';
+                const preferExternal = window.PREFER_INDIA_MARKET_API_BASE !== false;
+                const useEdgeFallback = window.ENABLE_SUPABASE_EDGE_FALLBACK === true;
+                const ordered = [];
+                if (localBase && preferExternal) ordered.push(localBase);
+                if (functionBase && (!localBase || useEdgeFallback)) ordered.push(functionBase);
+                if (localBase && !preferExternal) ordered.push(localBase);
                 return [...new Set(ordered.filter(Boolean))];
             };
 
@@ -6878,7 +6897,7 @@
                                     const isPreListing = pListingDate && new Date(pListingDate) > new Date();
                                     if (isPreListing) {
                                         const lDateStr = new Date(pListingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-                                        return `<button class="h-btn close" style="margin-top: 0.5rem; padding: 4px 12px; height: auto; font-size: 0.70rem; background:#475569 !important; border-color:#475569 !important; cursor:not-allowed; opacity:0.8;" disabled>棣冩晙 Sell Available After Listing  - ${lDateStr}</button>`;
+                                        return `<button class="h-btn close" style="margin-top: 0.5rem; padding: 4px 12px; height: auto; font-size: 0.70rem; background:#475569 !important; border-color:#475569 !important; cursor:not-allowed; opacity:0.8;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
                                     }
                                     return `<button class="h-btn close close-order-btn" style="margin-top: 0.5rem; padding: 4px 12px; height: auto; font-size: 0.75rem;" data-id="${t.id}">Close Order</button>`;
                                 })()}
@@ -6973,10 +6992,10 @@
 
                     if (isLocked) {
                         leftLabel = 'Locked Until';
-                        leftVal = `棣冩晙 ${lockDate}`;
+                        leftVal = `Locked ${lockDate}`;
                     } else if (lockupUntil) {
                         leftLabel = 'Locked Until';
-                        leftVal = `棣冩晛 ${lockDate} (Expired)`;
+                        leftVal = `Lock Expired ${lockDate}`;
                     }
 
                     html += `
@@ -6985,7 +7004,7 @@
                                 <div class="premium-asset-info">
                                     <div class="premium-asset-name" style="color: #ffffff !important;">${item.name}${item.type?.toLowerCase() === 'ipo' ? ' <span style="color:#d4af37; font-size:0.85rem;">(IPO)</span>' : ''} <span style="font-size: 0.8em; color: #888;">(${item.symbol})</span></div>
                                     <div class="premium-asset-meta" style="color: #888 !important; font-size: 0.8rem;">BSE  - IN 
-                                        ${isLocked ? `<span style="color:#f59e0b; margin-left:8px; font-weight:700;">棣冩晙 LOCKED</span>` : (lockupUntil ? `<span style="color:#10b981; margin-left:8px; font-weight:700;">棣冩晛 LOCK EXPIRED</span>` : '')}
+                                        ${isLocked ? `<span style="color:#f59e0b; margin-left:8px; font-weight:700;">LOCKED</span>` : (lockupUntil ? `<span style="color:#10b981; margin-left:8px; font-weight:700;">LOCK EXPIRED</span>` : '')}
                                     </div>
                                 </div>
                                 <div class="premium-return-rate" style="display:flex; justify-content:flex-end;">
@@ -7013,12 +7032,12 @@
                             const pListingDate = item.products ? item.products.listing_date : null;
                             const isPreListing = pListingDate && new Date(pListingDate) > new Date();
                             if (isLocked) {
-                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>棣冩晙 Locked until ${lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</button>`;
+                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked until ${lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</button>`;
                             } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
-                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>棣冩晙 Locked (Unpaid)</button>`;
+                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked (Unpaid)</button>`;
                             } else if (isPreListing) {
                                 const lDateStr = new Date(pListingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>棣冩晙 Sell Available After Listing  - ${lDateStr}</button>`;
+                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
                             } else {
                                 return `<button class="premium-subscribe-btn close-order-btn" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid #ef4444;" data-id="${item.id}">Close Order</button>`;
                             }
@@ -8326,7 +8345,7 @@
             <div class="mc-item">
                 <div class="mc-dot unread"></div>
                 <div class="mc-content">
-                    <div class="mc-msg-title">IPO Announcement  - Armour Security IPO閿涘湨IB閿?/div>
+                    <div class="mc-msg-title">IPO Announcement - Armour Security IPO</div>
                     <div class="mc-time">14-01-2026 15:10:23</div>
                     <div class="mc-tag">IPO:NEW</div>
                     <button class="mc-delete-item" onclick="deleteMessage(this)">Delete</button>
@@ -8468,14 +8487,14 @@
                     <i data-lucide="smile" size="22"></i>
                     <div id="emojiPicker"
                         style="display: none; position: absolute; bottom: 50px; left: -10px; background: #1a1a1a; border: 1px solid #333; border-radius: 12px; padding: 0.75rem; grid-template-columns: repeat(4, 1fr); gap: 0.75rem; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 180px; z-index: 100;">
-                        <span onclick="insertEmoji('棣冩啢')" style="cursor: pointer; font-size: 1.4rem;">棣冩啢</span>
-                        <span onclick="insertEmoji('棣冩啟')" style="cursor: pointer; font-size: 1.4rem;">棣冩啟</span>
-                        <span onclick="insertEmoji('棣冩')" style="cursor: pointer; font-size: 1.4rem;">棣冩</span>
-                        <span onclick="insertEmoji('棣冩')" style="cursor: pointer; font-size: 1.4rem;">棣冩</span>
-                        <span onclick="insertEmoji('閴傘倧绗?)" style="cursor: pointer; font-size: 1.4rem;">閴傘倧绗?/span>
+                        <span onclick="insertEmoji('🙂')" style="cursor: pointer; font-size: 1.4rem;">🙂</span>
+                        <span onclick="insertEmoji('😄')" style="cursor: pointer; font-size: 1.4rem;">😄</span>
+                        <span onclick="insertEmoji('👍')" style="cursor: pointer; font-size: 1.4rem;">👍</span>
+                        <span onclick="insertEmoji('✅')" style="cursor: pointer; font-size: 1.4rem;">✅</span>
+                        <span onclick="insertEmoji('🎉')" style="cursor: pointer; font-size: 1.4rem;">🎉</span>
                         <span onclick="insertEmoji('🔥')" style="cursor: pointer; font-size: 1.4rem;">🔥</span>
-                        <span onclick="insertEmoji('棣冨竴')" style="cursor: pointer; font-size: 1.4rem;">棣冨竴</span>
-                        <span onclick="insertEmoji('棣冩尩')" style="cursor: pointer; font-size: 1.4rem;">棣冩尩</span>
+                        <span onclick="insertEmoji('💰')" style="cursor: pointer; font-size: 1.4rem;">💰</span>
+                        <span onclick="insertEmoji('📈')" style="cursor: pointer; font-size: 1.4rem;">📈</span>
                     </div>
                 </button>
                 <input type="text" id="csInput" placeholder="Type a message..."
@@ -8859,28 +8878,28 @@
                         <span id="ipoName" style="font-weight: 700; color: #f8fafc;">-</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">鍚庡彴鐨勮闃呮棩鏈?/span>
+                        <span style="color: #94a3b8; font-size: 0.9rem;">Backend Subscription Date</span>
                         <span id="ipoSubStart" style="font-weight: 700; color: #f8fafc;">TBD</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">鍚庡彴鐨勭粨鏉熸棩鏈?/span>
+                        <span style="color: #94a3b8; font-size: 0.9rem;">Backend End Date</span>
                         <span id="ipoSubEnd" style="font-weight: 700; color: #f8fafc;">TBD</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">鍒嗛厤鏃ユ湡</span>
+                        <span style="color: #94a3b8; font-size: 0.9rem;">Allocation Date</span>
                         <span id="ipoAllocDate" style="font-weight: 700; color: #f8fafc;">TBD</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">涓婂競鏃ユ湡</span>
+                        <span style="color: #94a3b8; font-size: 0.9rem;">Listing Date</span>
                         <span id="ipoListingDate" style="font-weight: 700; color: #f8fafc;">TBD</span>
                     </div>
                     <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.9rem;">璁㈤槄浠锋牸锛堝悗鍙帮級</span>
+                        <span style="color: #94a3b8; font-size: 0.9rem;">Subscription Price (Backend)</span>
                         <span id="ipoSubPrice" style="font-weight: 700; color: #f8fafc;">₹0.00</span>
                     </div>
                     <div
                         style="display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px solid #333;">
-                        <span style="color: #10b981; font-weight: 800;">棰勮鐩堝埄</span>
+                        <span style="color: #10b981; font-weight: 800;">Estimated Profit</span>
                         <span id="ipoEstProfit"
                             style="font-weight: 900; color: #10b981; font-size: 1.1rem;">+0.00%</span>
                     </div>

@@ -5,5 +5,6 @@ window.STOCKTV_WORKER_BASE = window.STOCKTV_WORKER_BASE || 'https://api.avenduss
   window.INDIA_MARKET_API_BASE = base.replace(/\/$/, '');
   window.ALLOW_LOCAL_MARKET_API = true;
   window.PREFER_INDIA_MARKET_API_BASE = true;
-  window.DISABLE_MARKET_DB = true;
+  window.ENABLE_SUPABASE_EDGE_FALLBACK = false;
+  window.DISABLE_MARKET_DB = false;
 })();

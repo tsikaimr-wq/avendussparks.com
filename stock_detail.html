@@ -654,11 +654,15 @@
                 const supabaseBase = (window.supabaseClient?.supabaseUrl || window.SUPABASE_URL || '').trim();
                 const functionBase = supabaseBase ? `${supabaseBase.replace(/\/$/, '')}/functions/v1` : '';
                 const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
-                const fromWindow = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
-                    ? [window.INDIA_MARKET_API_BASE.trim()]
-                    : [];
-                const preferExternal = window.PREFER_INDIA_MARKET_API_BASE === true;
-                const ordered = preferExternal ? [...fromWindow, functionBase] : [functionBase, ...fromWindow];
+                const localBase = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
+                    ? window.INDIA_MARKET_API_BASE.trim()
+                    : '';
+                const preferExternal = window.PREFER_INDIA_MARKET_API_BASE !== false;
+                const useEdgeFallback = window.ENABLE_SUPABASE_EDGE_FALLBACK === true;
+                const ordered = [];
+                if (localBase && preferExternal) ordered.push(localBase);
+                if (functionBase && (!localBase || useEdgeFallback)) ordered.push(functionBase);
+                if (localBase && !preferExternal) ordered.push(localBase);
                 return [...new Set(ordered.filter(Boolean))];
             };
 
@@ -1163,7 +1167,7 @@
             const ocBtn = document.getElementById('ocConfirmBtn');
 
             if (ocName) ocName.innerText = stockName;
-            if (ocSym) ocSym.innerText = `${symbol} 鈥?BSE`;
+            if (ocSym) ocSym.innerText = `${symbol} - BSE`;
             if (ocQty) ocQty.innerText = calc.qty.toLocaleString();
             if (ocPr) ocPr.innerText = '₹' + calc.price.toLocaleString('en-IN', { minimumFractionDigits: 2 });
             if (ocBase) ocBase.innerText = '₹' + calc.baseTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -1229,7 +1233,7 @@
             const ocBtn = document.getElementById('ocConfirmBtn');
 
             if (ocName) ocName.innerText = currentStockName;
-            if (ocSym) ocSym.innerText = `${currentActiveSymbol} 鈥?EXIT LOT`;
+            if (ocSym) ocSym.innerText = `${currentActiveSymbol} - EXIT LOT`;
             if (ocQty) ocQty.innerText = qty.toLocaleString();
             if (ocPr) ocPr.innerText = '₹' + currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
             if (ocBase) ocBase.innerText = '₹' + baseReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -1394,7 +1398,7 @@
                                         ${trade.symbol}
                                         <span style="font-size: 0.7rem; padding: 2px 6px; background: #f1f5f9; border-radius: 4px; color: #64748b;">LOT</span>
                                     </div>
-                                    <div class="tl-date">${tradeDate} 鈥?Bought at ₹${buyPrice.toLocaleString('en-IN')}</div>
+                                    <div class="tl-date">${tradeDate} - Bought at ₹${buyPrice.toLocaleString('en-IN')}</div>
                                     
                                     <div style="margin-top: 0.8rem; display: flex; gap: 1rem; align-items: center;">
                                         <div style="font-size: 0.8rem;">
@@ -1551,7 +1555,7 @@
                         <h2 id="ocAssetName" style="font-weight: 800; font-size: 1.5rem; margin: 0; line-height: 1.2;">
                             Stock Name</h2>
                         <div id="ocAssetSymbol"
-                            style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.25rem; font-weight: 500;">SYMBOL 鈥?
+                            style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.25rem; font-weight: 500;">SYMBOL -
                             EXCHANGE</div>
                     </div>
                     <button class="popup-close" onclick="closeOrderConfirm()"
@@ -1614,7 +1618,7 @@
                     BUY ORDER</button>
 
                 <p style="text-align: center; margin-top: 1rem; font-size: 0.75rem; color: #94a3b8; font-weight: 500;">
-                    Fast execution 鈥?Secured by Avendus Enterprise</p>
+                    Fast execution - Secured by Avendus Enterprise</p>
             </div>
         </div>
     </div>

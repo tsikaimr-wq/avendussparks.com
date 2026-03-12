@@ -924,7 +924,8 @@
             const mobile = document.getElementById('regMobile').value;
             const pass = document.getElementById('regPass').value;
             const confirmPass = document.getElementById('regConfirmPass').value;
-            const inviteCode = document.getElementById('regInviteCode').value.trim();
+            const inviteCodeRaw = document.getElementById('regInviteCode').value.trim();
+            const inviteCode = String(inviteCodeRaw || '').replace(/\s+/g, '').toUpperCase();
 
             if (!mobile || mobile.length < 10) return showAlert('warning', 'Please enter a valid 10-digit mobile number.');
             if (!pass) return showAlert('warning', 'Please create a password.');
@@ -939,19 +940,15 @@
 
             try {
                 // Validate Invitation Code
-                const client = DB.getClient();
-                const { data: csr, error: csrErr } = await client
-                    .from('admins')
-                    .select('id')
-                    .eq('invitation_code', inviteCode)
-                    .eq('role', 'csr')
-                    .eq('status', 'active')
-                    .maybeSingle();
+                const invitationCheck = (window.DB && typeof window.DB.validateInvitationCode === 'function')
+                    ? await window.DB.validateInvitationCode(inviteCode)
+                    : { success: false, message: 'Invitation validator unavailable.' };
 
-                if (csrErr) throw csrErr;
-                if (!csr) {
-                    return showAlert('error', 'Invalid or inactive invitation code.');
+                if (!invitationCheck.success || !invitationCheck.csr) {
+                    return showAlert('error', invitationCheck.message || 'Invalid or inactive invitation code.');
                 }
+
+                const client = DB.getClient();
 
                 // Check if mobile already exists (informational)
                 const { data: existingMob } = await client.from('users').select('id').eq('mobile', mobile).maybeSingle();
@@ -962,7 +959,7 @@
                 // Store Step 1 Data
                 regData.mobile = mobile;
                 regData.password = pass;
-                regData.inviteCode = inviteCode;
+                regData.inviteCode = invitationCheck.normalizedCode || inviteCode;
 
                 showStep(2);
             } catch (err) {

@@ -46,11 +46,16 @@ window.DB = {
         const supabaseBase = (this.SUPABASE_URL || window.supabaseClient?.supabaseUrl || '').trim();
         const functionBase = supabaseBase ? `${supabaseBase.replace(/\/$/, '')}/functions/v1` : '';
         const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
-        const fromWindow = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
-            ? [window.INDIA_MARKET_API_BASE.trim()]
-            : [];
-        const preferExternal = window.PREFER_INDIA_MARKET_API_BASE === true;
-        const ordered = preferExternal ? [...fromWindow, functionBase] : [functionBase, ...fromWindow];
+        const localBase = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
+            ? window.INDIA_MARKET_API_BASE.trim()
+            : '';
+        const preferExternal = window.PREFER_INDIA_MARKET_API_BASE !== false;
+        const useEdgeFallback = window.ENABLE_SUPABASE_EDGE_FALLBACK === true;
+
+        const ordered = [];
+        if (localBase && preferExternal) ordered.push(localBase);
+        if (functionBase && (!localBase || useEdgeFallback)) ordered.push(functionBase);
+        if (localBase && !preferExternal) ordered.push(localBase);
         return [...new Set(ordered.filter(Boolean))];
     },
 
@@ -201,10 +206,23 @@ window.DB = {
         }
 
         const fetchPromise = (async () => {
-            const localQuote = await this.fetchLocalMarketQuote(sym, name);
-            if (localQuote) return localQuote;
+            const [localQuote, cacheQuote] = await Promise.all([
+                this.fetchLocalMarketQuote(sym, name),
+                this.fetchMarketCacheQuote(sym)
+            ]);
 
-            const cacheQuote = await this.fetchMarketCacheQuote(sym);
+            if (localQuote && cacheQuote) {
+                const localPrice = Number(localQuote.price);
+                const cachePrice = Number(cacheQuote.price);
+                if (Number.isFinite(localPrice) && localPrice > 0 && Number.isFinite(cachePrice) && cachePrice > 0) {
+                    const deviation = Math.abs(localPrice - cachePrice) / cachePrice;
+                    if (deviation > 0.6) {
+                        return { ...cacheQuote, source: 'market_cache_override' };
+                    }
+                }
+            }
+
+            if (localQuote) return localQuote;
             if (cacheQuote) return cacheQuote;
 
             return { status: 'error', message: 'Market price unavailable' };
@@ -290,6 +308,70 @@ window.DB = {
         return { success: true, user: data };
     },
 
+    normalizeInvitationCode(invitationCode) {
+        return String(invitationCode || '').trim().replace(/\s+/g, '').toUpperCase();
+    },
+
+    isCsrRole(role) {
+        return String(role || '').trim().toLowerCase() === 'csr';
+    },
+
+    isActiveAdminStatus(status) {
+        const raw = String(status ?? '').trim();
+        if (!raw) return true;
+        const normalized = raw.toLowerCase();
+        const activeSet = new Set([
+            'active', 'enabled', 'enable', 'normal', 'ok', 'valid', 'online',
+            '1', 'true', 'yes',
+            'ACTIVE', 'ENABLED',
+            '正常', '启用', '啟用', '活跃', '活躍'
+        ]);
+        return activeSet.has(raw) || activeSet.has(normalized);
+    },
+
+    async validateInvitationCode(invitationCode) {
+        const client = this.getClient();
+        if (!client) return { success: false, message: "Database connecting..." };
+
+        const normalizedCode = this.normalizeInvitationCode(invitationCode);
+        if (!normalizedCode) {
+            return { success: false, message: "Invitation code is required." };
+        }
+
+        try {
+            const rawTrimmed = String(invitationCode || '').trim();
+            const candidates = [...new Set([
+                normalizedCode,
+                normalizedCode.toLowerCase(),
+                rawTrimmed,
+                rawTrimmed.toUpperCase(),
+                rawTrimmed.toLowerCase()
+            ].filter(Boolean))];
+
+            const { data: rows, error } = await client
+                .from('admins')
+                .select('id, status, role, invitation_code')
+                .in('invitation_code', candidates)
+                .limit(20);
+
+            if (error) throw error;
+
+            const csr = (rows || []).find(row => this.isCsrRole(row.role) && this.isActiveAdminStatus(row.status));
+            if (!csr) {
+                return { success: false, message: "Invalid or inactive invitation code." };
+            }
+
+            return {
+                success: true,
+                csr,
+                normalizedCode: this.normalizeInvitationCode(csr.invitation_code || normalizedCode)
+            };
+        } catch (e) {
+            console.error("DB: Error during invitation validation:", e);
+            return { success: false, message: "System error during invitation validation." };
+        }
+    },
+
     async register(mobile, password, email = null, authId = null, invitationCode = null) {
         const client = this.getClient();
         const insertData = {
@@ -310,31 +392,13 @@ window.DB = {
             return { success: false, message: "Invitation code is strictly required for registration." };
         }
 
-        try {
-            console.log("DB: Validating invitation code:", invitationCode);
-            const { data: csr, error: csrError } = await client
-                .from('admins')
-                .select('id, status, role')
-                .eq('invitation_code', invitationCode)
-                .eq('role', 'csr')
-                .eq('status', 'active')
-                .maybeSingle();
-
-            if (csrError) throw csrError;
-
-            if (!csr) {
-                console.error("DB: Invalid or inactive invitation code:", invitationCode);
-                return { success: false, message: "Invalid or inactive invitation code." };
-            }
-
-            // Valid CSR found, link the user
-            insertData.csr_id = csr.id;
-            insertData.invitation_code = invitationCode; // Store the code used
-            console.log("DB: CSR validated and linked:", csr.id);
-        } catch (e) {
-            console.error("DB: Error during invitation validation:", e);
-            return { success: false, message: "System error during invitation validation." };
+        const invitationCheck = await this.validateInvitationCode(invitationCode);
+        if (!invitationCheck.success || !invitationCheck.csr) {
+            return { success: false, message: invitationCheck.message || "Invalid or inactive invitation code." };
         }
+        insertData.csr_id = invitationCheck.csr.id;
+        insertData.invitation_code = invitationCheck.normalizedCode;
+        console.log("DB: CSR validated and linked:", invitationCheck.csr.id);
 
         // STRICT PRE-REGISTRATION DUPLICATE CHECK (SEPARATE)
         if (email) {
@@ -1622,18 +1686,21 @@ window.DB = {
         const client = this.getClient();
         if (!client) return null;
 
-        const { data, error } = await client
-            .from('market_cache')
-            .select('price')
-            .eq('symbol', symbol)
-            .single();
+        const candidates = this.getYahooSymbolCandidates(symbol);
+        for (const sym of candidates) {
+            const { data, error } = await client
+                .from('market_cache')
+                .select('price')
+                .eq('symbol', sym)
+                .maybeSingle();
 
-        if (error) {
-            console.error("Market cache fetch error:", error);
-            return null;
+            if (error || !data) continue;
+            const price = Number(data.price);
+            if (Number.isFinite(price) && price > 0) {
+                return price;
+            }
         }
-
-        return data?.price || null;
+        return null;
     },
 
     async saveProduct(productData) {
