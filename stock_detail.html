@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -519,7 +519,7 @@
                     syncBalance();
                     loadHoldings();
                 }
-            }, 2000);
+            }, 10000);
         };
 
         let globalModalCallback = null;
@@ -721,71 +721,6 @@
                 return null;
             };
 
-            const fetchYahooChartJson = async (targetUrl) => {
-                try {
-                    const response = await fetch(targetUrl, { cache: 'no-store' });
-                    if (!response.ok) return null;
-                    return await response.json();
-                } catch (_) {
-                    return null;
-                }
-            };
-
-            const fetchYahooKline = async (sym) => {
-                try {
-                    const interval = desiredInterval || '5m';
-                    const rangeMap = {
-                        '1d': '1d',
-                        '5d': '5d',
-                        '1mo': '1mo',
-                        '3mo': '3mo',
-                        '6mo': '6mo',
-                        '1y': '1y',
-                        '2y': '2y',
-                        '5y': '5y',
-                        '10y': '10y',
-                        'ytd': 'ytd',
-                        'max': 'max'
-                    };
-                    const range = rangeMap[desiredPeriod] || '1d';
-                    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${encodeURIComponent(interval)}&range=${encodeURIComponent(range)}`;
-                    const data = await fetchYahooChartJson(url);
-                    const result = data?.chart?.result?.[0];
-                    const timestamps = result?.timestamp;
-                    const quote = result?.indicators?.quote?.[0];
-                    if (!Array.isArray(timestamps) || !quote) return null;
-
-                    const rows = timestamps.map((t, i) => {
-                        const o = Number(quote.open?.[i]);
-                        const h = Number(quote.high?.[i]);
-                        const l = Number(quote.low?.[i]);
-                        const c = Number(quote.close?.[i]);
-                        if (!Number.isFinite(c)) return null;
-                        return {
-                            t: new Date(t * 1000).toISOString(),
-                            o: Number.isFinite(o) ? o : c,
-                            h: Number.isFinite(h) ? h : c,
-                            l: Number.isFinite(l) ? l : c,
-                            c,
-                            v: Number(quote.volume?.[i]) || 0
-                        };
-                    }).filter(Boolean);
-
-                    if (!rows.length) return null;
-                    return {
-                        payload: {
-                            success: true,
-                            symbol: result?.meta?.symbol || sym,
-                            source: 'yahoo',
-                            data: rows
-                        },
-                        symbol: result?.meta?.symbol || sym
-                    };
-                } catch (_) {
-                    return null;
-                }
-            };
-
             const fetchQuoteFromLocalApi = async (sym, name = '') => {
                 for (const base of marketApiBases()) {
                     try {
@@ -872,17 +807,6 @@
                         klinePayload = result.payload;
                         usedSymbol = result.payload.symbol || candidate;
                         break;
-                    }
-                }
-
-                if (!klinePayload) {
-                    for (const candidate of uniqCandidates) {
-                        const result = await fetchYahooKline(candidate);
-                        if (result?.payload) {
-                            klinePayload = result.payload;
-                            usedSymbol = result.symbol || candidate;
-                            break;
-                        }
                     }
                 }
 
@@ -974,7 +898,7 @@
                     } catch (e) {
                         console.warn("Realtime quote update failed:", e);
                     }
-                }, 20000);
+                }, 10000);
 
                 yahooResizeObserver = new ResizeObserver(entries => {
                     if (entries.length === 0 || !entries[0].contentRect) return;
@@ -1239,7 +1163,7 @@
             const ocBtn = document.getElementById('ocConfirmBtn');
 
             if (ocName) ocName.innerText = stockName;
-            if (ocSym) ocSym.innerText = `${symbol} • BSE`;
+            if (ocSym) ocSym.innerText = `${symbol} 鈥?BSE`;
             if (ocQty) ocQty.innerText = calc.qty.toLocaleString();
             if (ocPr) ocPr.innerText = '₹' + calc.price.toLocaleString('en-IN', { minimumFractionDigits: 2 });
             if (ocBase) ocBase.innerText = '₹' + calc.baseTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -1305,7 +1229,7 @@
             const ocBtn = document.getElementById('ocConfirmBtn');
 
             if (ocName) ocName.innerText = currentStockName;
-            if (ocSym) ocSym.innerText = `${currentActiveSymbol} • EXIT LOT`;
+            if (ocSym) ocSym.innerText = `${currentActiveSymbol} 鈥?EXIT LOT`;
             if (ocQty) ocQty.innerText = qty.toLocaleString();
             if (ocPr) ocPr.innerText = '₹' + currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
             if (ocBase) ocBase.innerText = '₹' + baseReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 });
@@ -1470,7 +1394,7 @@
                                         ${trade.symbol}
                                         <span style="font-size: 0.7rem; padding: 2px 6px; background: #f1f5f9; border-radius: 4px; color: #64748b;">LOT</span>
                                     </div>
-                                    <div class="tl-date">${tradeDate} • Bought at ₹${buyPrice.toLocaleString('en-IN')}</div>
+                                    <div class="tl-date">${tradeDate} 鈥?Bought at ₹${buyPrice.toLocaleString('en-IN')}</div>
                                     
                                     <div style="margin-top: 0.8rem; display: flex; gap: 1rem; align-items: center;">
                                         <div style="font-size: 0.8rem;">
@@ -1505,19 +1429,21 @@
         let priceInterval = null;
 
         async function fetchLivePrice(symbol) {
-            console.log("🔥 fetchLivePrice CALLED:", symbol);
+            console.log("fetchLivePrice CALLED:", symbol);
             if (!symbol) symbol = currentActiveSymbol;
 
             try {
                 let price = null;
                 const isOTC = currentProductType?.toUpperCase() === 'OTC';
+                let productName = '';
+                let marketSymbol = symbol;
 
                 if (isOTC && window.MarketEngine) {
                     const prod = window.MarketEngine.dbOtcProducts.find(p => p.symbol === symbol || p.id == currentProductId);
-                    const marketSymbol = prod ? prod.market_symbol : symbol;
+                    marketSymbol = prod ? (prod.market_symbol || prod.symbol || symbol) : symbol;
+                    productName = prod?.name || '';
 
-                    // Fetch real-time price from Yahoo (via Supabase function)
-                    const data = await window.DB.getMarketPrice(marketSymbol, prod?.name || '');
+                    const data = await window.DB.getMarketPrice(marketSymbol, productName);
                     if (data && data.status !== 'error' && data.price) {
                         price = parseFloat(data.price);
                         if (window.MarketEngine.livePrices) window.MarketEngine.livePrices[marketSymbol] = price;
@@ -1525,10 +1451,17 @@
                 }
 
                 if (price === null) {
-                    price = await window.DB.getCachedMarketPrice(symbol, prod?.name || '');
+                    const data = await window.DB.getMarketPrice(marketSymbol, productName);
+                    if (data && data.status !== 'error' && data.price) {
+                        price = parseFloat(data.price);
+                    }
                 }
 
-                if (!price) return;
+                if (price === null) {
+                    price = await window.DB.getCachedMarketPrice(marketSymbol, productName);
+                }
+
+                if (!Number.isFinite(Number(price)) || Number(price) <= 0) return;
 
                 currentPrice = parseFloat(price);
 
@@ -1538,17 +1471,9 @@
                 })}`;
 
                 const el = document.getElementById("detPrice");
-
-                if (el) {
-                    el.innerText = formatted;
-
-                    // 🔥 HARD LOCK — prevent other scripts from overwriting
-                    Object.defineProperty(el, "innerText", {
-                        writable: false
-                    });
-                }
-
-                console.log("✅ detPrice locked at:", formatted);
+                if (el) el.innerText = formatted;
+                const buyEl = document.getElementById("detBuyPrice");
+                if (buyEl) buyEl.innerText = formatted;
 
             } catch (e) {
                 console.error(e);
@@ -1626,7 +1551,7 @@
                         <h2 id="ocAssetName" style="font-weight: 800; font-size: 1.5rem; margin: 0; line-height: 1.2;">
                             Stock Name</h2>
                         <div id="ocAssetSymbol"
-                            style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.25rem; font-weight: 500;">SYMBOL •
+                            style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.25rem; font-weight: 500;">SYMBOL 鈥?
                             EXCHANGE</div>
                     </div>
                     <button class="popup-close" onclick="closeOrderConfirm()"
@@ -1689,7 +1614,7 @@
                     BUY ORDER</button>
 
                 <p style="text-align: center; margin-top: 1rem; font-size: 0.75rem; color: #94a3b8; font-weight: 500;">
-                    Fast execution • Secured by Avendus Enterprise</p>
+                    Fast execution 鈥?Secured by Avendus Enterprise</p>
             </div>
         </div>
     </div>

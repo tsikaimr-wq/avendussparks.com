@@ -104,41 +104,8 @@ window.DB = {
     },
 
     async fetchYahooDirectQuote(symbol) {
-        for (const sym of this.getYahooSymbolCandidates(symbol)) {
-            try {
-                const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?range=1d&interval=1m&includePrePost=false&events=div%2Csplit`;
-                const response = await fetch(url, { cache: 'no-store' });
-                if (!response.ok) continue;
-
-                const json = await response.json();
-                const result = json?.chart?.result?.[0];
-                if (!result) continue;
-
-                const meta = result.meta || {};
-                const closes = result.indicators?.quote?.[0]?.close || [];
-                const lastClose = [...closes].reverse().find(v => Number.isFinite(Number(v)));
-                const price = Number(meta.regularMarketPrice ?? lastClose);
-                if (!Number.isFinite(price) || price <= 0) continue;
-
-                const prevCloseNum = Number(meta.chartPreviousClose ?? meta.previousClose ?? meta.regularMarketPreviousClose);
-                const prevClose = Number.isFinite(prevCloseNum) ? prevCloseNum : null;
-                const change = Number.isFinite(prevClose) ? (price - prevClose) : null;
-                const changePercent = (Number.isFinite(prevClose) && prevClose !== 0 && Number.isFinite(change))
-                    ? (change / prevClose) * 100
-                    : null;
-
-                return {
-                    status: 'success',
-                    symbol: meta.symbol || sym,
-                    price,
-                    previousClose: prevClose,
-                    prevClose,
-                    change,
-                    changePercent,
-                    source: 'yahoo_direct'
-                };
-            } catch (_) { }
-        }
+        // Browser-side direct Yahoo requests frequently fail due to CORS.
+        // Keep this function for compatibility but always rely on worker/cache fallbacks.
         return null;
     },
 
@@ -236,9 +203,6 @@ window.DB = {
         const fetchPromise = (async () => {
             const localQuote = await this.fetchLocalMarketQuote(sym, name);
             if (localQuote) return localQuote;
-
-            const yahooQuote = await this.fetchYahooDirectQuote(sym);
-            if (yahooQuote) return yahooQuote;
 
             const cacheQuote = await this.fetchMarketCacheQuote(sym);
             if (cacheQuote) return cacheQuote;

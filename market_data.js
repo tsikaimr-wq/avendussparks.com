@@ -435,11 +435,22 @@
                     const latestPrice = parseFloat(data?.price);
                     if (!Number.isFinite(latestPrice) || latestPrice <= 0) continue;
 
+                    const remotePrevClose = parseFloat(data?.previousClose ?? data?.prevClose);
+                    const baselinePrevClose = Number.isFinite(remotePrevClose) && remotePrevClose > 0
+                        ? remotePrevClose
+                        : ((idx.prevClose && idx.prevClose > 0) ? idx.prevClose : null);
+                    if (baselinePrevClose && idx.symbol !== 'VIX') {
+                        const spikePct = Math.abs(((latestPrice - baselinePrevClose) / baselinePrevClose) * 100);
+                        if (spikePct > 40) {
+                            console.warn(`Skipping abnormal index quote for ${idx.symbol}: ${latestPrice} vs prevClose ${baselinePrevClose}`);
+                            continue;
+                        }
+                    }
+
                     idx.price = latestPrice;
                     this.livePrices[yahooSymbol] = latestPrice;
                     this.livePrices[idx.symbol] = latestPrice;
 
-                    const remotePrevClose = parseFloat(data?.previousClose ?? data?.prevClose);
                     if (Number.isFinite(remotePrevClose) && remotePrevClose > 0) {
                         idx.prevClose = remotePrevClose;
                     } else if (!idx.prevClose || idx.prevClose <= 0) {

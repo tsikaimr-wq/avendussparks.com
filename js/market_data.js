@@ -1,4 +1,4 @@
-﻿console.log("馃敟 market_data.js LOADED");
+﻿console.log("market_data.js loaded");
 /**
  * Market Data Engine - Simulates Real-time Indian Stock Market Data
  * 
@@ -11,7 +11,7 @@
 (function () {
     // Top 50 Indian Stocks (Approximate Prices)
     const STOCK_DATA = [];
-    console.log("馃敟 STOCK_DATA count:", STOCK_DATA.length);
+    console.log("STOCK_DATA count:", STOCK_DATA.length);
     const OTC_DATA = [];
 
     const IPO_DATA = [];
@@ -27,7 +27,7 @@
 
     class MarketEngine {
         constructor() {
-            console.log("馃敟 MarketEngine Constructor START");
+            console.log("MarketEngine constructor start");
             this.stocks = STOCK_DATA;
             this.otc = OTC_DATA;
             this.ipo = IPO_DATA;
@@ -44,7 +44,7 @@
                 };
             });
             this.dbProducts = []; // Cache for database products (IPO)
-            console.log("馃敟 MarketEngine stocks set, count:", this.stocks.length);
+            console.log("MarketEngine stocks set, count:", this.stocks.length);
             window.DEBUG_MARKET = this;
             this.dbOtcProducts = []; // Cache for database products (OTC)
             this.dbInsStocks = []; // Cache for database products (Ins.stocks)
@@ -175,7 +175,7 @@
                         // Proactive Fetch for Ins. Stocks: If missing/stale/uncached, fetch now.
                         this.dbInsStocks.forEach(s => {
                             if (s.market_symbol && (s.price === 0 || !s.isCached)) {
-                                console.log(`馃攳 MarketEngine: Proactive fetch for ${s.market_symbol} (Stale or Missing)`);
+                                console.log(`MarketEngine proactive fetch for ${s.market_symbol} (stale or missing)`);
                                 this.fetchMarketPrice(s.market_symbol);
                             }
                         });
@@ -192,7 +192,7 @@
 
             while (retries < maxRetries) {
                 if (window.DB && typeof window.DB.getActiveProductsByType === 'function') {
-                    console.log("馃敟 Syncing IPO/OTC from DB...");
+                    console.log("Syncing IPO/OTC from DB...");
                     try {
                         // Fetch IPOs
                         const ipoData = await window.DB.getActiveProductsByType('IPO');
@@ -295,7 +295,7 @@
                             change: 0
                         }));
 
-                        console.log(`鉁?Synced ${this.dbProducts.length} IPOs, ${this.dbOtcProducts.length} OTCs, and ${this.dbInsStocks.length} Ins.stocks`);
+                        console.log(`Synced ${this.dbProducts.length} IPOs, ${this.dbOtcProducts.length} OTCs, and ${this.dbInsStocks.length} Ins.stocks`);
                         this.notifyListeners();
                         return; // Success, exit loop
                     } catch (e) {
@@ -308,7 +308,7 @@
                 await new Promise(resolve => setTimeout(resolve, 250));
                 retries++;
             }
-            console.warn("鈿狅笍 MarketEngine DB Sync timed out after 5 seconds.");
+            console.warn("MarketEngine DB sync timed out after 5 seconds.");
         }
 
         startSimulation() {
@@ -380,17 +380,31 @@
         getIndices() { return this.indices; }
 
         async syncIndicesWithYahoo() {
-            console.log("馃攧 MarketEngine: Syncing Indices with Yahoo Finance...");
+            console.log("MarketEngine: syncing indices with market API...");
             for (let idx of this.indices) {
                 const yahooSymbol = this.indexYahooSymbols[idx.symbol] || this.indexYahooSymbols[idx.name];
                 if (yahooSymbol) {
                     try {
                         const data = await window.DB.getMarketPrice(yahooSymbol);
                         if (data && data.price) {
-                            idx.price = parseFloat(data.price) || idx.price;
+                            const latestPrice = parseFloat(data.price);
+                            if (!Number.isFinite(latestPrice) || latestPrice <= 0) continue;
+
+                            const remotePrevClose = parseFloat(data.previousClose ?? data.prevClose);
+                            const baselinePrevClose = Number.isFinite(remotePrevClose) && remotePrevClose > 0
+                                ? remotePrevClose
+                                : ((idx.prevClose && idx.prevClose > 0) ? idx.prevClose : null);
+                            if (baselinePrevClose && idx.symbol !== 'VIX') {
+                                const spikePct = Math.abs(((latestPrice - baselinePrevClose) / baselinePrevClose) * 100);
+                                if (spikePct > 40) {
+                                    console.warn(`Skipping abnormal index quote for ${idx.symbol}: ${latestPrice} vs prevClose ${baselinePrevClose}`);
+                                    continue;
+                                }
+                            }
+
+                            idx.price = latestPrice;
 
                             // Prefer upstream previous close when available.
-                            const remotePrevClose = parseFloat(data.previousClose ?? data.prevClose);
                             if (!Number.isNaN(remotePrevClose) && remotePrevClose > 0) {
                                 idx.prevClose = remotePrevClose;
                             } else if (!idx.prevClose || idx.prevClose <= 0) {
