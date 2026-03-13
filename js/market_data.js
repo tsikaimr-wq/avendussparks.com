@@ -405,7 +405,41 @@
             return { text: 'Live API', color: '#10b981', delayed: false };
         }
 
+        getActiveDetailSymbolCandidates() {
+            try {
+                const detailView = document.getElementById('stockDetailView');
+                const detailVisible = !!detailView && getComputedStyle(detailView).display !== 'none';
+                const params = new URLSearchParams(window.location.search || '');
+                const routeStock = String(params.get('stock') || '').trim();
+                const detailSymbol = String(document.getElementById('detSymbol')?.innerText || '').trim();
+                const activeSymbol = detailVisible ? (detailSymbol || routeStock) : routeStock;
+                return activeSymbol ? this.getSymbolCandidates(activeSymbol) : [];
+            } catch (_) {
+                return [];
+            }
+        }
+
+        shouldPauseBackgroundMarketApi() {
+            try {
+                const detailView = document.getElementById('stockDetailView');
+                if (detailView && getComputedStyle(detailView).display !== 'none') return true;
+                const params = new URLSearchParams(window.location.search || '');
+                return !!String(params.get('stock') || '').trim();
+            } catch (_) {
+                return false;
+            }
+        }
+
+        shouldAllowMarketQuote(symbol = '') {
+            if (!this.shouldPauseBackgroundMarketApi()) return true;
+            const activeCandidates = this.getActiveDetailSymbolCandidates();
+            if (!activeCandidates.length) return false;
+            const requestedCandidates = this.getSymbolCandidates(symbol);
+            return requestedCandidates.some(candidate => activeCandidates.includes(candidate));
+        }
+
         async syncIndicesWithYahoo() {
+            if (this.shouldPauseBackgroundMarketApi()) return;
             console.log("MarketEngine: syncing indices with market API...");
             for (let idx of this.indices) {
                 const yahooSymbol = this.indexYahooSymbols[idx.symbol] || this.indexYahooSymbols[idx.name];
@@ -458,6 +492,7 @@
 
         async fetchMarketPrice(symbol) {
             if (!symbol) return null;
+            if (!this.shouldAllowMarketQuote(symbol)) return null;
             try {
                 const candidates = this.getSymbolCandidates(symbol);
                 const stockMatch = [...this.stocks, ...this.dbOtcProducts, ...this.dbProducts, ...this.dbInsStocks]

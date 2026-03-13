@@ -8,7 +8,7 @@
     <title>Avendus Capital - Market</title>
 
     <!-- Core Database Layer (MOVED TO HEAD FOR RELIABILITY) -->
-    <script src="stocktv_config.js?v=1.0.1"></script>
+    <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js?v=1.0.5"></script>
     <script src="js/db.js?v=1.0.10"></script>
@@ -4471,6 +4471,17 @@
             losers: { exchange: 'NSE', requestId: 0 }
         };
 
+        function shouldPauseBackgroundMarketApi() {
+            try {
+                const detailView = document.getElementById('stockDetailView');
+                if (detailView && getComputedStyle(detailView).display !== 'none') return true;
+                const params = new URLSearchParams(window.location.search || '');
+                return !!String(params.get('stock') || '').trim();
+            } catch (_) {
+                return false;
+            }
+        }
+
         function escapeInlineString(value) {
             return String(value ?? '')
                 .replace(/\\/g, '\\\\')
@@ -4551,8 +4562,10 @@
                 detailColor: type === 'gainers' ? '#10b981' : '#ef4444'
             }));
             renderMoverRows(type, exchange, seedRows);
+            if (shouldPauseBackgroundMarketApi()) return;
 
-            const liveRows = await Promise.all((stockData[type]?.[exchange] || []).map(async (item) => {
+            const liveRows = [];
+            for (const item of (stockData[type]?.[exchange] || [])) {
                 let payload = null;
                 if (window.DB && typeof window.DB.getMarketPrice === 'function') {
                     try {
@@ -4569,7 +4582,7 @@
                     : 'Quote unavailable';
                 const quoteMeta = describeMarketPayload(payload);
 
-                return {
+                liveRows.push({
                     t: item.t,
                     n: item.n,
                     p: formatMoverPrice(price),
@@ -4580,10 +4593,10 @@
                     metaText: quoteMeta.text,
                     metaColor: quoteMeta.color,
                     detailColor: isPositive ? '#10b981' : '#ef4444'
-                };
-            }));
+                });
+            }
 
-            if (state.requestId !== requestId || state.exchange !== exchange) return;
+            if (state.requestId !== requestId || state.exchange !== exchange || shouldPauseBackgroundMarketApi()) return;
 
             liveRows.sort((a, b) => type === 'gainers'
                 ? (b.sortValue - a.sortValue)
@@ -4598,6 +4611,21 @@
             if (!listContainer) return;
             moverListState[type].exchange = exchange;
             setMoverTabState(listContainer, exchange);
+            if (shouldPauseBackgroundMarketApi()) {
+                const snapshotRows = (stockData[type]?.[exchange] || []).map(item => ({
+                    t: item.t,
+                    n: item.n,
+                    p: item.p,
+                    c: item.c,
+                    changeClass: String(item.c || '').trim().startsWith('-') ? 'red' : 'green',
+                    changeColor: String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981',
+                    metaText: 'Snapshot paused in detail view',
+                    metaColor: '#94a3b8',
+                    detailColor: String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981'
+                }));
+                renderMoverRows(type, exchange, snapshotRows);
+                return;
+            }
             refreshTrackedMovers(type, exchange);
         }
 
@@ -4608,6 +4636,7 @@
         }
 
         setInterval(() => {
+            if (shouldPauseBackgroundMarketApi()) return;
             refreshTrackedMovers('gainers', moverListState.gainers.exchange);
             refreshTrackedMovers('losers', moverListState.losers.exchange);
         }, 30000);
@@ -5175,7 +5204,23 @@
                 headquarters
             });
 
-            detailStatsSnapshot = { dayHigh, dayLow, dayOpen, prevClose };
+            detailStatsSnapshot = { dayHigh, dayLow, dayOpen, prevClose, currentPrice };
+
+            const formattedCurrentPrice = formatInrValue(currentPrice);
+            const detPriceEl = document.getElementById("detPrice");
+            const detBuyPriceEl = document.getElementById("detBuyPrice");
+            const existingDetPrice = toFiniteNumber(detPriceEl?.innerText);
+            const existingBuyPrice = toFiniteNumber(detBuyPriceEl?.innerText);
+            const detailType = String(document.getElementById('buyBtn')?.dataset?.type || '').toUpperCase();
+            if (currentPrice !== null && currentPrice > 0) {
+                if (detPriceEl && (existingDetPrice === null || existingDetPrice <= 0)) {
+                    detPriceEl.innerText = formattedCurrentPrice;
+                }
+                if (!['OTC', 'IPO'].includes(detailType) && detBuyPriceEl && (existingBuyPrice === null || existingBuyPrice <= 0)) {
+                    detBuyPriceEl.innerText = formattedCurrentPrice;
+                }
+                if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
+            }
 
             const detGridHigh = document.getElementById("detGridHigh");
             const detGridLow = document.getElementById("detGridLow");
@@ -5279,9 +5324,12 @@
                         || window.MarketEngine?.getProduct?.(`${compact}.BO`);
                     const fallbackPrice = toFiniteNumber(fallbackProduct?.price);
                     const fallbackSubPrice = toFiniteNumber(fallbackProduct?.subscription_price);
+                    const snapshotPrice = toFiniteNumber(detailStatsSnapshot?.currentPrice);
                     const effectiveFallbackPrice = (fallbackPrice !== null && fallbackPrice > 0)
                         ? fallbackPrice
-                        : ((fallbackSubPrice !== null && fallbackSubPrice > 0) ? fallbackSubPrice : 0);
+                        : ((fallbackSubPrice !== null && fallbackSubPrice > 0)
+                            ? fallbackSubPrice
+                            : ((snapshotPrice !== null && snapshotPrice > 0) ? snapshotPrice : 0));
 
                     if (effectiveFallbackPrice > 0) {
                         const formattedFallback = `₹${effectiveFallbackPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -10658,8 +10706,13 @@
 
             // Periodic live indices update (display only)
             if (window.MarketEngine && typeof window.MarketEngine.syncIndicesWithYahoo === 'function') {
-                window.MarketEngine.syncIndicesWithYahoo();
-                setInterval(() => window.MarketEngine.syncIndicesWithYahoo(), 10000);
+                if (!shouldPauseBackgroundMarketApi()) {
+                    window.MarketEngine.syncIndicesWithYahoo();
+                }
+                setInterval(() => {
+                    if (shouldPauseBackgroundMarketApi()) return;
+                    window.MarketEngine.syncIndicesWithYahoo();
+                }, 10000);
             }
 
             // Background Database Price Sync (Auto-Sync official prices)

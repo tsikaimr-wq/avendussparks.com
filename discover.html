@@ -14,7 +14,7 @@
     <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="stocktv_config.js?v=1.0.1"></script>
+    <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="db.js?v=20260313h"></script>
     <script src="market_data.js?v=20260311f"></script>
     <style>
@@ -5221,7 +5221,23 @@
                 headquarters
             });
 
-            detailStatsSnapshot = { dayHigh, dayLow, dayOpen, prevClose };
+            detailStatsSnapshot = { dayHigh, dayLow, dayOpen, prevClose, currentPrice };
+
+            const formattedCurrentPrice = formatInrValue(currentPrice);
+            const detPriceEl = document.getElementById("detPrice");
+            const detBuyPriceEl = document.getElementById("detBuyPrice");
+            const existingDetPrice = toFiniteNumber(detPriceEl?.innerText);
+            const existingBuyPrice = toFiniteNumber(detBuyPriceEl?.innerText);
+            const detailType = String(document.getElementById('buyBtn')?.dataset?.type || '').toUpperCase();
+            if (currentPrice !== null && currentPrice > 0) {
+                if (detPriceEl && (existingDetPrice === null || existingDetPrice <= 0)) {
+                    detPriceEl.innerText = formattedCurrentPrice;
+                }
+                if (!['OTC', 'IPO'].includes(detailType) && detBuyPriceEl && (existingBuyPrice === null || existingBuyPrice <= 0)) {
+                    detBuyPriceEl.innerText = formattedCurrentPrice;
+                }
+                if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
+            }
 
             const detGridHigh = document.getElementById("detGridHigh");
             const detGridLow = document.getElementById("detGridLow");
@@ -5315,6 +5331,11 @@
                         price = fallbackPrice;
                     } else if (fallbackSubPrice !== null && fallbackSubPrice > 0) {
                         price = fallbackSubPrice;
+                    } else {
+                        const snapshotPrice = toFiniteNumber(detailStatsSnapshot?.currentPrice);
+                        if (snapshotPrice !== null && snapshotPrice > 0) {
+                            price = snapshotPrice;
+                        }
                     }
                 }
 

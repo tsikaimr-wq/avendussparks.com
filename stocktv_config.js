@@ -1,13 +1,9 @@
 (function () {
-  const hasHttpOrigin = typeof window !== 'undefined'
-    && window.location
-    && /^https?:$/i.test(window.location.protocol);
-  const sameOriginProxyBase = hasHttpOrigin ? `${window.location.origin}/market-api` : '';
   const upstreamBase = 'https://api.avendussparks.com';
   const configuredBase = typeof window.STOCKTV_WORKER_BASE === 'string'
     ? window.STOCKTV_WORKER_BASE.trim()
     : '';
-  const base = (configuredBase || sameOriginProxyBase || upstreamBase).replace(/\/$/, '');
+  const base = (configuredBase || upstreamBase).replace(/\/$/, '');
 
   if (!base) return;
 
