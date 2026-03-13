@@ -3141,7 +3141,7 @@
                         style="margin-top: 0; padding: 1.25rem; border: 1px solid #e2e8f0; box-shadow: none;">
                         <div class="side-list-title">
                             <div style="font-weight: 700;"><i data-lucide="trending-up" size="18" color="#10b981"></i>
-                                Top Gainer</div>
+                                Tracked Gainers</div>
                             <div style="font-size: 0.65rem; display: flex; gap: 0.35rem;">
                                 <span class="exchange-tab active" onclick="switchExchange('gainers', 'NSE')">NSE</span>
                                 <span class="exchange-tab" onclick="switchExchange('gainers', 'BSE')">BSE</span>
@@ -3158,7 +3158,7 @@
                         style="margin-top: 0; padding: 1.25rem; border: 1px solid #e2e8f0; box-shadow: none;">
                         <div class="side-list-title">
                             <div style="font-weight: 700;"><i data-lucide="trending-down" size="18" color="#ef4444"></i>
-                                Top Loser</div>
+                                Tracked Losers</div>
                             <div style="font-size: 0.65rem; display: flex; gap: 0.35rem;">
                                 <span class="exchange-tab active" onclick="switchExchange('losers', 'NSE')">NSE</span>
                                 <span class="exchange-tab" onclick="switchExchange('losers', 'BSE')">BSE</span>
@@ -4466,34 +4466,139 @@
             }
         };
 
-        function switchExchange(type, exchange) {
+        const moverListState = {
+            gainers: { exchange: 'NSE', requestId: 0 },
+            losers: { exchange: 'NSE', requestId: 0 }
+        };
+
+        function escapeInlineString(value) {
+            return String(value ?? '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'");
+        }
+
+        function formatMoverPrice(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric) || numeric <= 0) return '--';
+            return `₹${numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        function describeMarketPayload(payload) {
+            if (!payload || payload.status === 'error') {
+                return { text: 'Quote unavailable', color: '#94a3b8' };
+            }
+            const source = String(payload.source || '').toLowerCase();
+            if (payload.delayed || source.includes('fallback')) {
+                return { text: 'Fallback snapshot', color: '#f59e0b' };
+            }
+            if (source.includes('cache')) {
+                return { text: 'Delayed cache', color: '#f59e0b' };
+            }
+            return { text: 'Live API quote', color: '#10b981' };
+        }
+
+        function setMoverTabState(listContainer, exchange) {
+            const section = listContainer?.closest('.m-card');
+            if (!section) return;
+            section.querySelectorAll('.exchange-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.innerText === exchange);
+            });
+        }
+
+        function renderMoverRows(type, exchange, rows) {
             const listId = type === 'gainers' ? 'gainersList' : 'losersList';
             const listContainer = document.querySelector(`#${listId} .auth-locked-content`);
-            const data = stockData[type][exchange];
+            if (!listContainer) return;
+            setMoverTabState(listContainer, exchange);
 
-            // Update Tab UI
-            const section = listContainer.closest('.m-card');
-            if (section) {
-                section.querySelectorAll('.exchange-tab').forEach(tab => {
-                    tab.classList.toggle('active', tab.innerText === exchange);
-                });
-            }
-
-            listContainer.innerHTML = data.map(s => `
-                <div class="stock-row" style="cursor: pointer" onclick="openStockDetail('${s.t}', '${s.n}', '${exchange}', '${s.p}', '${s.c}', '${type === 'gainers' ? '#10b981' : '#ef4444'}')">
+            const listHtml = rows.map(row => `
+                <div class="stock-row" style="cursor: pointer" onclick="openStockDetail('${escapeInlineString(row.t)}', '${escapeInlineString(row.n)}', '${exchange}', '${escapeInlineString(row.p)}', '${escapeInlineString(row.c)}', '${row.detailColor}')">
                     <div class="stock-ident">
                         <div>
-                            <div class="stock-ticker">${s.t}</div>
-                            <div class="stock-full-name">${s.n}  - ${exchange}</div>
+                            <div class="stock-ticker">${row.t}</div>
+                            <div class="stock-full-name">${row.n} - ${exchange}</div>
+                            <div style="font-size: 0.65rem; color: ${row.metaColor}; margin-top: 0.15rem;">${row.metaText}</div>
                         </div>
                     </div>
                     <div class="stock-price-col">
-                        <div class="stock-ticker">${s.p}</div>
-                        <div class="index-chg ${type === 'gainers' ? 'green' : 'red'}" style="font-size: 0.75rem">${s.c}</div>
+                        <div class="stock-ticker">${row.p}</div>
+                        <div class="index-chg ${row.changeClass}" style="font-size: 0.75rem; color: ${row.changeColor};">${row.c}</div>
                     </div>
                 </div>
             `).join('');
+
+            listContainer.innerHTML = `
+                <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 0.75rem;">Curated watchlist · values pulled from market API</div>
+                ${listHtml}
+            `;
             lucide.createIcons();
+        }
+
+        async function refreshTrackedMovers(type, exchange) {
+            const state = moverListState[type];
+            if (!state) return;
+            state.exchange = exchange;
+            const requestId = ++state.requestId;
+            const seedRows = (stockData[type]?.[exchange] || []).map(item => ({
+                t: item.t,
+                n: item.n,
+                p: '--',
+                c: 'Checking API...',
+                changeClass: type === 'gainers' ? 'green' : 'red',
+                changeColor: '#94a3b8',
+                metaText: 'Loading live quote',
+                metaColor: '#94a3b8',
+                detailColor: type === 'gainers' ? '#10b981' : '#ef4444'
+            }));
+            renderMoverRows(type, exchange, seedRows);
+
+            const liveRows = await Promise.all((stockData[type]?.[exchange] || []).map(async (item) => {
+                let payload = null;
+                if (window.DB && typeof window.DB.getMarketPrice === 'function') {
+                    try {
+                        payload = await window.DB.getMarketPrice(item.t, item.n);
+                    } catch (_) { }
+                }
+
+                const price = Number(payload?.price);
+                const changePercent = Number(payload?.changePercent);
+                const hasChange = Number.isFinite(changePercent);
+                const isPositive = hasChange ? changePercent >= 0 : type === 'gainers';
+                const changeText = hasChange
+                    ? `${isPositive ? '+' : ''}${changePercent.toFixed(2)}%`
+                    : 'Quote unavailable';
+                const quoteMeta = describeMarketPayload(payload);
+
+                return {
+                    t: item.t,
+                    n: item.n,
+                    p: formatMoverPrice(price),
+                    c: changeText,
+                    sortValue: hasChange ? changePercent : (type === 'gainers' ? -9999 : 9999),
+                    changeClass: hasChange ? (isPositive ? 'green' : 'red') : '',
+                    changeColor: hasChange ? (isPositive ? '#10b981' : '#ef4444') : '#94a3b8',
+                    metaText: quoteMeta.text,
+                    metaColor: quoteMeta.color,
+                    detailColor: isPositive ? '#10b981' : '#ef4444'
+                };
+            }));
+
+            if (state.requestId !== requestId || state.exchange !== exchange) return;
+
+            liveRows.sort((a, b) => type === 'gainers'
+                ? (b.sortValue - a.sortValue)
+                : (a.sortValue - b.sortValue));
+
+            renderMoverRows(type, exchange, liveRows);
+        }
+
+        function switchExchange(type, exchange) {
+            const listId = type === 'gainers' ? 'gainersList' : 'losersList';
+            const listContainer = document.querySelector(`#${listId} .auth-locked-content`);
+            if (!listContainer) return;
+            moverListState[type].exchange = exchange;
+            setMoverTabState(listContainer, exchange);
+            refreshTrackedMovers(type, exchange);
         }
 
         // Initialize lists
@@ -4501,6 +4606,11 @@
             switchExchange('gainers', 'NSE');
             switchExchange('losers', 'NSE');
         }
+
+        setInterval(() => {
+            refreshTrackedMovers('gainers', moverListState.gainers.exchange);
+            refreshTrackedMovers('losers', moverListState.losers.exchange);
+        }, 30000);
 
         // Customer Service Toggle
 
@@ -4607,6 +4717,11 @@
         }
 
         function buildYahooSymbolCandidates(rawSymbol, exchangeHint = '') {
+            if (window.DB && typeof window.DB.getMarketApiSymbolCandidates === 'function') {
+                const resolved = window.DB.getMarketApiSymbolCandidates(rawSymbol, exchangeHint);
+                if (Array.isArray(resolved) && resolved.length > 0) return resolved;
+            }
+
             const input = String(rawSymbol || '').trim().toUpperCase();
             if (!input) return [];
 
@@ -5549,6 +5664,11 @@
             };
 
             const normalizeApiSymbol = (raw) => {
+                if (window.DB && typeof window.DB.getMarketApiSymbolCandidates === 'function') {
+                    const resolved = window.DB.getMarketApiSymbolCandidates(raw);
+                    if (Array.isArray(resolved) && resolved.length > 0) return resolved[0];
+                }
+
                 const s = String(raw || '').trim().toUpperCase();
                 if (!s) return '';
                 if (s.startsWith('^')) return s;
@@ -5668,17 +5788,19 @@
 
             try {
                 const baseSymbol = normalizeApiSymbol(symbol);
-                const candidates = [];
-                if (baseSymbol) candidates.push(baseSymbol);
-                if (baseSymbol && !baseSymbol.startsWith('^') && !baseSymbol.includes(':') && !baseSymbol.includes('.')) {
-                    candidates.push(`${baseSymbol}.NS`, `${baseSymbol}.BO`);
-                }
-                const uniqCandidates = [...new Set(candidates.filter(Boolean))];
+                const baseProduct = window.MarketEngine?.getProduct?.(symbol) || window.MarketEngine?.getProduct?.(baseSymbol);
+                const uniqCandidates = [...new Set(buildYahooSymbolCandidates(symbol, baseProduct?.exchange || options.exchangeHint || '').filter(Boolean))];
 
                 let klinePayload = null;
-                let usedSymbol = baseSymbol || symbol;
+                let usedSymbol = uniqCandidates[0] || baseSymbol || symbol;
                 for (const candidate of uniqCandidates) {
-                    const result = await fetchKlineFromLocalApi(candidate, window.MarketEngine?.getProduct?.(candidate)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
+                    const result = await fetchKlineFromLocalApi(
+                        candidate,
+                        window.MarketEngine?.getProduct?.(candidate)?.name
+                        || window.MarketEngine?.getProduct?.(baseSymbol)?.name
+                        || baseProduct?.name
+                        || ''
+                    );
                     if (result?.payload) {
                         klinePayload = result.payload;
                         usedSymbol = result.payload.symbol || candidate;
@@ -5687,7 +5809,13 @@
                 }
 
                 if (!klinePayload) {
-                    const quote = await fetchQuoteFromLocalApi(usedSymbol, window.MarketEngine?.getProduct?.(usedSymbol)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
+                    const quote = await fetchQuoteFromLocalApi(
+                        usedSymbol,
+                        window.MarketEngine?.getProduct?.(usedSymbol)?.name
+                        || window.MarketEngine?.getProduct?.(baseSymbol)?.name
+                        || baseProduct?.name
+                        || ''
+                    );
                     const quotePrice = toFiniteNumber(quote?.price);
                     const fallbackProduct = window.MarketEngine?.getProduct?.(usedSymbol)
                         || window.MarketEngine?.getProduct?.(baseSymbol);
@@ -10280,6 +10408,28 @@
                 });
             }
 
+            function formatIndexDisplayValue(value) {
+                const numeric = Number(value);
+                if (!Number.isFinite(numeric) || numeric <= 0) return '--';
+                return numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            }
+
+            function describeIndexCardStatus(idx) {
+                if (!idx?.hasMarketQuote) {
+                    return { text: 'Awaiting API data', color: '#94a3b8' };
+                }
+
+                const source = String(idx.quoteSource || '').toLowerCase();
+                if (idx.delayed || source.includes('fallback')) {
+                    return { text: idx.quoteStatus || 'Fallback snapshot', color: idx.quoteStatusColor || '#f59e0b' };
+                }
+                if (source.includes('cache')) {
+                    return { text: idx.quoteStatus || 'Delayed cache', color: idx.quoteStatusColor || '#f59e0b' };
+                }
+
+                return { text: idx.quoteStatus || 'Live API', color: idx.quoteStatusColor || '#10b981' };
+            }
+
             // Dynamic Rendering Loop
             function renderMajorIndices() {
                 if (!window.MarketEngine || !document.getElementById('majorIndicesList')) return;
@@ -10321,8 +10471,9 @@
                                     <span class="index-name" style="font-size: 1.1rem; font-weight: 700;">${idx.symbol}</span>
                                 </div>
                                 <div class="index-body" style="text-align: center;">
-                                    <div class="index-val" id="idx-val-${i}" style="font-size: 1.4rem; font-weight: 700; color: #fff;">${idx.price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-                                    <div class="index-change" id="idx-change-${i}" style="font-size: 0.9rem; font-weight: 600;">${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)</div>
+                                    <div class="index-val" id="idx-val-${i}" style="font-size: 1.4rem; font-weight: 700; color: #fff;">${formatIndexDisplayValue(idx.hasMarketQuote ? idx.price : null)}</div>
+                                    <div class="index-change" id="idx-change-${i}" style="font-size: 0.9rem; font-weight: 600;">${idx.hasMarketQuote ? `${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)` : 'Waiting for quote...'}</div>
+                                    <div id="idx-status-${i}" style="font-size: 0.72rem; margin-top: 0.3rem; color: ${describeIndexCardStatus(idx).color};">${describeIndexCardStatus(idx).text}</div>
                                 </div>
                             </div>
                         `;
@@ -10338,13 +10489,24 @@
                 indices.forEach((idx, i) => {
                     const priceEl = document.getElementById(`idx-val-${i}`);
                     const changeEl = document.getElementById(`idx-change-${i}`);
+                    const statusEl = document.getElementById(`idx-status-${i}`);
+                    const status = describeIndexCardStatus(idx);
                     if (priceEl) {
-                        priceEl.innerText = idx.price.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        priceEl.innerText = formatIndexDisplayValue(idx.hasMarketQuote ? idx.price : null);
                     }
                     if (changeEl) {
-                        const sign = idx.change >= 0 ? '+' : '';
-                        changeEl.innerText = `${sign}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)`;
-                        changeEl.style.color = idx.change >= 0 ? '#10b981' : '#ef4444';
+                        if (idx.hasMarketQuote) {
+                            const sign = idx.change >= 0 ? '+' : '';
+                            changeEl.innerText = `${sign}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)`;
+                            changeEl.style.color = idx.change >= 0 ? '#10b981' : '#ef4444';
+                        } else {
+                            changeEl.innerText = 'Waiting for quote...';
+                            changeEl.style.color = '#94a3b8';
+                        }
+                    }
+                    if (statusEl) {
+                        statusEl.innerText = status.text;
+                        statusEl.style.color = status.color;
                     }
                 });
 

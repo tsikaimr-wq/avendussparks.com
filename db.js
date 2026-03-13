@@ -20,6 +20,9 @@ window.DB = {
     marketPricePending: {},
     MARKET_PRICE_CACHE_TTL_MS: 10000,
     MARKET_PRICE_FAIL_COOLDOWN_MS: 15000,
+    MARKET_SYMBOL_ALIAS: {
+        KCEIL: 'KAYR',
+    },
 
     getClient() {
         if (this.client) return this.client;
@@ -90,22 +93,106 @@ window.DB = {
         };
     },
 
-    getYahooSymbolCandidates(symbol) {
-        const raw = String(symbol || '').trim();
-        if (!raw) return [];
-        const upper = raw.toUpperCase();
-        const out = new Set([raw]);
+    normalizeMarketSymbolKey(symbol) {
+        const raw = String(symbol || '').trim().toUpperCase();
+        if (!raw) return '';
+        if (raw.startsWith('^')) return raw;
 
-        if (upper.startsWith('NSE:')) {
-            out.add(`${upper.split(':').pop()}.NS`);
-        } else if (upper.startsWith('BSE:')) {
-            out.add(`${upper.split(':').pop()}.BO`);
-        } else if (!upper.startsWith('^') && !/\.[A-Z]{2,4}$/.test(upper)) {
-            out.add(`${upper}.NS`);
-            out.add(`${upper}.BO`);
+        let normalized = raw;
+        if (normalized.includes(':')) {
+            const parts = normalized.split(':');
+            normalized = parts[parts.length - 1] || normalized;
         }
 
-        return [...out];
+        normalized = normalized
+            .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '')
+            .replace(/[^A-Z0-9]/g, '');
+
+        return normalized;
+    },
+
+    getMarketApiSymbolCandidates(symbol, exchangeHint = '') {
+        const raw = String(symbol || '').trim().toUpperCase();
+        if (!raw) return [];
+
+        const hint = String(exchangeHint || '').trim().toUpperCase();
+        const candidates = [];
+        const push = (value) => {
+            const normalized = String(value || '').trim().toUpperCase();
+            if (normalized && !candidates.includes(normalized)) {
+                candidates.push(normalized);
+            }
+        };
+
+        const addVariants = (value, variantHint = '') => {
+            let input = String(value || '').trim().toUpperCase();
+            if (!input) return;
+            if (input.startsWith('^')) {
+                push(input);
+                return;
+            }
+
+            let ticker = input;
+            let explicitExchange = '';
+
+            if (input.includes(':')) {
+                const parts = input.split(':');
+                explicitExchange = parts[0];
+                ticker = parts[parts.length - 1] || input;
+            }
+
+            if (ticker.endsWith('.NS')) {
+                explicitExchange = explicitExchange || 'NSE';
+                ticker = ticker.slice(0, -3);
+                push(`${ticker}.NS`);
+            } else if (ticker.endsWith('.BO')) {
+                explicitExchange = explicitExchange || 'BSE';
+                ticker = ticker.slice(0, -3);
+                push(`${ticker}.BO`);
+            } else if (ticker.endsWith('.NSE')) {
+                explicitExchange = explicitExchange || 'NSE';
+                ticker = ticker.slice(0, -4);
+                push(`${ticker}.NS`);
+            } else if (ticker.endsWith('.BSE') || ticker.endsWith('.BOM')) {
+                explicitExchange = explicitExchange || 'BSE';
+                ticker = ticker.split('.')[0];
+                push(`${ticker}.BO`);
+            } else if (ticker.includes('.')) {
+                ticker = ticker.split('.')[0];
+                push(input);
+            }
+
+            const compact = ticker.replace(/[^A-Z0-9]/g, '');
+            if (!compact) return;
+
+            const preferredExchange = explicitExchange
+                || (String(variantHint || '').includes('BSE') || String(variantHint || '').includes('BOM') ? 'BSE' : '')
+                || (String(variantHint || '').includes('NSE') ? 'NSE' : '');
+
+            push(compact);
+            if (preferredExchange === 'BSE') {
+                push(`${compact}.BO`);
+                push(`${compact}.NS`);
+                push(`BSE:${compact}`);
+                push(`NSE:${compact}`);
+                return;
+            }
+
+            push(`${compact}.NS`);
+            push(`${compact}.BO`);
+            push(`NSE:${compact}`);
+            push(`BSE:${compact}`);
+        };
+
+        const alias = this.MARKET_SYMBOL_ALIAS[this.normalizeMarketSymbolKey(raw)];
+        if (alias) addVariants(alias, hint);
+        addVariants(raw, hint);
+
+        return candidates;
+    },
+
+    getYahooSymbolCandidates(symbol) {
+        return this.getMarketApiSymbolCandidates(symbol);
     },
 
     async fetchYahooDirectQuote(symbol) {
@@ -118,7 +205,7 @@ window.DB = {
         if (window.DISABLE_MARKET_DB === true) return null;
         const client = this.getClient();
         if (!client) return null;
-        const candidates = this.getYahooSymbolCandidates(symbol);
+        const candidates = this.getMarketApiSymbolCandidates(symbol);
         for (const sym of candidates) {
             try {
                 const { data, error } = await client
@@ -150,37 +237,40 @@ window.DB = {
         const nm = String(name || '').trim();
         if (!sym) return null;
         const anonKey = this.SUPABASE_KEY || window.SUPABASE_ANON_KEY || '';
-        for (const base of this.getLocalMarketApiBases()) {
-            try {
-                const baseUrl = String(base || '').replace(/\/$/, '');
-                const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+        const candidates = this.getMarketApiSymbolCandidates(sym, nm);
+        for (const candidate of candidates) {
+            for (const base of this.getLocalMarketApiBases()) {
+                try {
+                    const baseUrl = String(base || '').replace(/\/$/, '');
+                    const isFnBase = /\/functions\/v1$/i.test(baseUrl);
 
-                if (isFnBase) {
-                    const headers = { 'Content-Type': 'application/json' };
-                    if (anonKey) {
-                        headers['apikey'] = anonKey;
-                        headers['Authorization'] = `Bearer ${anonKey}`;
+                    if (isFnBase) {
+                        const headers = { 'Content-Type': 'application/json' };
+                        if (anonKey) {
+                            headers['apikey'] = anonKey;
+                            headers['Authorization'] = `Bearer ${anonKey}`;
+                        }
+                        const response = await fetch(`${baseUrl}/get-market-price`, {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({ symbol: candidate, name: nm || undefined }),
+                            cache: 'no-store'
+                        });
+                        if (!response.ok) continue;
+                        const payload = await response.json();
+                        const normalized = this.normalizeMarketQuote(payload, candidate);
+                        if (normalized) return normalized;
+                        continue;
                     }
-                    const response = await fetch(`${baseUrl}/get-market-price`, {
-                        method: 'POST',
-                        headers,
-                        body: JSON.stringify({ symbol: sym, name: nm || undefined }),
-                        cache: 'no-store'
-                    });
+
+                    const url = `${baseUrl}/quote?symbol=${encodeURIComponent(candidate)}${nm ? `&name=${encodeURIComponent(nm)}` : ''}`;
+                    const response = await fetch(url, { cache: 'no-store' });
                     if (!response.ok) continue;
                     const payload = await response.json();
-                    const normalized = this.normalizeMarketQuote(payload, sym);
+                    const normalized = this.normalizeMarketQuote(payload, candidate);
                     if (normalized) return normalized;
-                    continue;
-                }
-
-                const url = `${baseUrl}/quote?symbol=${encodeURIComponent(sym)}${nm ? `&name=${encodeURIComponent(nm)}` : ''}`;
-                const response = await fetch(url, { cache: 'no-store' });
-                if (!response.ok) continue;
-                const payload = await response.json();
-                const normalized = this.normalizeMarketQuote(payload, sym);
-                if (normalized) return normalized;
-            } catch (_) { }
+                } catch (_) { }
+            }
         }
         return null;
     },
@@ -191,7 +281,7 @@ window.DB = {
         if (!sym) return { status: 'error', message: 'Invalid symbol' };
 
         const now = Date.now();
-        const cacheKey = sym.toUpperCase();
+        const cacheKey = this.normalizeMarketSymbolKey(this.getMarketApiSymbolCandidates(sym, name)[0] || sym) || sym.toUpperCase();
         const cached = this.marketPriceCache[cacheKey];
         if (cached && (now - cached.ts) < this.MARKET_PRICE_CACHE_TTL_MS) {
             return cached.data;
