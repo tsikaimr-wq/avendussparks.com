@@ -966,7 +966,7 @@
             if (pass.length < 6) return showAlert('warning', 'Password must be at least 6 characters.');
             if (!inviteCode) return showAlert('warning', 'Invitation code is required.');
 
-            const btn = event.target;
+            const btn = document.querySelector('#regStep1 .login-submit-btn');
             const originalText = btn.innerText;
             btn.innerText = 'Validating...';
             btn.disabled = true;
@@ -1060,7 +1060,7 @@
             if (!email) return showAlert('warning', 'Please enter email address.');
             if (!/^\d{6,10}$/.test(otp)) return showAlert('warning', 'Please enter the numeric verification code from email.');
 
-            const btn = event.target;
+            const btn = document.querySelector('#regStep2 .login-submit-btn');
             const originalText = btn.innerText;
             btn.innerText = 'Verifying...';
             btn.disabled = true;
@@ -1155,7 +1155,7 @@
             if (!idFile) return showAlert('warning', 'Please upload your ID Photo (Front).');
             if (!idBackFile) return showAlert('warning', 'Please upload your ID Photo (Back).');
 
-            const btn = event.target;
+            const btn = document.querySelector('#regStep5 .login-submit-btn');
             const originalText = btn.innerText;
             btn.innerText = 'Submitting...';
             btn.disabled = true;

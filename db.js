@@ -361,7 +361,37 @@ window.DB = {
     },
 
     normalizeInvitationCode(invitationCode) {
-        return String(invitationCode || '').trim().replace(/\s+/g, '').toUpperCase();
+        let value = String(invitationCode || '');
+        try {
+            value = value.normalize('NFKC');
+        } catch (_) { }
+
+        return value
+            .replace(/[\u200B-\u200D\uFEFF]/g, '')
+            .trim()
+            .replace(/\s+/g, '')
+            .replace(/[^0-9a-z]/gi, '')
+            .toUpperCase();
+    },
+
+    buildInvitationCodeCandidates(invitationCode) {
+        let raw = String(invitationCode || '');
+        try {
+            raw = raw.normalize('NFKC');
+        } catch (_) { }
+
+        const trimmed = raw.replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+        const compact = trimmed.replace(/\s+/g, '');
+        const alphaNumeric = compact.replace(/[^0-9a-z]/gi, '');
+        const digitsOnly = compact.replace(/\D/g, '');
+
+        return [...new Set([
+            this.normalizeInvitationCode(raw),
+            this.normalizeInvitationCode(trimmed),
+            this.normalizeInvitationCode(compact),
+            this.normalizeInvitationCode(alphaNumeric),
+            digitsOnly
+        ].filter(Boolean))];
     },
 
     isCsrRole(role) {
@@ -391,24 +421,69 @@ window.DB = {
         }
 
         try {
-            const rawTrimmed = String(invitationCode || '').trim();
-            const candidates = [...new Set([
-                normalizedCode,
-                normalizedCode.toLowerCase(),
-                rawTrimmed,
-                rawTrimmed.toUpperCase(),
-                rawTrimmed.toLowerCase()
-            ].filter(Boolean))];
+            const candidates = this.buildInvitationCodeCandidates(invitationCode);
+            const selectColumns = 'id, status, role, invitation_code';
+            const matchesCandidate = (value) => candidates.includes(this.normalizeInvitationCode(value));
 
             const { data: rows, error } = await client
                 .from('admins')
-                .select('id, status, role, invitation_code')
+                .select(selectColumns)
                 .in('invitation_code', candidates)
                 .limit(20);
 
             if (error) throw error;
 
-            const csr = (rows || []).find(row => this.isCsrRole(row.role) && this.isActiveAdminStatus(row.status));
+            let csr = (rows || []).find(row =>
+                this.isCsrRole(row.role) &&
+                this.isActiveAdminStatus(row.status) &&
+                matchesCandidate(row.invitation_code)
+            );
+
+            if (!csr) {
+                const { data: allAdmins, error: allAdminsError } = await client
+                    .from('admins')
+                    .select(selectColumns)
+                    .not('invitation_code', 'is', null)
+                    .limit(500);
+
+                if (allAdminsError) throw allAdminsError;
+
+                csr = (allAdmins || []).find(row =>
+                    this.isCsrRole(row.role) &&
+                    this.isActiveAdminStatus(row.status) &&
+                    matchesCandidate(row.invitation_code)
+                );
+            }
+
+            if (!csr) {
+                const { data: linkedUsers, error: linkedUsersError } = await client
+                    .from('users')
+                    .select('csr_id, invitation_code')
+                    .in('invitation_code', candidates)
+                    .not('csr_id', 'is', null)
+                    .limit(50);
+
+                if (linkedUsersError) throw linkedUsersError;
+
+                const matchedUser = (linkedUsers || []).find(row => matchesCandidate(row.invitation_code));
+                if (matchedUser?.csr_id) {
+                    const { data: adminById, error: adminByIdError } = await client
+                        .from('admins')
+                        .select(selectColumns)
+                        .eq('id', matchedUser.csr_id)
+                        .maybeSingle();
+
+                    if (adminByIdError) throw adminByIdError;
+
+                    if (adminById && this.isCsrRole(adminById.role) && this.isActiveAdminStatus(adminById.status)) {
+                        csr = {
+                            ...adminById,
+                            invitation_code: adminById.invitation_code || matchedUser.invitation_code
+                        };
+                    }
+                }
+            }
+
             if (!csr) {
                 return { success: false, message: "Invalid or inactive invitation code." };
             }
@@ -456,6 +531,41 @@ window.DB = {
         insertData.csr_id = invitationCheck.csr.id;
         insertData.invitation_code = invitationCheck.normalizedCode;
         console.log("DB: CSR validated and linked:", invitationCheck.csr.id);
+
+        // If the auth user already has an app profile, reuse/update it instead of inserting a duplicate row.
+        if (authId) {
+            const { data: existingByAuth, error: existingByAuthErr } = await client
+                .from('users')
+                .select('*')
+                .eq('auth_id', authId)
+                .maybeSingle();
+
+            if (!existingByAuthErr && existingByAuth) {
+                const patch = {};
+                if (email && !existingByAuth.email) patch.email = email;
+                if (normalizedMobile && !existingByAuth.mobile) patch.mobile = normalizedMobile;
+                if (!existingByAuth.password) patch.password = password;
+                if (!existingByAuth.csr_id) patch.csr_id = invitationCheck.csr.id;
+                if (!existingByAuth.invitation_code) patch.invitation_code = invitationCheck.normalizedCode;
+
+                let finalUser = existingByAuth;
+                if (Object.keys(patch).length > 0) {
+                    const { data: updatedByAuth, error: updateByAuthErr } = await client
+                        .from('users')
+                        .update(patch)
+                        .eq('id', existingByAuth.id)
+                        .select()
+                        .single();
+                    if (updateByAuthErr) {
+                        return { success: false, message: updateByAuthErr.message };
+                    }
+                    finalUser = updatedByAuth || existingByAuth;
+                }
+
+                localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify(finalUser));
+                return { success: true, user: finalUser };
+            }
+        }
 
         // STRICT PRE-REGISTRATION DUPLICATE CHECK (SEPARATE)
         if (email) {
