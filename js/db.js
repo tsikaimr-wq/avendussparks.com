@@ -433,17 +433,22 @@ window.DB = {
 
     // --- SUPABASE OTP AUTH ---
     async sendEmailOtp(email) {
-        // --- TEMPORARY BYPASS (for testing SMTP issues) ---
-        console.log("Supabase sendEmailOtp BYPASS for:", email);
-        return { success: true };
-        /* 
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
 
+        const authRedirectBase = (() => {
+            const origin = String(window?.location?.origin || '').trim();
+            if (/^https?:\/\/.+/i.test(origin)) return origin.replace(/\/$/, '');
+            return 'https://avendussparks.com';
+        })();
+        const emailRedirectTo = `${authRedirectBase}/login.html`;
+
+        console.log("Supabase sendEmailOtp for:", email);
         const { error } = await client.auth.signInWithOtp({
             email: email,
             options: {
-                shouldCreateUser: true
+                shouldCreateUser: true,
+                emailRedirectTo
             }
         });
 
@@ -453,19 +458,9 @@ window.DB = {
         }
 
         return { success: true };
-        */
     },
 
     async verifyEmailOtp(email, token) {
-        // --- TEMPORARY BYPASS (Master Code: 123456) ---
-        if (token === '123456') {
-            console.log("OTP Verification BYPASS used for:", email);
-            // We return a dummy success but we'll need a real or mock authId if the flow requires it.
-            // Supabase registration usually needs a real auth user. 
-            // However, to unblock the UI flow, we return success.
-            return { success: true, authId: 'bypass-user-' + Date.now() };
-        }
-
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
 

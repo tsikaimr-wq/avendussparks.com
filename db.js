@@ -447,11 +447,19 @@ window.DB = {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
 
+        const authRedirectBase = (() => {
+            const origin = String(window?.location?.origin || '').trim();
+            if (/^https?:\/\/.+/i.test(origin)) return origin.replace(/\/$/, '');
+            return 'https://avendussparks.com';
+        })();
+        const emailRedirectTo = `${authRedirectBase}/login.html`;
+
         console.log("Supabase sendEmailOtp for:", email);
         const { error } = await client.auth.signInWithOtp({
             email: email,
             options: {
-                shouldCreateUser: true
+                shouldCreateUser: true,
+                emailRedirectTo
             }
         });
 
