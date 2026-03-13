@@ -2,7 +2,7 @@ const fs = require('fs');
 const https = require('https');
 
 const supabaseKey = fs.readFileSync('js/supabase.js', 'utf8').match(/const supabaseKey = '(.*?)'/)[1];
-const supabaseUrl = 'https://gipxxcfydceahzmqdoks.supabase.co';
+const supabaseUrl = 'https://xizuwvmepfcfodwfwqce.supabase.co';
 
 const headers = {
     'apikey': supabaseKey,

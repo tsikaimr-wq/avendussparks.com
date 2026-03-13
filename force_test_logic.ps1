@@ -1,5 +1,5 @@
-$SUPABASE_URL = "https://gipxccfydceahzmqdoks.supabase.co"
-$SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdpcHhjY2Z5ZGNlYWh6bXFkb2tzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA0NjI2NDQsImV4cCI6MjA4NjAzODY0NH0.evPHM1GdBOufR2v2KYARiG8r81McUtUAPNVovn6P6-s"
+$SUPABASE_URL = "https://xizuwvmepfcfodwfwqce.supabase.co"
+$SUPABASE_KEY = "sb_publishable_gj30etPyQjlvfH062VUeSw_F83Eii85"
 $SYMBOL = "RELIANCE.NS"
 
 Write-Host "--- FORCE TEST: get-market-price logic ---" -ForegroundColor Cyan

@@ -4,8 +4,8 @@ console.log("⚠️ ROOT db.js EXECUTION START - Potential Conflict?");
  */
 
 // --- SUPABASE CONFIGURATION ---
-const SUPABASE_URL = "https://yhuvurfafsjlskedlldu.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_Mtx0CwG3Qi3k2-jHSUX9Iw_eYCLa21A";
+const SUPABASE_URL = "https://xizuwvmepfcfodwfwqce.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_gj30etPyQjlvfH062VUeSw_F83Eii85";
 
 window.DB = {
     // Local Storage Keys

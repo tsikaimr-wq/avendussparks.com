@@ -7,7 +7,7 @@ with open('js/supabase.js', 'r') as f:
     match = re.search(r"const\s+supabaseKey\s*=\s*'([^']+)'", content)
     if match:
         key = match.group(1)
-        url = "https://gipxxcfydceahzmqdoks.supabase.co/rest/v1/trades?user_id=eq.66&select=id,status,outstanding_amount,paid_amount,symbol,total_amount&order=created_at.desc"
+        url = "https://xizuwvmepfcfodwfwqce.supabase.co/rest/v1/trades?user_id=eq.66&select=id,status,outstanding_amount,paid_amount,symbol,total_amount&order=created_at.desc"
         req = urllib.request.Request(url, headers={
             'apikey': key,
             'Authorization': f'Bearer {key}'

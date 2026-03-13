@@ -7,7 +7,7 @@ const match = fileContent.match(supabaseKeyRegex);
 
 if (match && match[1]) {
     const supabaseKey = match[1];
-    const supabaseUrl = 'gipxxcfydceahzmqdoks.supabase.co';
+    const supabaseUrl = 'xizuwvmepfcfodwfwqce.supabase.co';
 
     const options = {
         hostname: supabaseUrl,
