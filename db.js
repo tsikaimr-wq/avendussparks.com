@@ -448,13 +448,13 @@ window.DB = {
         if (!client) return { success: false, message: 'Database connecting...' };
 
         const authRedirectBase = (() => {
-            const origin = String(window?.location?.origin || '').trim();
-            if (/^https?:\/\/.+/i.test(origin)) return origin.replace(/\/$/, '');
+            const origin = String(window?.location?.origin || '').trim().replace(/\/$/, '');
+            if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return origin;
             return 'https://avendussparks.com';
         })();
         const emailRedirectTo = `${authRedirectBase}/login.html`;
 
-        console.log("Supabase sendEmailOtp for:", email);
+        console.log("Supabase sendEmailOtp for:", email, "redirect:", emailRedirectTo);
         const { error } = await client.auth.signInWithOtp({
             email: email,
             options: {
