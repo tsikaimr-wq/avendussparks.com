@@ -888,6 +888,26 @@
 
         // --- Registration Logic (Multi-step) ---
         let regData = {};
+        const PENDING_REG_KEY = 'avendus_pending_registration';
+
+        function readPendingRegistration() {
+            try {
+                const raw = localStorage.getItem(PENDING_REG_KEY);
+                return raw ? JSON.parse(raw) : null;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function savePendingRegistration(patch) {
+            const prev = readPendingRegistration() || {};
+            const next = { ...prev, ...(patch || {}), updated_at: Date.now() };
+            localStorage.setItem(PENDING_REG_KEY, JSON.stringify(next));
+        }
+
+        function clearPendingRegistration() {
+            localStorage.removeItem(PENDING_REG_KEY);
+        }
 
         // Reset modal state on open
         const originalOpenModal = window.openModal;
@@ -960,6 +980,11 @@
                 regData.mobile = mobile;
                 regData.password = pass;
                 regData.inviteCode = invitationCheck.normalizedCode || inviteCode;
+                savePendingRegistration({
+                    mobile: regData.mobile,
+                    password: regData.password,
+                    inviteCode: regData.inviteCode
+                });
 
                 showStep(2);
             } catch (err) {
@@ -974,6 +999,7 @@
         window.triggerEmailOtp = function () {
             const email = document.getElementById('regEmail').value;
             if (!email) return showAlert('warning', 'Please enter a valid email address.');
+            savePendingRegistration({ email: String(email).trim() });
 
             const btn = document.getElementById('sendEmailOtpBtn');
             btn.disabled = true;
@@ -1038,6 +1064,7 @@
                 regData.email = email;
                 regData.authId = res.authId;
                 regData.userId = regRes.user.id; // Store for KYC steps
+                clearPendingRegistration();
 
                 showStep(3);
             } catch (err) {
@@ -1145,8 +1172,13 @@
                 if (!client) return;
 
                 const hashText = String(window.location.hash || '').replace(/^#/, '');
+                const searchText = String(window.location.search || '');
                 const hashParams = new URLSearchParams(hashText);
                 const hasHash = hashText.length > 0;
+                const hasSearch = searchText.length > 1;
+                const isAuthCallback = /access_token=|refresh_token=|error_code=|token=|type=|expires_at=|expires_in=/i.test(hashText)
+                    || /[?&](code|token_hash|type|error|error_code|access_token|refresh_token)=/i.test(searchText);
+                if (!isAuthCallback) return;
                 const errorCode = String(hashParams.get('error_code') || '');
                 const errorDescription = String(hashParams.get('error_description') || '').replace(/\+/g, ' ');
 
@@ -1158,7 +1190,7 @@
 
                 const { data: { session }, error: sessionError } = await client.auth.getSession();
                 if (sessionError || !session || !session.user) {
-                    if (hasHash) history.replaceState({}, document.title, window.location.pathname);
+                    if (hasHash || hasSearch) history.replaceState({}, document.title, window.location.pathname);
                     return;
                 }
 
@@ -1191,27 +1223,50 @@
                     }
                 }
 
-                if (appUser) {
-                    localStorage.setItem(DB.CURRENT_USER_KEY, JSON.stringify(appUser));
-                    const redirectUrl = sessionStorage.getItem('postLoginRedirect');
-                    if (redirectUrl) {
-                        sessionStorage.removeItem('postLoginRedirect');
-                        window.location.replace(redirectUrl);
-                    } else {
-                        window.location.replace('index.html');
+                if (!appUser) {
+                    const pending = readPendingRegistration();
+                    const pendingEmail = String(pending?.email || '').trim().toLowerCase();
+                    const sessionEmail = userEmail.toLowerCase();
+                    const canAutoRegister = !!(
+                        pending &&
+                        pendingEmail &&
+                        sessionEmail &&
+                        pendingEmail === sessionEmail &&
+                        pending.mobile &&
+                        pending.password &&
+                        pending.inviteCode
+                    );
+
+                    if (canAutoRegister) {
+                        const regRes = await DB.register(
+                            String(pending.mobile),
+                            String(pending.password),
+                            userEmail,
+                            authId,
+                            String(pending.inviteCode)
+                        );
+                        if (regRes?.success && regRes?.user) {
+                            appUser = regRes.user;
+                            clearPendingRegistration();
+                        }
                     }
-                    return;
                 }
 
-                if (hasHash || session.user.email_confirmed_at) {
+                if (appUser) {
+                    // Keep user on login page and let them sign in with password as requested.
+                    localStorage.removeItem(DB.CURRENT_USER_KEY);
+                    await client.auth.signOut();
+                    showAlert('success', 'Email verification successful. Please enter your mobile number and password to sign in.', 'Verified');
+                } else {
+                    await client.auth.signOut();
                     showAlert(
                         'warning',
-                        'Email verified, but your account profile is incomplete. Please click Register Now and finish registration.',
-                        'Registration Incomplete'
+                        'Email verified but registration profile was not created. Please click Register Now and submit all steps again.',
+                        'Registration Required'
                     );
                 }
 
-                if (hasHash) history.replaceState({}, document.title, window.location.pathname);
+                if (hasHash || hasSearch) history.replaceState({}, document.title, window.location.pathname);
             } catch (e) {
                 console.error('Auth landing handling failed:', e);
             }
