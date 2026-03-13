@@ -16,6 +16,7 @@ window.DB = {
     MARKET_PRICE_FAIL_COOLDOWN_MS: 15000,
     MARKET_SYMBOL_ALIAS: {
         KCEIL: 'KAYR',
+        ZOMATO: 'ETERNAL',
     },
 
     getClient() {
