@@ -251,6 +251,40 @@ window.DB = {
     },
 
     // --- AUTHENTICATION ---
+    normalizeMobile(value) {
+        const digits = String(value || '').replace(/\D/g, '');
+        if (!digits) return '';
+        return digits.length > 10 ? digits.slice(-10) : digits;
+    },
+
+    buildMobileCandidates(value) {
+        const raw = String(value || '').trim();
+        const digits = String(value || '').replace(/\D/g, '');
+        const normalized = this.normalizeMobile(value);
+        const candidates = new Set();
+
+        const addCandidate = (candidate) => {
+            const text = String(candidate || '').trim();
+            if (text) candidates.add(text);
+        };
+
+        addCandidate(raw);
+        addCandidate(digits);
+        addCandidate(normalized);
+
+        if (normalized) {
+            addCandidate(`+91${normalized}`);
+            addCandidate(`91${normalized}`);
+        }
+
+        if (raw.startsWith('+')) addCandidate(raw.slice(1));
+        if (digits && !digits.startsWith('91')) addCandidate(`91${digits}`);
+        if (digits.startsWith('91') && digits.length > 10) addCandidate(digits.slice(2));
+        if (digits.length > 10) addCandidate(digits.slice(-10));
+
+        return [...candidates];
+    },
+
     async login(identifier, password) {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
@@ -268,14 +302,10 @@ window.DB = {
                 .eq('password', password)
                 .maybeSingle());
         } else {
-            const digits = rawIdentifier.replace(/\D/g, '');
-            const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
-            const candidates = [...new Set([
-                rawIdentifier,
-                digits,
-                last10,
-                last10 ? `+91${last10}` : ''
-            ].filter(Boolean))];
+            const candidates = this.buildMobileCandidates(rawIdentifier);
+            if (candidates.length === 0) {
+                return { success: false, message: 'Invalid credentials.' };
+            }
 
             ({ data, error } = await client
                 .from('users')
@@ -385,6 +415,7 @@ window.DB = {
 
     async register(mobile, password, email = null, authId = null, invitationCode = null) {
         const client = this.getClient();
+        const normalizedMobile = this.normalizeMobile(mobile);
         const insertData = {
             password,
             balance: 0,
@@ -394,7 +425,11 @@ window.DB = {
             kyc: 'Pending'
         };
 
-        if (mobile) insertData.mobile = mobile;
+        if (mobile && !normalizedMobile) {
+            return { success: false, message: "Please enter a valid mobile number." };
+        }
+
+        if (mobile) insertData.mobile = normalizedMobile;
         if (email) insertData.email = email;
         if (authId) insertData.auth_id = authId;
 
@@ -425,10 +460,11 @@ window.DB = {
         }
 
         if (mobile) {
+            const mobileCandidates = this.buildMobileCandidates(mobile);
             const { data: existingPhone } = await client
                 .from('users')
                 .select('id')
-                .eq('mobile', mobile)
+                .in('mobile', mobileCandidates)
                 .limit(1);
             if (existingPhone && existingPhone.length > 0) {
                 showAlert("warning", "This mobile number is already registered.");
@@ -454,7 +490,7 @@ window.DB = {
     },
 
     // --- SUPABASE OTP AUTH ---
-    async sendEmailOtp(email) {
+    async sendEmailOtp(email, registrationData = null) {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
 
@@ -464,14 +500,29 @@ window.DB = {
             return 'https://avendussparks.com';
         })();
         const emailRedirectTo = `${authRedirectBase}/login.html`;
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        const normalizedMobile = this.normalizeMobile(registrationData?.mobile || '');
+        const normalizedInviteCode = this.normalizeInvitationCode(registrationData?.inviteCode || '');
+        const regPassword = String(registrationData?.password || '').trim();
+
+        const metadata = {};
+        if (normalizedEmail) metadata.reg_email = normalizedEmail;
+        if (normalizedMobile) metadata.reg_mobile = normalizedMobile;
+        if (normalizedInviteCode) metadata.reg_invite_code = normalizedInviteCode;
+        if (regPassword) metadata.reg_password = regPassword;
+
+        const otpOptions = {
+            shouldCreateUser: true,
+            emailRedirectTo
+        };
+        if (Object.keys(metadata).length > 0) {
+            otpOptions.data = metadata;
+        }
 
         console.log("Supabase sendEmailOtp for:", email, "redirect:", emailRedirectTo);
         const { error } = await client.auth.signInWithOtp({
             email: email,
-            options: {
-                shouldCreateUser: true,
-                emailRedirectTo
-            }
+            options: otpOptions
         });
 
         if (error) {

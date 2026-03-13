@@ -941,13 +941,15 @@
         };
 
         window.goToStep2 = async function () {
-            const mobile = document.getElementById('regMobile').value;
+            const mobileInput = document.getElementById('regMobile').value;
+            const mobileDigits = String(mobileInput || '').replace(/\D/g, '');
+            const mobile = mobileDigits.length > 10 ? mobileDigits.slice(-10) : mobileDigits;
             const pass = document.getElementById('regPass').value;
             const confirmPass = document.getElementById('regConfirmPass').value;
             const inviteCodeRaw = document.getElementById('regInviteCode').value.trim();
             const inviteCode = String(inviteCodeRaw || '').replace(/\s+/g, '').toUpperCase();
 
-            if (!mobile || mobile.length < 10) return showAlert('warning', 'Please enter a valid 10-digit mobile number.');
+            if (mobile.length !== 10) return showAlert('warning', 'Please enter exactly 10 digits for mobile number.');
             if (!pass) return showAlert('warning', 'Please create a password.');
             if (pass !== confirmPass) return showAlert('warning', 'Passwords do not match.');
             if (pass.length < 6) return showAlert('warning', 'Password must be at least 6 characters.');
@@ -969,9 +971,12 @@
                 }
 
                 const client = DB.getClient();
+                const mobileCandidates = (window.DB && typeof window.DB.buildMobileCandidates === 'function')
+                    ? window.DB.buildMobileCandidates(mobileInput)
+                    : [mobile];
 
                 // Check if mobile already exists (informational)
-                const { data: existingMob } = await client.from('users').select('id').eq('mobile', mobile).maybeSingle();
+                const { data: existingMob } = await client.from('users').select('id').in('mobile', mobileCandidates).maybeSingle();
                 if (existingMob) {
                     return showAlert('error', 'Mobile number already registered.');
                 }
@@ -1000,12 +1005,17 @@
             const email = document.getElementById('regEmail').value;
             if (!email) return showAlert('warning', 'Please enter a valid email address.');
             savePendingRegistration({ email: String(email).trim() });
+            const otpRegistrationPayload = {
+                mobile: regData.mobile || document.getElementById('regMobile').value,
+                password: regData.password || document.getElementById('regPass').value,
+                inviteCode: regData.inviteCode || document.getElementById('regInviteCode').value
+            };
 
             const btn = document.getElementById('sendEmailOtpBtn');
             btn.disabled = true;
             btn.textContent = 'Sending...';
 
-            DB.sendEmailOtp(email).then(res => {
+            DB.sendEmailOtp(email, otpRegistrationPayload).then(res => {
                 if (res.success) {
                     showAlert('success', 'OTP sent to ' + email);
                     let count = 60;
@@ -1224,20 +1234,39 @@
                 }
 
                 if (!appUser) {
-                    const pending = readPendingRegistration();
-                    const pendingEmail = String(pending?.email || '').trim().toLowerCase();
-                    const sessionEmail = userEmail.toLowerCase();
-                    const canAutoRegister = !!(
-                        pending &&
-                        pendingEmail &&
-                        sessionEmail &&
-                        pendingEmail === sessionEmail &&
-                        pending.mobile &&
-                        pending.password &&
-                        pending.inviteCode
-                    );
+                    const localPending = readPendingRegistration() || {};
+                    const userMeta = (session.user && typeof session.user.user_metadata === 'object' && session.user.user_metadata)
+                        ? session.user.user_metadata
+                        : {};
+                    const metaPending = {
+                        email: String(userMeta.reg_email || userEmail || '').trim(),
+                        mobile: String(userMeta.reg_mobile || '').trim(),
+                        password: String(userMeta.reg_password || '').trim(),
+                        inviteCode: String(userMeta.reg_invite_code || '').trim()
+                    };
+                    const pendingSources = [];
+                    if (Object.keys(localPending).length > 0) {
+                        pendingSources.push({ source: 'local', value: localPending });
+                    }
+                    if (metaPending.mobile || metaPending.password || metaPending.inviteCode) {
+                        pendingSources.push({ source: 'metadata', value: metaPending });
+                    }
 
-                    if (canAutoRegister) {
+                    const sessionEmail = userEmail.toLowerCase();
+                    for (const entry of pendingSources) {
+                        if (appUser) break;
+                        const pending = entry.value || {};
+                        const pendingEmail = String(pending.email || userEmail || '').trim().toLowerCase();
+                        const canAutoRegister = !!(
+                            pendingEmail &&
+                            sessionEmail &&
+                            pendingEmail === sessionEmail &&
+                            pending.mobile &&
+                            pending.password &&
+                            pending.inviteCode
+                        );
+                        if (!canAutoRegister) continue;
+
                         const regRes = await DB.register(
                             String(pending.mobile),
                             String(pending.password),
@@ -1248,7 +1277,37 @@
                         if (regRes?.success && regRes?.user) {
                             appUser = regRes.user;
                             clearPendingRegistration();
+                            break;
                         }
+
+                        const mobileCandidates = (window.DB && typeof window.DB.buildMobileCandidates === 'function')
+                            ? window.DB.buildMobileCandidates(String(pending.mobile))
+                            : [];
+                        if (mobileCandidates.length === 0) continue;
+
+                        const byMobile = await client
+                            .from('users')
+                            .select('*')
+                            .in('mobile', mobileCandidates)
+                            .maybeSingle();
+                        const mobileUser = byMobile?.data || null;
+                        const mobileEmail = String(mobileUser?.email || '').trim().toLowerCase();
+                        if (byMobile?.error || !mobileUser) continue;
+                        if (mobileEmail && mobileEmail !== sessionEmail) continue;
+
+                        if (!mobileUser.auth_id || String(mobileUser.auth_id) !== String(authId)) {
+                            const updatePayload = { auth_id: authId };
+                            if (userEmail) updatePayload.email = userEmail;
+                            await client
+                                .from('users')
+                                .update(updatePayload)
+                                .eq('id', mobileUser.id);
+                            mobileUser.auth_id = authId;
+                            if (!mobileUser.email && userEmail) mobileUser.email = userEmail;
+                        }
+                        appUser = mobileUser;
+                        clearPendingRegistration();
+                        break;
                     }
                 }
 
