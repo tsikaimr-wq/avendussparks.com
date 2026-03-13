@@ -5910,7 +5910,11 @@
             try {
                 // Fetch latest trades directly from DB for maximum reliability
                 const trades = await window.DB.getTradesByUserId(user.id);
-                const myTrades = trades.filter(t => t.status === 'Approved' && t.symbol.toUpperCase() === symbol.toUpperCase());
+                const myTrades = trades.filter(t => {
+                    const status = String(t.status || '').toUpperCase();
+                    return ['APPROVED', 'HOLDING', 'SETTLED', 'CONFIRMED'].includes(status)
+                        && String(t.symbol || '').toUpperCase() === symbol.toUpperCase();
+                });
 
                 if (myTrades.length === 0) {
                     alert("You do not have any active holdings for " + symbol + " to sell.");
@@ -6985,6 +6989,60 @@
             unsettled: []
         };
 
+        function getTradePricingUtils() {
+            return window.TradePricing || null;
+        }
+
+        function getTradeDisplayPrice(trade) {
+            const pricing = getTradePricingUtils();
+            if (pricing && typeof pricing.getCachedTradeMarketPrice === 'function') {
+                const price = Number(pricing.getCachedTradeMarketPrice(trade));
+                if (Number.isFinite(price) && price > 0) return price;
+            }
+            const fallback = Number(trade?.price);
+            return (Number.isFinite(fallback) && fallback > 0) ? fallback : 0;
+        }
+
+        function refreshTradeDisplayPrice(trade, force = false) {
+            const pricing = getTradePricingUtils();
+            if (!pricing || typeof pricing.refreshTradeMarketPrice !== 'function' || typeof pricing.isMarketTrackedTrade !== 'function') return;
+            if (!pricing.isMarketTrackedTrade(trade)) return;
+            pricing.refreshTradeMarketPrice(trade, { force }).catch(err => console.warn("Trade price refresh failed:", err));
+        }
+
+        function getTradeUnrealizedMetrics(trade, currentPrice = null) {
+            const pricing = getTradePricingUtils();
+            if (pricing && typeof pricing.computeUnrealizedTradeMetrics === 'function') {
+                return pricing.computeUnrealizedTradeMetrics(trade, currentPrice ?? getTradeDisplayPrice(trade));
+            }
+
+            const qty = parseFloat(trade?.quantity || 0) || 0;
+            const price = Number.isFinite(Number(currentPrice)) ? Number(currentPrice) : getTradeDisplayPrice(trade);
+            const totalAmount = parseFloat(trade?.total_amount || 0) || 0;
+            const gross = price * qty;
+            const sellTax = gross * 0.0012;
+            const sellFees = gross * 0.0003;
+            const netSaleValue = gross - sellTax - sellFees;
+            const profit = netSaleValue - totalAmount;
+            const profitPct = totalAmount > 0 ? (profit / totalAmount) * 100 : 0;
+            return { currentPrice: price, grossSaleValue: gross, netSaleValue, sellTax, sellFees, profit, profitPct };
+        }
+
+        function getTradeRealizedMetrics(trade) {
+            const pricing = getTradePricingUtils();
+            if (pricing && typeof pricing.computeRealizedTradeMetrics === 'function') {
+                return pricing.computeRealizedTradeMetrics(trade);
+            }
+
+            const qty = parseFloat(trade?.quantity || 0) || 0;
+            const sellPrice = parseFloat(trade?.sell_price || trade?.price || 0) || 0;
+            const totalAmount = parseFloat(trade?.total_amount || 0) || 0;
+            const storedNet = parseFloat(trade?.total_sale_value || 0) || (sellPrice * qty);
+            const profit = parseFloat(trade?.realised_profit || 0) || (storedNet - totalAmount);
+            const profitPct = totalAmount > 0 ? (profit / totalAmount) * 100 : 0;
+            return { currentPrice: sellPrice, grossSaleValue: sellPrice * qty, netSaleValue: storedNet, profit, profitPct };
+        }
+
         async function renderDetailHoldings() {
             const user = window.DB ? window.DB.getCurrentUser() : null;
             const symbolEl = document.getElementById('detSymbol');
@@ -6995,14 +7053,21 @@
             const updateList = async () => {
                 try {
                     const trades = await window.DB.getTradesByUserId(user.id);
-                    const myTrades = trades.filter(t => t.status === 'Holding' && t.symbol.toUpperCase() === symbol.toUpperCase());
+                    const myTrades = trades.filter(t => {
+                        const status = String(t.status || '').toUpperCase();
+                        return ['HOLDING', 'APPROVED', 'SETTLED', 'CONFIRMED'].includes(status)
+                            && String(t.symbol || '').toUpperCase() === symbol.toUpperCase();
+                    });
 
                     if (myTrades.length > 0) {
                         list.innerHTML = myTrades.map(t => {
                             const date = new Date(t.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-                            const lp = (window.MarketEngine && window.MarketEngine.getProduct) ? window.MarketEngine.getProduct(t.symbol) : null;
-                            const cp = lp ? lp.price : parseFloat(t.price);
-                            const prof = (cp * t.quantity) - parseFloat(t.total_amount);
+                            const cp = getTradeDisplayPrice(t);
+                            const metrics = getTradeUnrealizedMetrics(t, cp);
+                            refreshTradeDisplayPrice(t);
+
+                            const prof = metrics.profit;
+                            const profDisplay = `${prof >= 0 ? '+' : '-'}₹${Math.abs(prof).toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${metrics.profitPct >= 0 ? '+' : ''}${metrics.profitPct.toFixed(2)}%)`;
 
                             return `
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid #f1f5f9;">
@@ -7021,7 +7086,7 @@
                                     </div>
                                     <div style="text-align: right;">
                                         <div style="font-weight: 700; color: #d4af37;">₹${parseFloat(t.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                                        <div style="font-size: 0.75rem; color: ${prof >= 0 ? '#10b981' : '#ef4444'}; font-weight: 600;">${prof >= 0 ? '+' : ''}${prof.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
+                                        <div style="font-size: 0.75rem; color: ${prof >= 0 ? '#10b981' : '#ef4444'}; font-weight: 600;">${profDisplay}</div>
                                     </div>
                                 </div>
                             `;
@@ -7058,13 +7123,36 @@
             // without modifying the database.
             window.transactionData = {
                 all: trades,
-                holding: trades.filter(t => t.status === 'Holding' || t.status === 'LOCKED_UNPAID' || (t.type === 'stock' && ['Settled', 'Approved', 'Confirmed'].includes(t.status))),
-                sold: trades.filter(t => t.status === 'Sold' && t.type !== 'sell' && !(t.admin_note || "").includes("Proceeds")),
-                pending: trades.filter(t => t.status === 'Pending' && !(t.admin_note || "").startsWith('OUTSTANDING') && t.type !== 'ipo' && t.type !== 'otc'),
-                pendingApproval: trades.filter(t => (t.status === 'Pending' || t.status === 'Awaiting' || t.status === 'AWAITING_APPROVAL') && (t.type === 'ipo' || t.type === 'otc')),
-                rejected: trades.filter(t => t.status === 'Rejected'),
-                pendingPayment: trades.filter(t => (t.status === 'Pending' && (t.admin_note || "").startsWith('OUTSTANDING')) || t.status === 'Awaiting' || t.status === 'AWAITING_APPROVAL'),
-                unsettled: trades.filter(t => !['Holding', 'Sold', 'Pending', 'Rejected'].includes(t.status))
+                holding: trades.filter(t => {
+                    const status = (t.status || '').toUpperCase();
+                    return status === 'HOLDING' || status === 'LOCKED_UNPAID' || ['SETTLED', 'APPROVED', 'CONFIRMED'].includes(status);
+                }),
+                sold: trades.filter(t => {
+                    const status = (t.status || '').toUpperCase();
+                    return status === 'SOLD' && t.type?.toLowerCase() !== 'sell' && !(t.admin_note || "").includes("Proceeds");
+                }),
+                pending: trades.filter(t => {
+                    const status = (t.status || '').toUpperCase();
+                    const type = (t.type || '').toLowerCase();
+                    return ['PENDING', 'AWAITING', 'AWAITING_APPROVAL'].includes(status) &&
+                        !(t.admin_note || "").startsWith('OUTSTANDING') &&
+                        type !== 'ipo' && type !== 'otc';
+                }),
+                pendingApproval: trades.filter(t => {
+                    const status = (t.status || '').toUpperCase();
+                    const type = (t.type || '').toLowerCase();
+                    return ['PENDING', 'AWAITING', 'AWAITING_APPROVAL', 'AWAITING APPROVAL'].includes(status) &&
+                        (type === 'ipo' || type === 'otc');
+                }),
+                rejected: trades.filter(t => (t.status || '').toUpperCase() === 'REJECTED'),
+                pendingPayment: trades.filter(t => {
+                    const status = (t.status || '').toUpperCase();
+                    return status === 'PENDING' && (t.admin_note || "").startsWith('OUTSTANDING');
+                }),
+                unsettled: trades.filter(t => {
+                    const status = (t.status || '').toUpperCase();
+                    return !['HOLDING', 'SOLD', 'PENDING', 'REJECTED', 'SETTLED', 'APPROVED', 'CONFIRMED', 'AWAITING', 'AWAITING_APPROVAL', 'AWAITING APPROVAL'].includes(status);
+                })
             };
         }
         window.fetchUserTransactions = fetchUserTransactions;
@@ -7086,19 +7174,11 @@
             if (tabName === 'holding') {
                 let html = `<div class="premium-trade-grid">`;
                 data.forEach(item => {
-                    const otcItemSymbol = item.products?.market_symbol || item.market_symbol || item.symbol;
-                    const liveProd = (window.MarketEngine && window.MarketEngine.getProduct)
-                        ? (window.MarketEngine.getProduct(otcItemSymbol) || window.MarketEngine.getProduct(item.symbol) || window.MarketEngine.getProduct(item.products?.market_symbol))
-                        : null;
-                    let mockCurrPrice = liveProd ? liveProd.price : parseFloat(item.price);
-                    const isOTCItem = item.type?.toLowerCase() === 'otc';
-                    if (isOTCItem && otcItemSymbol && window.MarketEngine?.fetchMarketPrice) {
-                        const live = window.MarketEngine.livePrices ? parseFloat(window.MarketEngine.livePrices[otcItemSymbol]) : NaN;
-                        if (Number.isFinite(live) && live > 0) mockCurrPrice = live;
-                        if (!Number.isFinite(live) || live <= 0) window.MarketEngine.fetchMarketPrice(otcItemSymbol);
-                    }
-                    const profit = (mockCurrPrice * item.quantity) - parseFloat(item.total_amount);
-                    const profitPct = (profit / parseFloat(item.total_amount)) * 100;
+                    const mockCurrPrice = getTradeDisplayPrice(item);
+                    refreshTradeDisplayPrice(item);
+                    const unrealized = getTradeUnrealizedMetrics(item, mockCurrPrice);
+                    const profit = unrealized.profit;
+                    const profitPct = unrealized.profitPct;
 
                     const now = new Date();
                     const lockupUntil = item.lockup_until ? new Date(item.lockup_until) : null;
@@ -7174,19 +7254,11 @@
                         return;
                     }
                     data.forEach(item => {
-                        const otcItemSymbol = item.products?.market_symbol || item.market_symbol || item.symbol;
-                        const lp = (window.MarketEngine && window.MarketEngine.getProduct)
-                            ? (window.MarketEngine.getProduct(otcItemSymbol) || window.MarketEngine.getProduct(item.symbol) || window.MarketEngine.getProduct(item.products?.market_symbol))
-                            : null;
-                        let currPrice = lp ? lp.price : (parseFloat(item.price) || 0);
-                        const isOTC = item.type?.toLowerCase() === 'otc';
-                        if (isOTC && otcItemSymbol && window.MarketEngine?.fetchMarketPrice) {
-                            const live = window.MarketEngine.livePrices ? parseFloat(window.MarketEngine.livePrices[otcItemSymbol]) : NaN;
-                            if (Number.isFinite(live) && live > 0) currPrice = live;
-                            if (!Number.isFinite(live) || live <= 0 || Math.random() < 0.1) window.MarketEngine.fetchMarketPrice(otcItemSymbol);
-                        }
-                        const prof = (currPrice * item.quantity) - parseFloat(item.total_amount);
-                        const profPct = (prof / parseFloat(item.total_amount)) * 100;
+                        refreshTradeDisplayPrice(item);
+                        const currPrice = getTradeDisplayPrice(item);
+                        const unrealized = getTradeUnrealizedMetrics(item, currPrice);
+                        const prof = unrealized.profit;
+                        const profPct = unrealized.profitPct;
 
                         const prEl = document.getElementById(`hPrice-${item.id}`);
                         const pEl = document.getElementById(`hProfit-${item.id}`);
@@ -7761,17 +7833,15 @@
             if (typeof transactionData !== 'undefined' && transactionData.holding) {
                 tradesCount = transactionData.holding.length;
                 transactionData.holding.forEach(item => {
-                    const liveProd = (window.MarketEngine && window.MarketEngine.getProduct)
-                        ? (window.MarketEngine.getProduct(item.symbol) || window.MarketEngine.getProduct(item.products?.market_symbol))
-                        : null;
-                    const currentPrice = liveProd ? liveProd.price : parseFloat(item.price);
-                    const profit = (currentPrice * item.quantity) - parseFloat(item.total_amount);
-                    totalProfit += profit;
+                    refreshTradeDisplayPrice(item);
+                    const metrics = getTradeUnrealizedMetrics(item, getTradeDisplayPrice(item));
+                    totalProfit += metrics.profit;
                 });
             }
 
             const roiPercent = inv > 0 ? (totalProfit / inv) * 100 : 0;
             updateVal('pProfitMain', totalProfit);
+            updateVal('pStatsCurrentValue', inv + totalProfit);
             const roiEl = document.getElementById('pROIMain');
             if (roiEl) {
                 roiEl.textContent = (roiPercent >= 0 ? '+' : '') + roiPercent.toFixed(2) + '%';
@@ -7809,12 +7879,11 @@
                 let gainer = null, loser = null;
                 let maxProfitPct = -Infinity, maxLossPct = Infinity;
                 transactionData.holding.forEach(item => {
-                    const liveProd = (window.MarketEngine && window.MarketEngine.getProduct)
-                        ? (window.MarketEngine.getProduct(item.symbol) || window.MarketEngine.getProduct(item.products?.market_symbol))
-                        : null;
-                    const currentPrice = liveProd ? liveProd.price : parseFloat(item.price);
-                    const profit = (currentPrice * item.quantity) - parseFloat(item.total_amount);
-                    const profitPct = (profit / parseFloat(item.total_amount)) * 100;
+                    refreshTradeDisplayPrice(item);
+                    const metrics = getTradeUnrealizedMetrics(item, getTradeDisplayPrice(item));
+                    const currentPrice = metrics.currentPrice;
+                    const profit = metrics.profit;
+                    const profitPct = metrics.profitPct;
                     if (profitPct > maxProfitPct) { maxProfitPct = profitPct; gainer = { ...item, currentPrice, profit, profitPct }; }
                     if (profitPct < maxLossPct) { maxLossPct = profitPct; loser = { ...item, currentPrice, profit, profitPct }; }
                 });
@@ -7978,17 +8047,8 @@
                 return;
             }
 
-            const me = window.MarketEngine || {};
-            const otcLiveSymbol = trade.products?.market_symbol || trade.market_symbol || trade.symbol;
-            const livePriceData = me.getProduct ? (me.getProduct(otcLiveSymbol) || me.getProduct(trade.symbol)) : null;
-            let currentPrice = livePriceData ? livePriceData.price : trade.price;
-
-            const isOTCItem = trade.type?.toLowerCase() === 'otc';
-            if (isOTCItem && otcLiveSymbol && me.fetchMarketPrice) {
-                const live = me.livePrices ? parseFloat(me.livePrices[otcLiveSymbol]) : NaN;
-                if (Number.isFinite(live) && live > 0) currentPrice = live;
-                if (!Number.isFinite(live) || live <= 0) me.fetchMarketPrice(otcLiveSymbol);
-            }
+            let currentPrice = getTradeDisplayPrice(trade);
+            refreshTradeDisplayPrice(trade);
 
             document.getElementById('hdStockTitle').innerText = trade.name;
 
@@ -8007,10 +8067,14 @@
             document.getElementById('hdBuyPrice').innerText = '₹' + parseFloat(trade.price).toLocaleString('en-IN', { minimumFractionDigits: 2 });
             document.getElementById('hdOrderVal').innerText = '₹' + parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-            const mockCurrPrice = currentPrice;
-            const mockSaleVal = mockCurrPrice * trade.quantity;
-            const profitValue = mockSaleVal - parseFloat(trade.total_amount);
-            const profitPct = (profitValue / parseFloat(trade.total_amount)) * 100;
+            const isClosed = trade.order_status === 'CLOSED' || trade.status === 'Sold';
+            const tradeMetrics = isClosed
+                ? getTradeRealizedMetrics(trade)
+                : getTradeUnrealizedMetrics(trade, currentPrice);
+            const mockCurrPrice = tradeMetrics.currentPrice;
+            const mockSaleVal = tradeMetrics.netSaleValue;
+            const profitValue = tradeMetrics.profit;
+            const profitPct = tradeMetrics.profitPct;
 
             const dateStr = new Date(trade.created_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
@@ -8019,6 +8083,7 @@
             const isLockedUnpaid = trade.status === 'LOCKED_UNPAID';
             const isOutstandingLegacy = trade.status === 'Pending' && (note === 'OUTSTANDING_BALANCE' || note.startsWith('OUTSTANDING:'));
             const isPending = (trade.status === 'Pending' || trade.status === 'Awaiting' || trade.status === 'AWAITING_APPROVAL') && !isOutstandingLegacy;
+            const isOutstanding = isLockedUnpaid || isOutstandingLegacy;
 
             if (isPending) {
                 document.getElementById('hdCurrPrice').innerText = '-';
@@ -8039,16 +8104,17 @@
                     if (timelineTitle) timelineTitle.innerText = (trade.status === 'AWAITING_APPROVAL') ? 'Awaiting Approval' : 'Awaiting';
                     document.getElementById('hdBuyTimeline').innerText = `Order Placed @ ${dateStr.replace(/\//g, '-')}`;
                 }
-            } else if (trade.status === 'Sold') {
-                const sp = parseFloat(trade.sell_price || trade.price);
-                const sv = parseFloat(trade.total_sale_value || (sp * trade.quantity));
-                const rp = parseFloat(trade.realised_profit || (sv - parseFloat(trade.total_amount)));
-                const fees = (parseFloat(trade.sell_tax || 0) + parseFloat(trade.sell_fees || 0)) || (sv * 0.0015);
-                const profitPct = (rp / parseFloat(trade.total_amount)) * 100;
+            } else if (isClosed) {
+                const realized = getTradeRealizedMetrics(trade);
+                const sp = realized.currentPrice;
+                const sv = realized.netSaleValue;
+                const rp = realized.profit;
+                const fees = (parseFloat(trade.sell_tax || 0) + parseFloat(trade.sell_fees || 0)) || Math.max(0, (realized.grossSaleValue || (sp * trade.quantity)) - sv);
+                const realizedProfitPct = realized.profitPct;
 
                 document.getElementById('hdProfitLabel').innerText = 'Realised P&L';
                 document.getElementById('hdCurrPrice').innerText = '-';
-                document.getElementById('hdProfit').innerText = `₹${rp.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${rp >= 0 ? '+' : ''}${profitPct.toFixed(2)}%)`;
+                document.getElementById('hdProfit').innerText = `₹${rp.toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${rp >= 0 ? '+' : ''}${realizedProfitPct.toFixed(2)}%)`;
                 document.getElementById('hdProfit').style.color = rp >= 0 ? '#10b981' : '#ef4444';
 
                 document.getElementById('hdNormalSellPriceRow').style.display = 'table-row';
@@ -8258,29 +8324,19 @@
 
             // Live Update for Modal - only for active holdings
             if (window.hdLiveInterval) clearInterval(window.hdLiveInterval);
-            if (!isPending && !isOutstanding && !isIPO && trade.status !== 'Sold') {
+            if (!isPending && !isOutstanding && !isIPO && !isClosed) {
                 window.hdLiveInterval = setInterval(() => {
                     if (document.getElementById('holdingDetailModal').style.display === 'none') {
                         clearInterval(window.hdLiveInterval);
                         return;
                     }
-                    let lp = (window.MarketEngine && window.MarketEngine.getProduct)
-                        ? (window.MarketEngine.getProduct(otcLiveSymbol) || window.MarketEngine.getProduct(trade.symbol) || window.MarketEngine.getProduct(trade.products?.market_symbol))
-                        : null;
-                    let cp = lp ? parseFloat(lp.price) : NaN;
-
-                    if (isOTCItem && otcLiveSymbol && window.MarketEngine?.fetchMarketPrice) {
-                        const live = window.MarketEngine.livePrices ? parseFloat(window.MarketEngine.livePrices[otcLiveSymbol]) : NaN;
-                        if (Number.isFinite(live) && live > 0) cp = live;
-                        if (!Number.isFinite(live) || live <= 0 || Math.random() < 0.15) {
-                            window.MarketEngine.fetchMarketPrice(otcLiveSymbol);
-                        }
-                    }
-
+                    refreshTradeDisplayPrice(trade);
+                    const cp = getTradeDisplayPrice(trade);
                     if (!Number.isFinite(cp) || cp <= 0) return;
-                    const sv = cp * trade.quantity;
-                    const pv = sv - parseFloat(trade.total_amount);
-                    const pp = (pv / parseFloat(trade.total_amount)) * 100;
+                    const metrics = getTradeUnrealizedMetrics(trade, cp);
+                    const sv = metrics.netSaleValue;
+                    const pv = metrics.profit;
+                    const pp = metrics.profitPct;
 
                     const cpEl = document.getElementById('hdCurrPrice');
                     const pEl = document.getElementById('hdProfit');

@@ -1193,11 +1193,16 @@
         async function executeSellOrder(tradeId) {
             const user = window.DB.getCurrentUser();
             if (!user) return;
+            const pricing = window.TradePricing || {};
 
             // If no tradeId provided, find the first available holding for this symbol
             if (!tradeId) {
                 const trades = await window.DB.getTradesByUserId(user.id);
-                const matching = trades.find(t => t.status === 'Approved' && t.symbol.toUpperCase() === currentActiveSymbol.toUpperCase());
+                const matching = trades.find(t => {
+                    const status = String(t.status || '').toUpperCase();
+                    return ['APPROVED', 'HOLDING', 'SETTLED', 'CONFIRMED'].includes(status)
+                        && t.symbol.toUpperCase() === currentActiveSymbol.toUpperCase();
+                });
                 if (!matching) {
                     alert("You don't have any holdings for " + currentActiveSymbol + " to sell.");
                     return;
@@ -1208,20 +1213,32 @@
             const trade = (await window.DB.getTradesByUserId(user.id)).find(t => t.id == tradeId);
             if (!trade) return;
 
-            const qty = parseFloat(trade.quantity);
-            const baseReturn = qty * currentPrice;
-            const tax = baseReturn * 0.0012;
-            const txnCharge = baseReturn * 0.0003;
-            const totalReturn = baseReturn - tax - txnCharge;
+            let liveSellPrice = currentPrice;
+            if (typeof pricing.refreshTradeMarketPrice === 'function') {
+                try {
+                    liveSellPrice = await pricing.refreshTradeMarketPrice(trade, { force: true }) || liveSellPrice;
+                } catch (_) { }
+            }
+
+            const sellMetrics = (typeof pricing.computeUnrealizedTradeMetrics === 'function')
+                ? pricing.computeUnrealizedTradeMetrics(trade, liveSellPrice)
+                : {
+                    qty: parseFloat(trade.quantity || 0) || 0,
+                    currentPrice: liveSellPrice,
+                    grossSaleValue: (parseFloat(trade.quantity || 0) || 0) * liveSellPrice,
+                    sellTax: ((parseFloat(trade.quantity || 0) || 0) * liveSellPrice) * 0.0012,
+                    sellFees: ((parseFloat(trade.quantity || 0) || 0) * liveSellPrice) * 0.0003,
+                    netSaleValue: (((parseFloat(trade.quantity || 0) || 0) * liveSellPrice) * (1 - 0.0012 - 0.0003))
+                };
 
             const calc = {
                 tradeId,
-                qty,
-                price: currentPrice,
-                baseTotal: baseReturn,
-                tax: tax,
-                txnCharge: txnCharge,
-                total: totalReturn
+                qty: sellMetrics.qty,
+                price: sellMetrics.currentPrice,
+                baseTotal: sellMetrics.grossSaleValue,
+                tax: sellMetrics.sellTax,
+                txnCharge: sellMetrics.sellFees,
+                total: sellMetrics.netSaleValue
             };
 
             // Populate Premium Confirmation Modal for SELL
@@ -1237,12 +1254,12 @@
 
             if (ocName) ocName.innerText = currentStockName;
             if (ocSym) ocSym.innerText = `${currentActiveSymbol} - EXIT LOT`;
-            if (ocQty) ocQty.innerText = qty.toLocaleString();
-            if (ocPr) ocPr.innerText = '₹' + currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (ocBase) ocBase.innerText = '₹' + baseReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (ocTx) ocTx.innerText = '-₹' + tax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (ocTn) ocTn.innerText = '-₹' + txnCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (ocTot) ocTot.innerText = '₹' + totalReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocQty) ocQty.innerText = calc.qty.toLocaleString();
+            if (ocPr) ocPr.innerText = '₹' + calc.price.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocBase) ocBase.innerText = '₹' + calc.baseTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTx) ocTx.innerText = '-₹' + calc.tax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTn) ocTn.innerText = '-₹' + calc.txnCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (ocTot) ocTot.innerText = '₹' + calc.total.toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
             if (ocBtn) {
                 ocBtn.innerText = `CONFIRM SELL ORDER`;
@@ -1276,14 +1293,16 @@
                         return;
                     }
 
-                    const isSubscription = ['otc', 'ipo'].includes((type || '').toLowerCase());
-                    const tradeStatus = isSubscription ? 'Pending' : 'Approved';
+                    const normalizedType = (window.TradePricing?.normalizeTradeType?.(type) || String(type || 'stock').toLowerCase());
+                    const isSubscription = ['otc', 'ipo'].includes(normalizedType);
+                    const tradeStatus = isSubscription ? 'Pending' : 'Holding';
+                    const orderStatus = isSubscription ? (normalizedType === 'ipo' ? 'PENDING' : 'OPEN') : 'FILLED';
 
                     const tradeData = {
                         user_id: freshUser.id,
                         symbol: symbol,
                         name: stockName,
-                        type: (type || 'stock').toLowerCase(),
+                        type: normalizedType,
                         product_id: currentProductId,
                         quantity: calc.qty,
                         requested_quantity: calc.qty,
@@ -1292,7 +1311,7 @@
                         tax_amount: calc.tax,
                         txn_charge: calc.txnCharge,
                         status: tradeStatus,
-                        order_status: (type === 'ipo' ? 'PENDING' : 'OPEN')
+                        order_status: orderStatus
                     };
 
                     let result;
@@ -1304,7 +1323,7 @@
 
                     if (result.success) {
                         // --- WALLET STATE TRANSITION (NON-SUBSCRIPTION) ---
-                        if (!isSubscription && tradeStatus === 'Approved') {
+                        if (!isSubscription && tradeStatus === 'Holding') {
                             const newBalance = currentBalance - calc.total;
                             const newInvested = (parseFloat(freshUser.invested) || 0) + calc.total;
                             await window.DB.updateUserFinancials(freshUser.id, newBalance, newInvested);
@@ -1326,24 +1345,51 @@
                 } else {
                     // SELL logic
                     const tradeId = calc.tradeId;
+                    const pricing = window.TradePricing || {};
+                    const originalTrade = (await window.DB.getTradesByUserId(user.id)).find(t => t.id == tradeId);
+                    if (!originalTrade) throw new Error("Trade not found.");
+
+                    const liveSellPrice = (typeof pricing.refreshTradeMarketPrice === 'function')
+                        ? (await pricing.refreshTradeMarketPrice(originalTrade, { force: true }) || calc.price)
+                        : calc.price;
+                    const sellMetrics = (typeof pricing.computeUnrealizedTradeMetrics === 'function')
+                        ? pricing.computeUnrealizedTradeMetrics(originalTrade, liveSellPrice)
+                        : {
+                            currentPrice: liveSellPrice,
+                            netSaleValue: calc.total,
+                            sellTax: calc.tax,
+                            sellFees: calc.txnCharge,
+                            profit: calc.total - (parseFloat(originalTrade.total_amount || 0) || 0)
+                        };
+                    const sellTimestamp = new Date().toISOString();
+
                     const { error: tradeErr } = await client.from('trades').update({
-                        status: 'Settled',
-                        processed_at: new Date().toISOString(),
-                        admin_note: `Sold at Market ₹${calc.price.toFixed(2)}`
+                        status: 'Sold',
+                        order_status: 'CLOSED',
+                        processed_at: sellTimestamp,
+                        sell_price: sellMetrics.currentPrice,
+                        total_sale_value: sellMetrics.netSaleValue,
+                        realised_profit: sellMetrics.profit,
+                        sell_timestamp: sellTimestamp,
+                        sell_tax: sellMetrics.sellTax,
+                        sell_fees: sellMetrics.sellFees,
+                        admin_note: `Sold at Market ₹${Number(sellMetrics.currentPrice || 0).toFixed(2)}`
                     }).eq('id', tradeId);
                     if (tradeErr) throw tradeErr;
 
                     const freshUser = await window.DB.refreshCurrentUser();
-                    const newBalance = (parseFloat(freshUser.balance) || 0) + calc.total;
-                    const originalTrade = (await window.DB.getTradesByUserId(user.id)).find(t => t.id == tradeId);
-                    const newInvested = (parseFloat(freshUser.invested) || 0) - (parseFloat(originalTrade.total_amount) || 0);
+                    const costBasis = (typeof pricing.getTradeCostBasis === 'function')
+                        ? pricing.getTradeCostBasis(originalTrade)
+                        : (parseFloat(originalTrade.total_amount) || 0);
+                    const newBalance = (parseFloat(freshUser.balance) || 0) + sellMetrics.netSaleValue;
+                    const newInvested = (parseFloat(freshUser.invested) || 0) - costBasis;
 
                     await client.from('users').update({
                         balance: newBalance,
                         invested: Math.max(0, newInvested)
                     }).eq('id', user.id);
 
-                    showModal('success', 'Order Closed', `Order closed successfully! ₹${calc.total.toLocaleString('en-IN')} added to your balance.`, () => {
+                    showModal('success', 'Order Closed', `Order closed successfully! ₹${sellMetrics.netSaleValue.toLocaleString('en-IN')} added to your balance.`, () => {
                         closeOrderConfirm();
                         syncBalance();
                         loadHoldings();
@@ -1368,9 +1414,9 @@
                 // Fetch latest trades for this user
                 const allTrades = await window.DB.getTradesByUserId(user.id);
 
-                // Filter for Approved trades for THIS specific stock/product
+                // Filter for active holdings for THIS specific stock/product
                 const myTrades = allTrades.filter(t =>
-                    t.status === 'Approved' &&
+                    ['APPROVED', 'HOLDING', 'SETTLED', 'CONFIRMED'].includes(String(t.status || '').toUpperCase()) &&
                     t.symbol.toUpperCase() === currentActiveSymbol.toUpperCase()
                 );
 
@@ -1382,14 +1428,21 @@
                         const totalBuyIn = parseFloat(trade.total_amount);
                         const qty = parseFloat(trade.quantity);
                         const buyPrice = parseFloat(trade.price);
-
-                        // Calculate Real-time Profit
-                        // Profit = (Current Price * Qty) - Buy In Total (including fees)
-                        // Or if Buy In Total is just base, we use that. 
-                        // Instructions say: Profit = Current Price - Buy In Price
-                        const profitPerShare = currentPrice - buyPrice;
-                        const totalProfit = profitPerShare * qty;
-                        const profitPercent = (profitPerShare / buyPrice) * 100;
+                        const pricing = window.TradePricing || {};
+                        const livePrice = (typeof pricing.getCachedTradeMarketPrice === 'function')
+                            ? pricing.getCachedTradeMarketPrice(trade)
+                            : currentPrice;
+                        if (typeof pricing.refreshTradeMarketPrice === 'function') {
+                            pricing.refreshTradeMarketPrice(trade).catch(() => { });
+                        }
+                        const metrics = (typeof pricing.computeUnrealizedTradeMetrics === 'function')
+                            ? pricing.computeUnrealizedTradeMetrics(trade, livePrice)
+                            : {
+                                profit: (livePrice * qty) - totalBuyIn,
+                                profitPct: totalBuyIn > 0 ? (((livePrice * qty) - totalBuyIn) / totalBuyIn) * 100 : 0
+                            };
+                        const totalProfit = metrics.profit;
+                        const profitPercent = metrics.profitPct;
 
                         const profitColor = totalProfit >= 0 ? '#10b981' : '#ef4444';
                         const profitSign = totalProfit >= 0 ? '+' : '';
@@ -1441,26 +1494,23 @@
 
             try {
                 let price = null;
-                const isOTC = currentProductType?.toUpperCase() === 'OTC';
                 let productName = '';
                 let marketSymbol = symbol;
-
-                if (isOTC && window.MarketEngine) {
-                    const prod = window.MarketEngine.dbOtcProducts.find(p => p.symbol === symbol || p.id == currentProductId);
-                    marketSymbol = prod ? (prod.market_symbol || prod.symbol || symbol) : symbol;
-                    productName = prod?.name || '';
-
-                    const data = await window.DB.getMarketPrice(marketSymbol, productName);
-                    if (data && data.status !== 'error' && data.price) {
-                        price = parseFloat(data.price);
-                        if (window.MarketEngine.livePrices) window.MarketEngine.livePrices[marketSymbol] = price;
-                    }
-                }
+                const product = window.MarketEngine?.getProduct?.(currentProductId)
+                    || window.MarketEngine?.getProduct?.(symbol);
+                marketSymbol = product?.market_symbol || product?.symbol || symbol;
+                productName = product?.name || currentStockName || '';
 
                 if (price === null) {
                     const data = await window.DB.getMarketPrice(marketSymbol, productName);
                     if (data && data.status !== 'error' && data.price) {
                         price = parseFloat(data.price);
+                        if (window.MarketEngine?.livePrices && marketSymbol) {
+                            window.MarketEngine.livePrices[marketSymbol] = price;
+                        }
+                        if (product) {
+                            product.price = price;
+                        }
                     }
                 }
 

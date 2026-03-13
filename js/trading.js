@@ -5,6 +5,219 @@
 
 let sellingTimer = null;
 let isExecutingSell = false; // Flag to prevent double execution
+const SELL_TAX_RATE = 0.0012;
+const SELL_TXN_RATE = 0.0003;
+const tradePriceRefreshAt = {};
+const TRADE_PRICE_REFRESH_COOLDOWN_MS = 4000;
+
+const toFiniteNumber = (value) => {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : null;
+};
+
+const normalizeTradeType = (value) => {
+    const raw = String(value || '').trim().toLowerCase().replace(/_/g, '.');
+    if (!raw) return '';
+    if (raw === 'ins.stock' || raw === 'ins stocks' || raw === 'insstocks') return 'ins.stocks';
+    return raw;
+};
+
+const isMarketTrackedTrade = (trade) => ['stock', 'ins.stocks', 'otc'].includes(normalizeTradeType(trade?.type));
+
+const getTradeMarketSymbol = (trade) => String(
+    trade?.products?.market_symbol
+    || trade?.market_symbol
+    || trade?.symbol
+    || ''
+).trim();
+
+const getTradeCacheKey = (trade) => {
+    const symbol = getTradeMarketSymbol(trade) || String(trade?.symbol || '').trim();
+    return symbol.toUpperCase();
+};
+
+const getTradeProduct = (trade) => {
+    const me = window.MarketEngine || {};
+    if (typeof me.getProduct !== 'function') return trade?.products || null;
+    return me.getProduct(getTradeMarketSymbol(trade))
+        || me.getProduct(trade?.symbol)
+        || me.getProduct(trade?.product_id)
+        || trade?.products
+        || null;
+};
+
+const getCachedTradeMarketPrice = (trade) => {
+    const me = window.MarketEngine || {};
+    const marketSymbol = getTradeMarketSymbol(trade);
+    const livePrice = toFiniteNumber(
+        me.livePrices?.[marketSymbol]
+        ?? me.livePrices?.[String(trade?.symbol || '').trim()]
+    );
+    if (livePrice !== null && livePrice > 0) return livePrice;
+
+    const product = getTradeProduct(trade);
+    const productPrice = toFiniteNumber(product?.price ?? product?.subscription_price);
+    if (productPrice !== null && productPrice > 0) return productPrice;
+
+    const sellPrice = toFiniteNumber(trade?.sell_price);
+    if (sellPrice !== null && sellPrice > 0) return sellPrice;
+
+    const buyPrice = toFiniteNumber(trade?.price);
+    return (buyPrice !== null && buyPrice > 0) ? buyPrice : 0;
+};
+
+const cacheTradeMarketPrice = (trade, price) => {
+    const numericPrice = toFiniteNumber(price);
+    if (numericPrice === null || numericPrice <= 0) return;
+
+    const me = window.MarketEngine || {};
+    const marketSymbol = getTradeMarketSymbol(trade);
+    if (marketSymbol) {
+        me.livePrices = me.livePrices || {};
+        me.livePrices[marketSymbol] = numericPrice;
+    }
+
+    const product = getTradeProduct(trade);
+    if (product) {
+        product.price = numericPrice;
+        product.isCached = true;
+        product.cacheStale = false;
+        product.updated_at = new Date().toISOString();
+    }
+};
+
+const getTradeCostBasis = (trade) => {
+    const totalAmount = toFiniteNumber(trade?.total_amount);
+    if (totalAmount !== null && totalAmount > 0) return totalAmount;
+
+    const qty = toFiniteNumber(trade?.quantity) || 0;
+    const buyPrice = toFiniteNumber(trade?.price) || 0;
+    const buyTax = toFiniteNumber(trade?.tax_amount) || 0;
+    const buyFees = toFiniteNumber(trade?.txn_charge) || 0;
+    return (buyPrice * qty) + buyTax + buyFees;
+};
+
+const computeExitFees = (grossSaleValue) => {
+    const gross = toFiniteNumber(grossSaleValue) || 0;
+    const sellTax = gross * SELL_TAX_RATE;
+    const sellFees = gross * SELL_TXN_RATE;
+    return {
+        grossSaleValue: gross,
+        sellTax,
+        sellFees,
+        netSaleValue: gross - sellTax - sellFees
+    };
+};
+
+const computeUnrealizedTradeMetrics = (trade, currentPrice = null) => {
+    const qty = toFiniteNumber(trade?.quantity) || 0;
+    const livePrice = toFiniteNumber(currentPrice);
+    const effectivePrice = (livePrice !== null && livePrice > 0)
+        ? livePrice
+        : getCachedTradeMarketPrice(trade);
+    const costBasis = getTradeCostBasis(trade);
+    const exitFees = computeExitFees(effectivePrice * qty);
+    const profit = exitFees.netSaleValue - costBasis;
+    const profitPct = costBasis > 0 ? (profit / costBasis) * 100 : 0;
+
+    return {
+        qty,
+        currentPrice: effectivePrice,
+        costBasis,
+        grossSaleValue: exitFees.grossSaleValue,
+        sellTax: exitFees.sellTax,
+        sellFees: exitFees.sellFees,
+        netSaleValue: exitFees.netSaleValue,
+        profit,
+        profitPct
+    };
+};
+
+const computeRealizedTradeMetrics = (trade) => {
+    const qty = toFiniteNumber(trade?.quantity) || 0;
+    const costBasis = getTradeCostBasis(trade);
+    const sellPrice = toFiniteNumber(trade?.sell_price) || getCachedTradeMarketPrice(trade);
+
+    const storedNet = toFiniteNumber(trade?.total_sale_value);
+    const fallbackExit = computeExitFees(sellPrice * qty);
+    const netSaleValue = storedNet !== null ? storedNet : fallbackExit.netSaleValue;
+    const sellTax = toFiniteNumber(trade?.sell_tax);
+    const sellFees = toFiniteNumber(trade?.sell_fees);
+    const profit = toFiniteNumber(trade?.realised_profit) ?? (netSaleValue - costBasis);
+    const profitPct = costBasis > 0 ? (profit / costBasis) * 100 : 0;
+
+    return {
+        qty,
+        currentPrice: sellPrice,
+        costBasis,
+        grossSaleValue: storedNet !== null ? (netSaleValue + (sellTax || 0) + (sellFees || 0)) : fallbackExit.grossSaleValue,
+        sellTax: sellTax ?? fallbackExit.sellTax,
+        sellFees: sellFees ?? fallbackExit.sellFees,
+        netSaleValue,
+        profit,
+        profitPct
+    };
+};
+
+const refreshTradeMarketPrice = async (trade, options = {}) => {
+    if (!trade || !isMarketTrackedTrade(trade)) return getCachedTradeMarketPrice(trade);
+
+    const force = options.force === true;
+    const marketSymbol = getTradeMarketSymbol(trade);
+    if (!marketSymbol) return getCachedTradeMarketPrice(trade);
+
+    const cacheKey = getTradeCacheKey(trade);
+    const now = Date.now();
+    if (!force && tradePriceRefreshAt[cacheKey] && (now - tradePriceRefreshAt[cacheKey]) < TRADE_PRICE_REFRESH_COOLDOWN_MS) {
+        return getCachedTradeMarketPrice(trade);
+    }
+    tradePriceRefreshAt[cacheKey] = now;
+
+    const product = getTradeProduct(trade);
+    const productName = String(trade?.name || product?.name || '').trim();
+
+    try {
+        if (window.DB && typeof window.DB.getMarketPrice === 'function') {
+            const payload = await window.DB.getMarketPrice(marketSymbol, productName);
+            const price = toFiniteNumber(payload?.price);
+            if (price !== null && price > 0) {
+                cacheTradeMarketPrice(trade, price);
+                return price;
+            }
+        }
+    } catch (error) {
+        console.warn("DB market price refresh failed:", error);
+    }
+
+    try {
+        if (window.MarketEngine && typeof window.MarketEngine.fetchMarketPrice === 'function') {
+            const price = await window.MarketEngine.fetchMarketPrice(marketSymbol);
+            const numericPrice = toFiniteNumber(price);
+            if (numericPrice !== null && numericPrice > 0) {
+                cacheTradeMarketPrice(trade, numericPrice);
+                return numericPrice;
+            }
+        }
+    } catch (error) {
+        console.warn("MarketEngine live price refresh failed:", error);
+    }
+
+    return getCachedTradeMarketPrice(trade);
+};
+
+window.TradePricing = {
+    SELL_TAX_RATE,
+    SELL_TXN_RATE,
+    normalizeTradeType,
+    isMarketTrackedTrade,
+    getTradeMarketSymbol,
+    getTradeProduct,
+    getCachedTradeMarketPrice,
+    refreshTradeMarketPrice,
+    getTradeCostBasis,
+    computeUnrealizedTradeMetrics,
+    computeRealizedTradeMetrics
+};
 
 // Attach to window for global access
 window.openCloseOrderModal = function (tradeOrId) {
@@ -40,67 +253,45 @@ window.openCloseOrderModal = function (tradeOrId) {
     }
 
     const tradeId = trade.id;
-    let lastOtcFetchTs = 0;
+    let sellQuoteBusy = false;
 
-    const updateSellingData = () => {
-        const me = window.MarketEngine || {};
-
-        // --- OTC PRICE FETCHING LOGIC ---
-        let currentPrice = trade.price;
-        const isOTC = trade.type?.trim().toLowerCase() === 'otc';
-
-        if (isOTC && trade.products?.market_symbol) {
-            // Priority: Live cache from Yahoo
-            if (me.livePrices && me.livePrices[trade.products.market_symbol]) {
-                currentPrice = me.livePrices[trade.products.market_symbol];
-            } else if (me.getProduct) {
-                // Fallback: Engine product price
-                const p = me.getProduct(trade.products.market_symbol) || me.getProduct(trade.symbol);
-                if (p) currentPrice = p.price;
-            }
-
-            // Trigger background fetch if missing
-            if (me.fetchMarketPrice && (!me.livePrices || !me.livePrices[trade.products.market_symbol])) {
-                const nowTs = Date.now();
-                if (nowTs - lastOtcFetchTs >= 2500) {
-                    lastOtcFetchTs = nowTs;
-                    me.fetchMarketPrice(trade.products.market_symbol);
+    const updateSellingData = async (force = false) => {
+        if (sellQuoteBusy) return;
+        sellQuoteBusy = true;
+        try {
+            let currentPrice = getCachedTradeMarketPrice(trade);
+            if (isMarketTrackedTrade(trade)) {
+                const refreshedPrice = await refreshTradeMarketPrice(trade, { force });
+                const numericPrice = toFiniteNumber(refreshedPrice);
+                if (numericPrice !== null && numericPrice > 0) {
+                    currentPrice = numericPrice;
                 }
             }
-        } else {
-            // Standard Stock / IPO logic
-            const livePriceData = me.getProduct ? me.getProduct(trade.symbol) : null;
-            currentPrice = livePriceData ? livePriceData.price : trade.price;
-        }
 
-        const totalOrderValue = parseFloat(trade.total_amount);
-        const currentSaleValue = currentPrice * trade.quantity;
+            const exitMetrics = computeUnrealizedTradeMetrics(trade, currentPrice);
 
-        // Stat Fees for Premium Modal
-        const sellTax = currentSaleValue * 0.0012;
-        const sellTxn = currentSaleValue * 0.0003;
-        const netProceeds = currentSaleValue - sellTax - sellTxn;
+            const priceEl = document.getElementById('coCurrPrice');
+            const qtyEl = document.getElementById('coQty');
+            const valEl = document.getElementById('coOrderVal');
+            const taxEl = document.getElementById('coTaxAmt');
+            const txnEl = document.getElementById('coTxnCharge');
+            const netEl = document.getElementById('coNetReturn');
 
-        const priceEl = document.getElementById('coCurrPrice');
-        const qtyEl = document.getElementById('coQty');
-        const valEl = document.getElementById('coOrderVal');
-        const taxEl = document.getElementById('coTaxAmt');
-        const txnEl = document.getElementById('coTxnCharge');
-        const netEl = document.getElementById('coNetReturn');
+            if (priceEl) priceEl.innerText = '₹' + exitMetrics.currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (qtyEl) qtyEl.innerText = trade.quantity;
+            if (valEl) valEl.innerText = '₹' + exitMetrics.grossSaleValue.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (taxEl) taxEl.innerText = '-₹' + exitMetrics.sellTax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (txnEl) txnEl.innerText = '-₹' + exitMetrics.sellFees.toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            if (netEl) netEl.innerText = '₹' + exitMetrics.netSaleValue.toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-        if (priceEl) priceEl.innerText = '₹' + currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-        if (qtyEl) qtyEl.innerText = trade.quantity;
-        if (valEl) valEl.innerText = '₹' + currentSaleValue.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-        if (taxEl) taxEl.innerText = '-₹' + sellTax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-        if (txnEl) txnEl.innerText = '-₹' + sellTxn.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-        if (netEl) netEl.innerText = '₹' + netProceeds.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-
-        // Update confirm button properties
-        const confirmBtn = document.getElementById('coConfirmBtn');
-        if (confirmBtn) {
-            confirmBtn.dataset.tradeId = tradeId;
-            confirmBtn.dataset.sellPrice = currentPrice;
-            confirmBtn.dataset.netReturn = netProceeds;
+            const confirmBtn = document.getElementById('coConfirmBtn');
+            if (confirmBtn) {
+                confirmBtn.dataset.tradeId = tradeId;
+                confirmBtn.dataset.sellPrice = exitMetrics.currentPrice;
+                confirmBtn.dataset.netReturn = exitMetrics.netSaleValue;
+            }
+        } finally {
+            sellQuoteBusy = false;
         }
     };
 
@@ -116,7 +307,7 @@ window.openCloseOrderModal = function (tradeOrId) {
     if (qtyEl) qtyEl.innerText = trade.quantity;
     if (orderValEl) orderValEl.innerText = '₹' + parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
-    updateSellingData();
+    void updateSellingData(true);
 
     const modal = document.getElementById('closeOrderModal');
     if (modal) modal.style.display = 'flex';
@@ -142,7 +333,7 @@ window.openCloseOrderModal = function (tradeOrId) {
             bar.style.width = (currentSeconds / totalSeconds * 100) + '%';
 
             // Real-time price update during quotation
-            updateSellingData();
+            void updateSellingData();
 
             if (currentSeconds <= 0) {
                 clearInterval(sellingTimer);
@@ -153,7 +344,7 @@ window.openCloseOrderModal = function (tradeOrId) {
 
     // Refresh button
     const refreshBtn = document.getElementById('coRefreshBtn');
-    if (refreshBtn) refreshBtn.onclick = updateSellingData;
+    if (refreshBtn) refreshBtn.onclick = () => void updateSellingData(true);
 
     // Redundant onclick binding removed to avoid double execution with HTML onclick="executeCloseOrder()"
     if (window.lucide) window.lucide.createIcons();
@@ -221,40 +412,25 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
             }
         }
 
-        // 2. Re-fetch real-time price
-        const me = window.MarketEngine || {};
-        let finalSellPrice = sellPrice;
-        const isOTC = trade.type?.trim().toLowerCase() === 'otc';
+        const finalSellPrice = await refreshTradeMarketPrice(trade, { force: true }) || getCachedTradeMarketPrice(trade) || sellPrice;
+        const sellMetrics = computeUnrealizedTradeMetrics(trade, finalSellPrice);
+        const qty = sellMetrics.qty;
+        const buyAmount = sellMetrics.costBasis;
+        const finalNetReturn = sellMetrics.netSaleValue;
+        const realisedProfit = sellMetrics.profit;
+        const sellTimeIso = new Date().toISOString();
+        const finalisedNote = `Sold at Market ₹${Number(finalSellPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ ${new Date().toLocaleTimeString('en-IN')}`;
 
-        if (isOTC && trade.products?.market_symbol) {
-            const live = me.livePrices ? me.livePrices[trade.products.market_symbol] : null;
-            if (live) finalSellPrice = live;
-        } else {
-            const livePriceData = me.getProduct ? me.getProduct(trade.symbol) : null;
-            if (livePriceData) finalSellPrice = livePriceData.price;
-        }
-
-        // Calculations
-        const qty = parseFloat(trade.quantity || 0);
-        const grossValue = qty * finalSellPrice;
-        const tax = grossValue * 0.0012;
-        const txn = grossValue * 0.0003;
-        const finalNetReturn = grossValue - tax - txn;
-        const buyAmount = parseFloat(trade.total_amount) || 0;
-
-        // 3. Update the original trade to 'Sold' with historical data
-        const realisedProfit = finalNetReturn - buyAmount;
-        const finalisedNote = `Sold at Market 鈧?{finalSellPrice.toLocaleString('en-IN')} @ ${new Date().toLocaleTimeString('en-IN')}`;
         const { error: tradeUpdateErr } = await client.from('trades').update({
             status: 'Sold',
             order_status: 'CLOSED',
-            processed_at: new Date().toISOString(),
+            processed_at: sellTimeIso,
             sell_price: finalSellPrice,
             total_sale_value: finalNetReturn,
             realised_profit: realisedProfit,
-            sell_timestamp: new Date().toISOString(),
-            sell_tax: tax,
-            sell_fees: txn,
+            sell_timestamp: sellTimeIso,
+            sell_tax: sellMetrics.sellTax,
+            sell_fees: sellMetrics.sellFees,
             admin_note: finalisedNote
         }).eq('id', tradeId);
         if (tradeUpdateErr) throw tradeUpdateErr;
@@ -288,11 +464,11 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
             quantity: qty,
             price: finalSellPrice,
             total_amount: finalNetReturn,
-            tax_amount: tax,
-            txn_charge: txn,
+            tax_amount: sellMetrics.sellTax,
+            txn_charge: sellMetrics.sellFees,
             status: 'Sold',
             order_status: 'CLOSED',
-            processed_at: new Date().toISOString(),
+            processed_at: sellTimeIso,
             admin_note: `Proceeds from selling ${qty} shares of ${trade.symbol}`
         }]).then(({ error: sellRecordErr }) => {
             if (sellRecordErr) console.warn("Sell ledger insert warning:", sellRecordErr);
@@ -301,7 +477,7 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
         });
 
         if (window.showModal) {
-            window.showModal('success', 'Trade Executed', `Sold ${qty} shares of ${trade.name} at 鈧?{finalSellPrice.toLocaleString('en-IN')}. 鈧?{finalNetReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 })} has been credited to your wallet.`, () => {
+            window.showModal('success', 'Trade Executed', `Sold ${qty} shares of ${trade.name} at ₹${Number(finalSellPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. ₹${finalNetReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 })} has been credited to your wallet.`, () => {
                 window.closeSellingModal();
                 if (window.fetchUserTransactions) {
                     window.fetchUserTransactions().then(() => {
