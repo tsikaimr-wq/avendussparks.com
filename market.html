@@ -5290,6 +5290,7 @@
                             const detBuyPriceEl = document.getElementById("detBuyPrice");
                             if (detBuyPriceEl) detBuyPriceEl.innerText = formattedFallback;
                         }
+                        if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
                         if (timestampEl) timestampEl.innerHTML = `<span style="color:#f59e0b;">Using fallback price</span>`;
                     } else if (timestampEl) {
                         timestampEl.innerHTML = `<span style="color:#ef4444;">Price unavailable</span>`;
@@ -5334,6 +5335,7 @@
                             timestampEl.innerHTML = `Last updated: ${timeStr}`;
                         }
                     }
+                    if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
                 }
             };
 
@@ -6015,6 +6017,7 @@
         }
 
         function closeStockDetail() {
+            activeRouteStockKey = '';
             history.replaceState({}, '', 'market.html?view=discover');
             showDiscoverView();
         }
@@ -6031,6 +6034,7 @@
                 return;
             } else {
                 // Close stock detail and show relevant view
+                activeRouteStockKey = '';
                 document.getElementById('stockDetailView').style.display = 'none';
                 document.getElementById('stockDetailHeader').style.display = 'none';
                 document.querySelector('.header').style.display = 'flex';
@@ -6131,6 +6135,8 @@
         }
 
         // --- URL SYNC FIX ---
+        let activeRouteStockKey = '';
+
         function inferExchangeFromStockParam(stockParam) {
             const sym = String(stockParam || '').trim().toUpperCase();
             if (!sym) return 'NSE';
@@ -6213,9 +6219,16 @@
             const params = new URLSearchParams(window.location.search);
             const stock = params.get('stock') || params.get('symbol');
             if (!stock) return false;
+            const routeKey = normalizeRouteStockSymbol(stock);
+            const detailView = document.getElementById('stockDetailView');
+            const isDetailVisible = detailView && getComputedStyle(detailView).display !== 'none';
+            if (!push && routeKey && routeKey === activeRouteStockKey && isDetailVisible) {
+                return true;
+            }
 
             const resolved = resolveRouteStockDetail(stock);
             if (!resolved) return false;
+            activeRouteStockKey = routeKey || String(stock).trim().toUpperCase();
 
             openStockDetail(
                 resolved.lookupKey,
@@ -6256,6 +6269,7 @@
             if (openStockDetailFromRoute(false)) {
                 return;
             } else {
+                activeRouteStockKey = '';
                 document.getElementById('stockDetailHeader').style.display = 'none';
                 document.getElementById('stockDetailView').style.display = 'none';
                 document.querySelector('.header').style.display = 'flex';
@@ -6593,6 +6607,77 @@
 
         // --- Trade & Calculation Logic ---
 
+        function getBuySliderContext() {
+            const buyBtn = document.getElementById('buyBtn');
+            const priceText = document.getElementById('detBuyPrice')?.innerText || '';
+            const price = parseFloat(priceText.replace(/[^\d.]/g, '')) || 0;
+            const currentUser = window.DB && typeof window.DB.getCurrentUser === 'function'
+                ? window.DB.getCurrentUser()
+                : null;
+            const balance = parseFloat(currentUser?.balance) || 0;
+            const type = buyBtn ? buyBtn.dataset.type : 'stock';
+            const isIPO = type === 'IPO';
+            const minInvest = parseFloat(buyBtn?.dataset.minInvest) || 0;
+            const maxQty = (price > 0 && balance > 0)
+                ? (isIPO
+                    ? (balance >= (minInvest || price) ? 1 : 0)
+                    : Math.floor(balance / price))
+                : 0;
+
+            return {
+                buyBtn,
+                price,
+                balance,
+                type,
+                isIPO,
+                minInvest,
+                maxQty,
+                hasUser: !!currentUser
+            };
+        }
+
+        function syncBuySliderState(currentQty = null) {
+            const slider = document.getElementById('buyRangeSlider');
+            const fundStatusEl = document.getElementById('fundStatus');
+            const minInvEl = document.getElementById('minInvReq');
+            if (!slider) return;
+
+            const ctx = getBuySliderContext();
+            const effectiveMinInvest = ctx.minInvest > 0 ? ctx.minInvest : 0;
+
+            if (minInvEl) {
+                minInvEl.innerText = `Minimum investment required: ₹${effectiveMinInvest.toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                })}`;
+            }
+
+            slider.dataset.maxQty = String(ctx.maxQty);
+            slider.disabled = ctx.price <= 0 || ctx.maxQty <= 0;
+
+            if (ctx.maxQty > 0 && Number.isFinite(Number(currentQty)) && Number(currentQty) >= 0) {
+                slider.value = String(Math.max(0, Math.min(100, Math.round((Number(currentQty) / ctx.maxQty) * 100))));
+            } else {
+                slider.value = '0';
+            }
+
+            if (fundStatusEl) {
+                if (ctx.price <= 0) {
+                    fundStatusEl.innerText = 'Price loading...';
+                    fundStatusEl.style.color = '#f59e0b';
+                } else if (!ctx.hasUser) {
+                    fundStatusEl.innerText = 'Please login to use the slider';
+                    fundStatusEl.style.color = '#94a3b8';
+                } else {
+                    fundStatusEl.innerText = `Available: ₹${ctx.balance.toLocaleString('en-IN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })}`;
+                    fundStatusEl.style.color = ctx.balance > 0 ? '#10b981' : '#ef4444';
+                }
+            }
+        }
+
         function updateBuyCalculations() {
             const qtyInput = document.getElementById('buyQuantityInput');
             const priceEl = document.getElementById('detBuyPrice');
@@ -6641,45 +6726,37 @@
 
             totalEl.innerText = '₹' + finalTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 });
             if (displayQty) displayQty.innerText = isIPO ? "1 Lot" : qty.toLocaleString();
+            syncBuySliderState(qty);
 
             return { qty, price, baseTotal, tax, txnCharge, total: finalTotal };
         }
 
         async function setMaxQuantity() {
             const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
-            if (!user) { alert("Please login first."); return; }
+            if (!user) { alert("Please login first."); syncBuySliderState(0); return; }
 
             // Fetch latest balance for accurate max calculation
             const freshUser = await window.DB.refreshCurrentUser();
-            const balance = parseFloat(freshUser ? freshUser.balance : user.balance) || 0;
+            if (freshUser && typeof freshUser.balance !== 'undefined' && window.DB?.getCurrentUser) {
+                const current = window.DB.getCurrentUser();
+                if (current) current.balance = freshUser.balance;
+            }
 
-            const priceText = document.getElementById('detBuyPrice').innerText.replace(/[^\d.]/g, '');
-            const price = parseFloat(priceText) || 0;
+            const ctx = getBuySliderContext();
+            if (ctx.price <= 0) { syncBuySliderState(0); return; }
 
-            if (price <= 0) return;
-
-            const maxQty = Math.floor(balance / price);
+            const maxQty = ctx.maxQty;
             document.getElementById('buyQuantityInput').value = maxQty;
             updateBuyCalculations();
         }
 
         function updateBuyFromSlider(percent) {
-            // This requires async balance check ideally, but for slider UI responsiveness, 
-            // we might use cached balance or just trigger setMax * percent. 
-            // For simplicity, let's assume we want to call setMax then scale it?
-            // Better: Get cached balance for speed, real check on buy.
-            const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
-            if (!user) return;
-
-            // Try to use fresher data if possible, or fallback to cached user
-            // Since this is UI interactive, maybe async is tricky, but let's trust cached user object has been refreshed on load
-            const balance = parseFloat(user.balance) || 0;
-            const priceText = document.getElementById('detBuyPrice').innerText.replace(/[^\d.]/g, '');
-            const price = parseFloat(priceText) || 0;
-
-            if (price <= 0) return;
-
-            const maxQty = Math.floor(balance / price);
+            const slider = document.getElementById('buyRangeSlider');
+            const maxQty = parseInt(slider?.dataset?.maxQty || '0', 10) || 0;
+            if (maxQty <= 0) {
+                syncBuySliderState(0);
+                return;
+            }
             const qty = Math.floor(maxQty * (percent / 100));
 
             document.getElementById('buyQuantityInput').value = qty;
@@ -6690,6 +6767,7 @@
         document.addEventListener('DOMContentLoaded', () => {
             const qInput = document.getElementById('buyQuantityInput');
             if (qInput) qInput.addEventListener('input', updateBuyCalculations);
+            syncBuySliderState(parseInt(qInput?.value || '0', 10) || 0);
         });
 
         let globalModalCallback = null;
