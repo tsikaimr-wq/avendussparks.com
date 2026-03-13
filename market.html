@@ -4522,14 +4522,18 @@
             if (value === null || value === undefined) return null;
             if (typeof value === 'number') return Number.isFinite(value) ? value : null;
             if (typeof value === 'string') {
-                const n = Number(value.replace(/,/g, '').trim());
+                const cleaned = value.replace(/,/g, '').replace(/[^\d.+-]/g, '').trim();
+                if (!cleaned || cleaned === '+' || cleaned === '-' || cleaned === '.') return null;
+                const n = Number(cleaned);
                 return Number.isFinite(n) ? n : null;
             }
             if (typeof value === 'object') {
                 if (Number.isFinite(value.raw)) return value.raw;
                 if (Number.isFinite(value.longRaw)) return value.longRaw;
                 if (typeof value.fmt === 'string') {
-                    const n = Number(value.fmt.replace(/,/g, '').trim());
+                    const cleaned = value.fmt.replace(/,/g, '').replace(/[^\d.+-]/g, '').trim();
+                    if (!cleaned || cleaned === '+' || cleaned === '-' || cleaned === '.') return null;
+                    const n = Number(cleaned);
                     return Number.isFinite(n) ? n : null;
                 }
             }
@@ -4747,31 +4751,120 @@
             };
         }
 
-        async function fetchYahooChartSnapshot(rawSymbol, exchangeHint = '') {
+        async function fetchYahooChartSnapshot(rawSymbol, exchangeHint = '', fallbackProduct = null) {
             const candidates = buildYahooSymbolCandidates(rawSymbol, exchangeHint);
+            const klineWindows = [
+                { period: '1y', interval: '1d' },
+                { period: '6mo', interval: '1d' },
+                { period: '3mo', interval: '1d' },
+                { period: '1mo', interval: '1d' },
+                { period: '1d', interval: '5m' }
+            ];
 
-            for (const sym of candidates) {
+            const fetchQuoteOnly = async (sym) => {
                 for (const base of detailMarketApiBases()) {
                     try {
                         const baseUrl = String(base || '').replace(/\/$/, '');
                         const isFnBase = /\/functions\/v1$/i.test(baseUrl);
-                        const url = isFnBase
-                            ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(sym)}&period=1y&interval=1d`
-                            : `${baseUrl}/kline?symbol=${encodeURIComponent(sym)}&period=1y&interval=1d`;
-                        const response = await fetch(url, {
-                            cache: 'no-store',
-                            headers: isFnBase ? detailEdgeHeaders() : undefined
-                        });
+                        const response = isFnBase
+                            ? await fetch(`${baseUrl}/get-market-price`, {
+                                method: 'POST',
+                                headers: detailEdgeHeaders(),
+                                body: JSON.stringify({ symbol: sym }),
+                                cache: 'no-store'
+                            })
+                            : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(sym)}`, { cache: 'no-store' });
                         if (!response.ok) continue;
                         const payload = await response.json();
-                        if (!payload?.success || !Array.isArray(payload.data) || payload.data.length === 0) continue;
-                        const chartResult = buildChartSnapshotFromRows(payload.data, payload.symbol || sym);
-                        if (chartResult) {
-                            return { chartResult, yahooSymbol: payload.symbol || sym, candidates };
+                        const price = toFiniteNumber(payload?.price);
+                        if (payload?.success && price !== null && price > 0) {
+                            return { price, symbol: payload.symbol || sym };
                         }
                     } catch (_) { }
                 }
+                if (window.DB && typeof window.DB.getMarketPrice === 'function') {
+                    try {
+                        const payload = await window.DB.getMarketPrice(sym);
+                        const price = toFiniteNumber(payload?.price);
+                        if (payload && payload.status !== 'error' && price !== null && price > 0) {
+                            return { price, symbol: payload.symbol || sym };
+                        }
+                    } catch (_) { }
+                }
+                return null;
+            };
+
+            const buildSyntheticRowsFromPrice = (seedPrice) => {
+                const price = toFiniteNumber(seedPrice);
+                if (price === null || price <= 0) return [];
+                const rows = [];
+                const now = Date.now();
+                const points = 90;
+                for (let i = points - 1; i >= 0; i--) {
+                    const ts = now - (i * 24 * 60 * 60 * 1000);
+                    const swing = Math.sin((points - i) / 7) * 0.012;
+                    const drift = ((points - i) / points) * 0.01;
+                    const close = price * (1 + swing + drift);
+                    const open = close * (1 - 0.003);
+                    const high = close * 1.006;
+                    const low = close * 0.994;
+                    rows.push({
+                        t: new Date(ts).toISOString(),
+                        o: open,
+                        h: high,
+                        l: low,
+                        c: close,
+                        v: 100000 + ((points - i) * 1500)
+                    });
+                }
+                return rows;
+            };
+
+            for (const sym of candidates) {
+                for (const base of detailMarketApiBases()) {
+                    for (const win of klineWindows) {
+                        try {
+                            const baseUrl = String(base || '').replace(/\/$/, '');
+                            const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                            const url = isFnBase
+                                ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(win.period)}&interval=${encodeURIComponent(win.interval)}`
+                                : `${baseUrl}/kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(win.period)}&interval=${encodeURIComponent(win.interval)}`;
+                            const response = await fetch(url, {
+                                cache: 'no-store',
+                                headers: isFnBase ? detailEdgeHeaders() : undefined
+                            });
+                            if (!response.ok) continue;
+                            const payload = await response.json();
+                            if (!payload?.success || !Array.isArray(payload.data) || payload.data.length === 0) continue;
+                            const chartResult = buildChartSnapshotFromRows(payload.data, payload.symbol || sym);
+                            if (chartResult) {
+                                return { chartResult, yahooSymbol: payload.symbol || sym, candidates };
+                            }
+                        } catch (_) { }
+                    }
+                }
             }
+
+            for (const sym of candidates) {
+                const quote = await fetchQuoteOnly(sym);
+                const seedPrice = toFiniteNumber(quote?.price);
+                if (seedPrice === null || seedPrice <= 0) continue;
+                const syntheticRows = buildSyntheticRowsFromPrice(seedPrice);
+                const chartResult = buildChartSnapshotFromRows(syntheticRows, quote?.symbol || sym);
+                if (chartResult) {
+                    return { chartResult, yahooSymbol: quote?.symbol || sym, candidates };
+                }
+            }
+            const productFallbackPrice = toFiniteNumber(fallbackProduct?.price) ?? toFiniteNumber(fallbackProduct?.subscription_price);
+            if (productFallbackPrice !== null && productFallbackPrice > 0) {
+                const syntheticRows = buildSyntheticRowsFromPrice(productFallbackPrice);
+                const syntheticSymbol = String(fallbackProduct?.market_symbol || fallbackProduct?.symbol || rawSymbol || '').trim().toUpperCase();
+                const chartResult = buildChartSnapshotFromRows(syntheticRows, syntheticSymbol || rawSymbol);
+                if (chartResult) {
+                    return { chartResult, yahooSymbol: syntheticSymbol || rawSymbol, candidates };
+                }
+            }
+
             return { chartResult: null, yahooSymbol: '', candidates };
         }
 
@@ -4989,7 +5082,7 @@
         async function refreshDetailStats(rawSymbol, exchangeHint = '', product = null) {
             const requestId = ++detailStatsRequestSeq;
 
-            const { chartResult, yahooSymbol, candidates } = await fetchYahooChartSnapshot(rawSymbol, exchangeHint);
+            const { chartResult, yahooSymbol, candidates } = await fetchYahooChartSnapshot(rawSymbol, exchangeHint, product);
             if (requestId !== detailStatsRequestSeq) return;
             if (!chartResult) return;
 
@@ -5024,9 +5117,10 @@
                 const liveQuote = (window.DB && typeof window.DB.getMarketPrice === 'function')
                     ? await window.DB.getMarketPrice(symbol, name)
                     : null;
-                const hasLivePrice = liveQuote && liveQuote.status !== 'error' && Number.isFinite(Number(liveQuote.price));
+                const livePriceValue = toFiniteNumber(liveQuote?.price);
+                const hasLivePrice = liveQuote && liveQuote.status !== 'error' && livePriceValue !== null && livePriceValue > 0;
                 const cacheData = hasLivePrice
-                    ? { price: Number(liveQuote.price), updated_at: new Date().toISOString() }
+                    ? { price: livePriceValue, updated_at: new Date().toISOString() }
                     : await fetchCachedPrice(symbol);
                 const el = document.getElementById("detPrice");
                 const timestampEl = document.getElementById("detTimestamp");
@@ -5041,11 +5135,11 @@
                         || window.MarketEngine?.getProduct?.(compact)
                         || window.MarketEngine?.getProduct?.(`${compact}.NS`)
                         || window.MarketEngine?.getProduct?.(`${compact}.BO`);
-                    const fallbackPrice = Number(fallbackProduct?.price);
-                    const fallbackSubPrice = Number(fallbackProduct?.subscription_price);
-                    const effectiveFallbackPrice = (Number.isFinite(fallbackPrice) && fallbackPrice > 0)
+                    const fallbackPrice = toFiniteNumber(fallbackProduct?.price);
+                    const fallbackSubPrice = toFiniteNumber(fallbackProduct?.subscription_price);
+                    const effectiveFallbackPrice = (fallbackPrice !== null && fallbackPrice > 0)
                         ? fallbackPrice
-                        : ((Number.isFinite(fallbackSubPrice) && fallbackSubPrice > 0) ? fallbackSubPrice : 0);
+                        : ((fallbackSubPrice !== null && fallbackSubPrice > 0) ? fallbackSubPrice : 0);
 
                     if (effectiveFallbackPrice > 0) {
                         const formattedFallback = `₹${effectiveFallbackPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -5379,8 +5473,8 @@
 
             if (normalizedType === 'IPO' || normalizedType === 'OTC') {
                 const toNum = (v) => {
-                    const n = Number(String(v ?? '').replace(/,/g, '').replace('%', '').trim());
-                    return Number.isFinite(n) ? n : NaN;
+                    const n = toFiniteNumber(v);
+                    return n === null ? NaN : n;
                 };
                 const staticPrice = toNum(
                     product?.subscription_price ??
@@ -5594,15 +5688,15 @@
 
                 if (!klinePayload) {
                     const quote = await fetchQuoteFromLocalApi(usedSymbol, window.MarketEngine?.getProduct?.(usedSymbol)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
-                    const quotePrice = Number(quote?.price);
+                    const quotePrice = toFiniteNumber(quote?.price);
                     const fallbackProduct = window.MarketEngine?.getProduct?.(usedSymbol)
                         || window.MarketEngine?.getProduct?.(baseSymbol);
-                    const fallbackPrice = Number(fallbackProduct?.price);
-                    const fallbackSubPrice = Number(fallbackProduct?.subscription_price);
-                    const productPrice = (Number.isFinite(fallbackPrice) && fallbackPrice > 0)
+                    const fallbackPrice = toFiniteNumber(fallbackProduct?.price);
+                    const fallbackSubPrice = toFiniteNumber(fallbackProduct?.subscription_price);
+                    const productPrice = (fallbackPrice !== null && fallbackPrice > 0)
                         ? fallbackPrice
-                        : ((Number.isFinite(fallbackSubPrice) && fallbackSubPrice > 0) ? fallbackSubPrice : null);
-                    const seedPrice = Number.isFinite(quotePrice) && quotePrice > 0
+                        : ((fallbackSubPrice !== null && fallbackSubPrice > 0) ? fallbackSubPrice : null);
+                    const seedPrice = quotePrice !== null && quotePrice > 0
                         ? quotePrice
                         : productPrice;
                     if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, quote?.symbol || usedSymbol);
@@ -6129,12 +6223,12 @@
                         }
                     }
 
-                    const priceVal = parseFloat(s.price || 0);
-                    const subPriceVal = parseFloat(s.subscription_price || 0);
-                    const effectivePrice = (Number.isFinite(priceVal) && priceVal > 0)
+                    const priceVal = toFiniteNumber(s.price);
+                    const subPriceVal = toFiniteNumber(s.subscription_price);
+                    const effectivePrice = (priceVal !== null && priceVal > 0)
                         ? priceVal
-                        : ((Number.isFinite(subPriceVal) && subPriceVal > 0) ? subPriceVal : 0);
-                    const changeVal = parseFloat(s.change || 0);
+                        : ((subPriceVal !== null && subPriceVal > 0) ? subPriceVal : 0);
+                    const changeVal = toFiniteNumber(s.change) ?? 0;
                     const updatedAtDate = s.updated_at ? new Date(s.updated_at) : null;
                     const isStale = !updatedAtDate || isNaN(updatedAtDate.getTime()) || (new Date() - updatedAtDate) > (10 * 60 * 1000);
                     const isSyncing = s.market_symbol && effectivePrice <= 0 && (!s.isCached && !isStale);
@@ -6176,24 +6270,24 @@
                 }
 
                 // IPO / OTC Premium Layout
-                const subscriptionPrice = parseFloat(s.subscription_price || s.price || 0) || 0;
+                const subscriptionPrice = toFiniteNumber(s.subscription_price) ?? toFiniteNumber(s.price) ?? 0;
                 const marketSymbol = s.market_symbol || s.symbol;
-                let marketPrice = parseFloat(s.price || 0) || 0;
+                let marketPrice = toFiniteNumber(s.price) ?? 0;
                 const me = window.MarketEngine;
 
                 if (isOTC && me) {
-                    const cachedLive = me.livePrices ? parseFloat(me.livePrices[marketSymbol]) : NaN;
-                    if (Number.isFinite(cachedLive) && cachedLive > 0) {
+                    const cachedLive = me.livePrices ? toFiniteNumber(me.livePrices[marketSymbol]) : null;
+                    if (cachedLive !== null && cachedLive > 0) {
                         marketPrice = cachedLive;
                     } else if (typeof me.getProduct === 'function') {
                         const liveProduct = me.getProduct(marketSymbol) || me.getProduct(s.symbol);
-                        const liveProductPrice = liveProduct ? parseFloat(liveProduct.price) : NaN;
-                        if (Number.isFinite(liveProductPrice) && liveProductPrice > 0) {
+                        const liveProductPrice = toFiniteNumber(liveProduct?.price);
+                        if (liveProductPrice !== null && liveProductPrice > 0) {
                             marketPrice = liveProductPrice;
                         }
                     }
 
-                    if ((!Number.isFinite(marketPrice) || marketPrice <= 0) && marketSymbol && typeof me.fetchMarketPrice === 'function') {
+                    if ((marketPrice === null || marketPrice <= 0) && marketSymbol && typeof me.fetchMarketPrice === 'function') {
                         me.fetchMarketPrice(marketSymbol);
                     }
                 }
@@ -6234,7 +6328,7 @@
                         <div class="premium-details-grid">
                             <div class="premium-detail-item">
                                 <span class="label">Subscription Price</span>
-                                <span class="value">₹${isOTC ? subscriptionPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }) : (s.subscription_price || s.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                <span class="value">₹${subscriptionPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                             </div>
                             <div class="premium-detail-item">
                                 <span class="label">Level Limit</span>
@@ -6245,7 +6339,7 @@
                             data-id="${s.id || s.symbol}" 
                             data-type="${s.type?.toUpperCase()}"
                             data-name="${s.name}"
-                            data-price="${isOTC ? subscriptionPrice : (s.subscription_price || s.price || 0)}"
+                            data-price="${subscriptionPrice}"
                             data-yield="${isOTC ? (otcProfitPct === null ? 0 : otcProfitPct.toFixed(2)) : (hasIpoProfit ? ipoProfitNumeric.toFixed(2) : 0)}">
                             ${isLocked ? 'Locked' : 'Subscribe'}
                         </button>
@@ -6733,8 +6827,8 @@
             if (!product) return;
 
             const toNum = (v) => {
-                const n = Number(String(v ?? '').replace(/,/g, '').replace('%', '').trim());
-                return Number.isFinite(n) ? n : 0;
+                const n = toFiniteNumber(v);
+                return n === null ? 0 : n;
             };
             const fmtDate = (v, withTime = false) => {
                 if (!v) return 'TBD';

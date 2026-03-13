@@ -109,9 +109,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check Login & Update UI
     checkLoginStatus();
 
+    // KYC restrictions are disabled by default.
+    // Set window.ENFORCE_KYC_RESTRICTIONS = true to enforce pending-user restrictions.
+    const enforceKycRestrictions = window.ENFORCE_KYC_RESTRICTIONS === true;
+
     // --- GLOBAL KYC PAGE GUARD ---
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
-    if (user && user.kyc === 'Pending') {
+    if (enforceKycRestrictions && user && user.kyc === 'Pending') {
         const path = window.location.pathname.toLowerCase();
         const isRestrictedPage = path.includes('market.html') ||
             path.includes('deposit.html') ||
@@ -127,7 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle KYC Popup from URL
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('kyc_popup') === 'true') {
+    if (enforceKycRestrictions && urlParams.get('kyc_popup') === 'true') {
         setTimeout(() => {
             window.CustomUI.alert("KYC verification in progress.", "Verification Required");
         }, 500);
@@ -511,7 +515,7 @@ window.handleGuestClick = async function (url) {
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
     if (user) {
         // --- KYC RESTRICTION RULE ---
-        if (user.kyc === 'Pending') {
+        if (window.ENFORCE_KYC_RESTRICTIONS === true && user.kyc === 'Pending') {
             await window.CustomUI.alert("KYC verification in progress.", "Verification Required");
             return;
         }
@@ -537,7 +541,7 @@ window.handleGuestTabClick = function (type) {
 
     // --- KYC RESTRICTION RULE for Protected Tabs ---
     const restrictedTabs = ['portfolio', 'trade', 'deposits', 'withdrawals'];
-    if (user.kyc === 'Pending' && restrictedTabs.includes(type)) {
+    if (window.ENFORCE_KYC_RESTRICTIONS === true && user.kyc === 'Pending' && restrictedTabs.includes(type)) {
         window.CustomUI.alert("KYC verification in progress.", "Verification Required");
         return;
     }
