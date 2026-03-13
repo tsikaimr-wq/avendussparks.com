@@ -3220,9 +3220,9 @@
                 // Removed chartTitle update as it's now internal to the widget
                 document.querySelectorAll('.index-card').forEach(c => c.classList.remove('active'));
 
-                if (symbol === 'BSE:SENSEX') document.getElementById('cardSensex').classList.add('active');
-                else if (symbol === 'NSE:NIFTY' || symbol === 'NIFTY1!') document.getElementById('cardNifty').classList.add('active');
-                else if (symbol === 'NSE:BANKNIFTY') document.getElementById('cardNiftyBank').classList.add('active');
+                if (symbol === 'BSE:SENSEX') document.getElementById('cardSensex')?.classList.add('active');
+                else if (symbol === 'NSE:NIFTY' || symbol === 'NIFTY1!') document.getElementById('cardNifty')?.classList.add('active');
+                else if (symbol === 'NSE:BANKNIFTY') document.getElementById('cardNiftyBank')?.classList.add('active');
 
                 syncUI();
                 loadWidget(symbol);
@@ -6023,6 +6023,109 @@
             if (typeof loadFundRecords === 'function') loadFundRecords();
         }
 
+        function inferExchangeFromStockParam(stockParam) {
+            const sym = String(stockParam || '').trim().toUpperCase();
+            if (!sym) return 'NSE';
+            if (sym.startsWith('BSE:') || sym.endsWith('.BO') || sym.includes('.BSE') || sym.includes('.BOM')) return 'BSE';
+            if (sym.startsWith('NSE:') || sym.endsWith('.NS') || sym.includes('.NSE') || sym.includes('.NSI')) return 'NSE';
+            return 'NSE';
+        }
+
+        function normalizeRouteStockSymbol(stockParam) {
+            return String(stockParam || '')
+                .trim()
+                .toUpperCase()
+                .replace(/^NSE:|^BSE:/, '')
+                .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+        }
+
+        function resolveRouteStockDetail(stockParam) {
+            const raw = String(stockParam || '').trim();
+            const normalized = normalizeRouteStockSymbol(raw);
+            if (!normalized) return null;
+
+            if (window.MarketEngine && typeof window.MarketEngine.getProduct === 'function') {
+                const product = window.MarketEngine.getProduct(raw) || window.MarketEngine.getProduct(normalized);
+                if (product) {
+                    const priceValue = Number(product.price ?? product.subscription_price ?? 0);
+                    const changeValue = Number(product.change ?? 0);
+                    return {
+                        lookupKey: product.id || raw,
+                        name: product.name || raw,
+                        exchange: product.exchange || inferExchangeFromStockParam(product.market_symbol || product.symbol || raw),
+                        priceText: Number.isFinite(priceValue) && priceValue > 0
+                            ? `₹${priceValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'Loading...',
+                        changeText: `${changeValue >= 0 ? '+' : ''}${changeValue.toFixed(2)}%`,
+                        color: changeValue >= 0 ? '#10b981' : '#ef4444',
+                        type: product.type || 'stock',
+                        id: product.id || null,
+                        minInvest: Number(product.min_investment ?? product.minInvest ?? product.minimum_amount ?? 0) || 0
+                    };
+                }
+            }
+
+            const groups = ['gainers', 'losers'];
+            const exchanges = ['NSE', 'BSE'];
+            for (const group of groups) {
+                for (const exchange of exchanges) {
+                    const rows = Array.isArray(stockData?.[group]?.[exchange]) ? stockData[group][exchange] : [];
+                    const match = rows.find(row => normalizeRouteStockSymbol(row?.t) === normalized);
+                    if (match) {
+                        const changeText = String(match.c || '0.00%').trim();
+                        return {
+                            lookupKey: raw,
+                            name: match.n || raw,
+                            exchange,
+                            priceText: match.p || 'Loading...',
+                            changeText,
+                            color: changeText.startsWith('-') ? '#ef4444' : '#10b981',
+                            type: 'stock',
+                            id: null,
+                            minInvest: 0
+                        };
+                    }
+                }
+            }
+
+            return {
+                lookupKey: raw,
+                name: raw,
+                exchange: inferExchangeFromStockParam(raw),
+                priceText: 'Loading...',
+                changeText: '0.00%',
+                color: '#10b981',
+                type: 'stock',
+                id: null,
+                minInvest: 0
+            };
+        }
+
+        function openStockDetailFromRoute(push = false) {
+            const params = new URLSearchParams(window.location.search);
+            const stock = params.get('stock') || params.get('symbol');
+            if (!stock) return false;
+
+            const resolved = resolveRouteStockDetail(stock);
+            if (!resolved) return false;
+
+            if (resolved.id) currentProductId = resolved.id;
+
+            openStockDetail(
+                resolved.lookupKey,
+                resolved.name,
+                resolved.exchange,
+                resolved.priceText,
+                resolved.changeText,
+                resolved.color,
+                resolved.type,
+                push,
+                resolved.id,
+                resolved.minInvest
+            );
+            return true;
+        }
+
         function showMeView() {
             document.getElementById('mainDashboard').style.display = 'none';
             document.getElementById('discoverView').style.display = 'none';
@@ -6312,6 +6415,7 @@
                     const parsedYield = Number(rawYieldText.replace(/,/g, '').replace('%', '').trim());
                     const hasYield = rawYieldText !== '' && Number.isFinite(parsedYield);
                     const yieldDataset = hasYield ? parsedYield.toFixed(2) : 0;
+                    const buttonPrice = toFiniteNumber(s.subscription_price) ?? toFiniteNumber(s.price) ?? 0;
 
                     return `
                         <div class="sector-card" style="width: 100%; height: auto; padding: 1.5rem; text-align: left; align-items: flex-start; cursor: default;">
@@ -6330,7 +6434,7 @@
                                 data-id="${s.id || s.symbol}"
                                 data-type="${s.type?.toUpperCase()}"
                                 data-name="${s.name}"
-                                data-price="${subscriptionPrice}"
+                                data-price="${buttonPrice}"
                                 data-yield="${yieldDataset}">
                                 Trade Now
                             </button>
@@ -6999,15 +7103,8 @@
                 showMeView();
             } else {
                 showMarketView();
-                const symbol = urlParams.get('symbol');
-                if (symbol && typeof window.MarketEngine !== 'undefined') {
-                    const s = window.MarketEngine.getProduct(symbol);
-                    if (s) {
-                        if (s.id) currentProductId = s.id; // FIX: Assign global product ID
-                        openStockDetail(s.symbol, s.name, 'NSE', '₹' + s.price.toLocaleString('en-IN', { minimumFractionDigits: 2 }), (s.change >= 0 ? '+' : '') + (s.change || 0).toFixed(2) + '%', (s.change >= 0 ? '#10b981' : '#ef4444'), s.type);
-                    }
-                }
             }
+            openStockDetailFromRoute(false);
         });
 
         window.transactionData = {
@@ -7983,6 +8080,7 @@
             else if (view === 'portfolio') showPortfolioView();
             else if (view === 'me') showMeView();
             else showMarketView();
+            openStockDetailFromRoute(false);
         });
 
         // Customer Service Logic handled by script.js
@@ -9489,12 +9587,13 @@
             // --- Helper: Get Index Data by TradingView Symbol ---
             function getIndexByTvSymbol(tvSymbol) {
                 const indices = window.MarketEngine ? window.MarketEngine.getIndices() : [];
+                const safeSymbol = typeof tvSymbol === 'string' ? tvSymbol : String(tvSymbol || '');
                 // Mapping reverse logic or simple search
-                if (tvSymbol === 'BSE:SENSEX') return indices.find(i => i.symbol === 'SENSEX');
-                if (tvSymbol === 'NSE:NIFTY') return indices.find(i => i.symbol === 'NIFTY 50');
-                if (tvSymbol === 'NSE:BANKNIFTY') return indices.find(i => i.symbol === 'NIFTY BANK');
+                if (safeSymbol === 'BSE:SENSEX') return indices.find(i => i.symbol === 'SENSEX');
+                if (safeSymbol === 'NSE:NIFTY') return indices.find(i => i.symbol === 'NIFTY 50');
+                if (safeSymbol === 'NSE:BANKNIFTY') return indices.find(i => i.symbol === 'NIFTY BANK');
 
-                return indices.find(i => tvSymbol.includes(i.symbol.replace(/\s/g, '')));
+                return indices.find(i => safeSymbol.includes(i.symbol.replace(/\s/g, '')));
             }
 
             // --- Override updateChart to handle dynamic cards ---
@@ -9689,6 +9788,9 @@
     <script src="js/trading.js?v=1.0.5"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
+            if (typeof openStockDetailFromRoute === 'function' && openStockDetailFromRoute(false)) {
+                return;
+            }
             if (typeof showDiscoverView === 'function') {
                 showDiscoverView();
             }

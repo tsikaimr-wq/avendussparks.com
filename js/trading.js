@@ -10,7 +10,7 @@ const SELL_TXN_RATE = 0.0003;
 const tradePriceRefreshAt = {};
 const TRADE_PRICE_REFRESH_COOLDOWN_MS = 4000;
 
-const toFiniteNumber = (value) => {
+const tradeToFiniteNumber = (value) => {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;
 };
@@ -49,25 +49,25 @@ const getTradeProduct = (trade) => {
 const getCachedTradeMarketPrice = (trade) => {
     const me = window.MarketEngine || {};
     const marketSymbol = getTradeMarketSymbol(trade);
-    const livePrice = toFiniteNumber(
+    const livePrice = tradeToFiniteNumber(
         me.livePrices?.[marketSymbol]
         ?? me.livePrices?.[String(trade?.symbol || '').trim()]
     );
     if (livePrice !== null && livePrice > 0) return livePrice;
 
     const product = getTradeProduct(trade);
-    const productPrice = toFiniteNumber(product?.price ?? product?.subscription_price);
+    const productPrice = tradeToFiniteNumber(product?.price ?? product?.subscription_price);
     if (productPrice !== null && productPrice > 0) return productPrice;
 
-    const sellPrice = toFiniteNumber(trade?.sell_price);
+    const sellPrice = tradeToFiniteNumber(trade?.sell_price);
     if (sellPrice !== null && sellPrice > 0) return sellPrice;
 
-    const buyPrice = toFiniteNumber(trade?.price);
+    const buyPrice = tradeToFiniteNumber(trade?.price);
     return (buyPrice !== null && buyPrice > 0) ? buyPrice : 0;
 };
 
 const cacheTradeMarketPrice = (trade, price) => {
-    const numericPrice = toFiniteNumber(price);
+    const numericPrice = tradeToFiniteNumber(price);
     if (numericPrice === null || numericPrice <= 0) return;
 
     const me = window.MarketEngine || {};
@@ -87,18 +87,18 @@ const cacheTradeMarketPrice = (trade, price) => {
 };
 
 const getTradeCostBasis = (trade) => {
-    const totalAmount = toFiniteNumber(trade?.total_amount);
+    const totalAmount = tradeToFiniteNumber(trade?.total_amount);
     if (totalAmount !== null && totalAmount > 0) return totalAmount;
 
-    const qty = toFiniteNumber(trade?.quantity) || 0;
-    const buyPrice = toFiniteNumber(trade?.price) || 0;
-    const buyTax = toFiniteNumber(trade?.tax_amount) || 0;
-    const buyFees = toFiniteNumber(trade?.txn_charge) || 0;
+    const qty = tradeToFiniteNumber(trade?.quantity) || 0;
+    const buyPrice = tradeToFiniteNumber(trade?.price) || 0;
+    const buyTax = tradeToFiniteNumber(trade?.tax_amount) || 0;
+    const buyFees = tradeToFiniteNumber(trade?.txn_charge) || 0;
     return (buyPrice * qty) + buyTax + buyFees;
 };
 
 const computeExitFees = (grossSaleValue) => {
-    const gross = toFiniteNumber(grossSaleValue) || 0;
+    const gross = tradeToFiniteNumber(grossSaleValue) || 0;
     const sellTax = gross * SELL_TAX_RATE;
     const sellFees = gross * SELL_TXN_RATE;
     return {
@@ -110,8 +110,8 @@ const computeExitFees = (grossSaleValue) => {
 };
 
 const computeUnrealizedTradeMetrics = (trade, currentPrice = null) => {
-    const qty = toFiniteNumber(trade?.quantity) || 0;
-    const livePrice = toFiniteNumber(currentPrice);
+    const qty = tradeToFiniteNumber(trade?.quantity) || 0;
+    const livePrice = tradeToFiniteNumber(currentPrice);
     const effectivePrice = (livePrice !== null && livePrice > 0)
         ? livePrice
         : getCachedTradeMarketPrice(trade);
@@ -134,16 +134,16 @@ const computeUnrealizedTradeMetrics = (trade, currentPrice = null) => {
 };
 
 const computeRealizedTradeMetrics = (trade) => {
-    const qty = toFiniteNumber(trade?.quantity) || 0;
+    const qty = tradeToFiniteNumber(trade?.quantity) || 0;
     const costBasis = getTradeCostBasis(trade);
-    const sellPrice = toFiniteNumber(trade?.sell_price) || getCachedTradeMarketPrice(trade);
+    const sellPrice = tradeToFiniteNumber(trade?.sell_price) || getCachedTradeMarketPrice(trade);
 
-    const storedNet = toFiniteNumber(trade?.total_sale_value);
+    const storedNet = tradeToFiniteNumber(trade?.total_sale_value);
     const fallbackExit = computeExitFees(sellPrice * qty);
     const netSaleValue = storedNet !== null ? storedNet : fallbackExit.netSaleValue;
-    const sellTax = toFiniteNumber(trade?.sell_tax);
-    const sellFees = toFiniteNumber(trade?.sell_fees);
-    const profit = toFiniteNumber(trade?.realised_profit) ?? (netSaleValue - costBasis);
+    const sellTax = tradeToFiniteNumber(trade?.sell_tax);
+    const sellFees = tradeToFiniteNumber(trade?.sell_fees);
+    const profit = tradeToFiniteNumber(trade?.realised_profit) ?? (netSaleValue - costBasis);
     const profitPct = costBasis > 0 ? (profit / costBasis) * 100 : 0;
 
     return {
@@ -179,7 +179,7 @@ const refreshTradeMarketPrice = async (trade, options = {}) => {
     try {
         if (window.DB && typeof window.DB.getMarketPrice === 'function') {
             const payload = await window.DB.getMarketPrice(marketSymbol, productName);
-            const price = toFiniteNumber(payload?.price);
+            const price = tradeToFiniteNumber(payload?.price);
             if (price !== null && price > 0) {
                 cacheTradeMarketPrice(trade, price);
                 return price;
@@ -192,7 +192,7 @@ const refreshTradeMarketPrice = async (trade, options = {}) => {
     try {
         if (window.MarketEngine && typeof window.MarketEngine.fetchMarketPrice === 'function') {
             const price = await window.MarketEngine.fetchMarketPrice(marketSymbol);
-            const numericPrice = toFiniteNumber(price);
+            const numericPrice = tradeToFiniteNumber(price);
             if (numericPrice !== null && numericPrice > 0) {
                 cacheTradeMarketPrice(trade, numericPrice);
                 return numericPrice;
@@ -262,7 +262,7 @@ window.openCloseOrderModal = function (tradeOrId) {
             let currentPrice = getCachedTradeMarketPrice(trade);
             if (isMarketTrackedTrade(trade)) {
                 const refreshedPrice = await refreshTradeMarketPrice(trade, { force });
-                const numericPrice = toFiniteNumber(refreshedPrice);
+                const numericPrice = tradeToFiniteNumber(refreshedPrice);
                 if (numericPrice !== null && numericPrice > 0) {
                     currentPrice = numericPrice;
                 }

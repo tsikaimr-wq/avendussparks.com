@@ -6027,9 +6027,8 @@
             const stock = params.get('stock');
 
             if (stock) {
-                // If popping back TO a stock state, re-open detail (handled by load logic usually, but here for completeness)
-                // However, usually we handle loading state on page load.
-                // The more common case is popping OUT of stock detail.
+                openStockDetailFromRoute(false);
+                return;
             } else {
                 // Close stock detail and show relevant view
                 document.getElementById('stockDetailView').style.display = 'none';
@@ -6140,10 +6139,102 @@
             return 'NSE';
         }
 
+        function normalizeRouteStockSymbol(stockParam) {
+            return String(stockParam || '')
+                .trim()
+                .toUpperCase()
+                .replace(/^NSE:|^BSE:/, '')
+                .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+        }
+
+        function resolveRouteStockDetail(stockParam) {
+            const raw = String(stockParam || '').trim();
+            const normalized = normalizeRouteStockSymbol(raw);
+            if (!normalized) return null;
+
+            if (window.MarketEngine && typeof window.MarketEngine.getProduct === 'function') {
+                const product = window.MarketEngine.getProduct(raw) || window.MarketEngine.getProduct(normalized);
+                if (product) {
+                    const priceValue = Number(product.price ?? product.subscription_price ?? 0);
+                    const changeValue = Number(product.change ?? 0);
+                    return {
+                        lookupKey: product.id || raw,
+                        name: product.name || raw,
+                        exchange: product.exchange || inferExchangeFromStockParam(product.market_symbol || product.symbol || raw),
+                        priceText: Number.isFinite(priceValue) && priceValue > 0
+                            ? `₹${priceValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : 'Loading...',
+                        changeText: `${changeValue >= 0 ? '+' : ''}${changeValue.toFixed(2)}%`,
+                        color: changeValue >= 0 ? '#10b981' : '#ef4444',
+                        type: product.type || 'stock',
+                        id: product.id || null,
+                        minInvest: Number(product.min_investment ?? product.minInvest ?? product.minimum_amount ?? 0) || 0
+                    };
+                }
+            }
+
+            const groups = ['gainers', 'losers'];
+            const exchanges = ['NSE', 'BSE'];
+            for (const group of groups) {
+                for (const exchange of exchanges) {
+                    const rows = Array.isArray(stockData?.[group]?.[exchange]) ? stockData[group][exchange] : [];
+                    const match = rows.find(row => normalizeRouteStockSymbol(row?.t) === normalized);
+                    if (match) {
+                        const changeText = String(match.c || '0.00%').trim();
+                        return {
+                            lookupKey: raw,
+                            name: match.n || raw,
+                            exchange,
+                            priceText: match.p || 'Loading...',
+                            changeText,
+                            color: changeText.startsWith('-') ? '#ef4444' : '#10b981',
+                            type: 'stock',
+                            id: null,
+                            minInvest: 0
+                        };
+                    }
+                }
+            }
+
+            return {
+                lookupKey: raw,
+                name: raw,
+                exchange: inferExchangeFromStockParam(raw),
+                priceText: 'Loading...',
+                changeText: '0.00%',
+                color: '#10b981',
+                type: 'stock',
+                id: null,
+                minInvest: 0
+            };
+        }
+
+        function openStockDetailFromRoute(push = false) {
+            const params = new URLSearchParams(window.location.search);
+            const stock = params.get('stock') || params.get('symbol');
+            if (!stock) return false;
+
+            const resolved = resolveRouteStockDetail(stock);
+            if (!resolved) return false;
+
+            openStockDetail(
+                resolved.lookupKey,
+                resolved.name,
+                resolved.exchange,
+                resolved.priceText,
+                resolved.changeText,
+                resolved.color,
+                resolved.type,
+                push,
+                resolved.id,
+                resolved.minInvest
+            );
+            return true;
+        }
+
         document.addEventListener("DOMContentLoaded", function () {
             const params = new URLSearchParams(window.location.search);
             const view = params.get("view");
-            const stock = params.get("stock");
 
             if (view === "portfolio") {
                 showPortfolioView(false);
@@ -6155,30 +6246,16 @@
                 showMarketView(false);
             }
 
-            // AFTER setting view, check if stock detail should open
-            if (stock && typeof MarketEngine !== 'undefined') {
-                // We need to fetch stock details to open it properly
-                // For now we just trigger it if we can
-                const stockExchange = inferExchangeFromStockParam(stock);
-                openStockDetail(stock, stock, stockExchange, 'Loading...', '0.00%', '#10b981', 'stock', false);
-            }
+            openStockDetailFromRoute(false);
         });
 
         window.addEventListener("popstate", function () {
             const params = new URLSearchParams(window.location.search);
             const view = params.get("view");
-            const stock = params.get("stock");
 
-            if (stock) {
-                // If stock param exists, open detail view without pushing state
-                const stockExchange = inferExchangeFromStockParam(stock);
-                openStockDetail(stock, stock, stockExchange, 'Loading...', '0.00%', '#10b981', 'stock', false);
-                return; // Stop here, don't reset main view underneath immediately if not needed
+            if (openStockDetailFromRoute(false)) {
+                return;
             } else {
-                // Ensure detail view is closed if no stock param
-                closeStockDetail(); // This just goes back in history usually, but here we want to force UI close
-                // Actually closeStockDetail just does history.back(). 
-                // We need a way to just HIDE the detail view if we popped back to a non-stock URL.
                 document.getElementById('stockDetailHeader').style.display = 'none';
                 document.getElementById('stockDetailView').style.display = 'none';
                 document.querySelector('.header').style.display = 'flex';
@@ -7263,14 +7340,8 @@
                 showMeView();
             } else {
                 showMarketView();
-                const symbol = urlParams.get('symbol');
-                if (symbol && typeof window.MarketEngine !== 'undefined') {
-                    const s = window.MarketEngine.getProduct(symbol);
-                    if (s) {
-                        openStockDetail(s.symbol, s.name, 'NSE', '₹' + s.price.toLocaleString('en-IN', { minimumFractionDigits: 2 }), (s.change >= 0 ? '+' : '') + (s.change || 0).toFixed(2) + '%', (s.change >= 0 ? '#10b981' : '#ef4444'), s.type);
-                    }
-                }
             }
+            openStockDetailFromRoute(false);
         });
 
         window.transactionData = {
@@ -8284,6 +8355,7 @@
             else if (view === 'portfolio') showPortfolioView();
             else if (view === 'me') showMeView();
             else showMarketView();
+            openStockDetailFromRoute(false);
         });
 
         // Customer Service Logic handled by script.js
