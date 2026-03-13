@@ -451,6 +451,8 @@
         let currentActiveSymbol = '';
         let currentStockName = '';
         let currentPrice = 0;
+        let currentBuyPrice = 0;
+        let currentMarketPrice = 0;
         let currentInterval = 'D';
         let currentProductId = null;
         let currentMinInvest = 0;
@@ -572,7 +574,17 @@
             currentProductType = type;
             currentProductId = id;
             currentMinInvest = parseFloat(minInvest) || 0;
+            const currentProduct = window.MarketEngine?.getProduct?.(id) || window.MarketEngine?.getProduct?.(sym);
+            const backendBuyPrice = Number(currentProduct?.subscription_price);
+            const fallbackProductPrice = Number(currentProduct?.price);
+            currentBuyPrice = (Number.isFinite(backendBuyPrice) && backendBuyPrice > 0)
+                ? backendBuyPrice
+                : ((Number.isFinite(fallbackProductPrice) && fallbackProductPrice > 0) ? fallbackProductPrice : 0);
+            currentMarketPrice = 0;
             currentPrice = 0; // Reset to 0 to ensure live price takes precedence
+            if (currentProductType === 'OTC' || currentProductType === 'IPO') {
+                currentPrice = currentBuyPrice;
+            }
 
             // Set Titles
             document.getElementById('bpStockSymbol').innerText = sym;
@@ -1042,16 +1054,19 @@
 
             let qty = parseInt(qtyInput.value) || 0;
             let baseTotal, tax, txnCharge, finalTotal;
+            const effectiveBuyPrice = (currentProductType === 'OTC' || currentProductType === 'IPO')
+                ? (currentBuyPrice || currentPrice)
+                : currentPrice;
 
             if (currentProductType === 'IPO') {
                 // FIXED LOT LOGIC FOR IPO
                 baseTotal = currentMinInvest || 15000;
-                qty = baseTotal / (currentPrice || 1);
+                qty = baseTotal / (effectiveBuyPrice || 1);
                 tax = 0;
                 txnCharge = 0;
                 finalTotal = baseTotal;
             } else {
-                baseTotal = qty * currentPrice;
+                baseTotal = qty * effectiveBuyPrice;
                 tax = baseTotal * 0.0012;
                 txnCharge = baseTotal * 0.0003;
                 finalTotal = baseTotal + tax + txnCharge;
@@ -1065,7 +1080,7 @@
             if (txnEl) txnEl.innerText = '₹' + txnCharge.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             if (totalEl) totalEl.innerText = '₹' + finalTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
-            return { qty, price: currentPrice, baseTotal, tax, txnCharge, total: finalTotal };
+            return { qty, price: effectiveBuyPrice, baseTotal, tax, txnCharge, total: finalTotal };
         }
 
         function closeOrderConfirm() {
@@ -1213,7 +1228,7 @@
             const trade = (await window.DB.getTradesByUserId(user.id)).find(t => t.id == tradeId);
             if (!trade) return;
 
-            let liveSellPrice = currentPrice;
+            let liveSellPrice = currentMarketPrice || currentPrice;
             if (typeof pricing.refreshTradeMarketPrice === 'function') {
                 try {
                     liveSellPrice = await pricing.refreshTradeMarketPrice(trade, { force: true }) || liveSellPrice;
@@ -1540,7 +1555,13 @@
 
                 if (!Number.isFinite(Number(price)) || Number(price) <= 0) return;
 
-                currentPrice = parseFloat(price);
+                currentMarketPrice = parseFloat(price);
+                if (!(currentProductType === 'OTC' || currentProductType === 'IPO')) {
+                    currentPrice = currentMarketPrice;
+                } else if (!Number.isFinite(currentBuyPrice) || currentBuyPrice <= 0) {
+                    currentBuyPrice = currentMarketPrice;
+                    currentPrice = currentBuyPrice;
+                }
 
                 const formatted = `₹${Number(price).toLocaleString('en-IN', {
                     minimumFractionDigits: 2,
@@ -1549,8 +1570,19 @@
 
                 const el = document.getElementById("detPrice");
                 if (el) el.innerText = formatted;
+                const bpPriceEl = document.getElementById("bpCurrentPrice");
+                if (bpPriceEl) bpPriceEl.innerText = formatted;
                 const buyEl = document.getElementById("detBuyPrice");
-                if (buyEl) buyEl.innerText = formatted;
+                if (buyEl) {
+                    const displayBuyPrice = (currentProductType === 'OTC' || currentProductType === 'IPO')
+                        ? (currentBuyPrice || currentMarketPrice)
+                        : currentMarketPrice;
+                    buyEl.innerText = `₹${Number(displayBuyPrice || 0).toLocaleString('en-IN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })}`;
+                }
+                updateBuyTotal();
 
             } catch (e) {
                 console.error(e);

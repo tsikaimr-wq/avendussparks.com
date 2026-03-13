@@ -22,7 +22,7 @@ const normalizeTradeType = (value) => {
     return raw;
 };
 
-const isMarketTrackedTrade = (trade) => ['stock', 'ins.stocks', 'otc'].includes(normalizeTradeType(trade?.type));
+const isMarketTrackedTrade = (trade) => ['stock', 'ins.stocks', 'otc', 'ipo'].includes(normalizeTradeType(trade?.type));
 
 const getTradeMarketSymbol = (trade) => String(
     trade?.products?.market_symbol

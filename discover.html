@@ -5256,6 +5256,33 @@
         async function fetchLivePrice(symbol, name = '') {
             console.log("fetchLivePrice CALLED:", symbol);
 
+            const syncStaticDetailBuyPrice = () => {
+                const detailType = String(document.getElementById('buyBtn')?.dataset?.type || '').toUpperCase();
+                if (!['OTC', 'IPO'].includes(detailType)) return false;
+
+                const base = String(symbol || '').toUpperCase();
+                const compact = base
+                    .replace(/^NSE:|^BSE:/, '')
+                    .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+                const product = window.MarketEngine?.getProduct?.(currentProductId)
+                    || window.MarketEngine?.getProduct?.(symbol)
+                    || window.MarketEngine?.getProduct?.(compact)
+                    || window.MarketEngine?.getProduct?.(`${compact}.NS`)
+                    || window.MarketEngine?.getProduct?.(`${compact}.BO`);
+                const backendBuyPrice = toFiniteNumber(product?.subscription_price)
+                    ?? toFiniteNumber(product?.price);
+                if (backendBuyPrice === null || backendBuyPrice <= 0) return false;
+
+                const detBuyPriceEl = document.getElementById("detBuyPrice");
+                if (detBuyPriceEl) {
+                    detBuyPriceEl.innerText = `₹${backendBuyPrice.toLocaleString('en-IN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                    })}`;
+                }
+                return true;
+            };
+
             const updatePriceUI = async () => {
                 const liveQuote = (window.DB && typeof window.DB.getMarketPrice === 'function')
                     ? await window.DB.getMarketPrice(symbol, name)
@@ -5301,8 +5328,10 @@
                 const el = document.getElementById("detPrice");
                 if (el) el.innerText = formatted;
 
-                const detBuyPriceEl = document.getElementById("detBuyPrice");
-                if (detBuyPriceEl) detBuyPriceEl.innerText = formatted;
+                if (!syncStaticDetailBuyPrice()) {
+                    const detBuyPriceEl = document.getElementById("detBuyPrice");
+                    if (detBuyPriceEl) detBuyPriceEl.innerText = formatted;
+                }
 
                 const detGridHigh = document.getElementById("detGridHigh");
                 const detGridLow = document.getElementById("detGridLow");
@@ -5425,7 +5454,7 @@
                         // OTC UI Rules: Show Qty/Slider, standard labels
                         if (qtySec) qtySec.style.display = 'block';
                         if (sliderSec) sliderSec.style.display = 'block';
-                        if (buyPriceLabel) buyPriceLabel.innerText = 'Price';
+                        if (buyPriceLabel) buyPriceLabel.innerText = 'Subscription Price';
                         if (totalInvestLabel) totalInvestLabel.innerText = 'Total Est. Investment';
                     }
                 } else {
@@ -5576,14 +5605,12 @@
                 );
                 if (Number.isFinite(staticPrice) && staticPrice > 0) {
                     const formattedPrice = `₹${staticPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    document.getElementById('detPrice').innerText = formattedPrice;
                     const detBuyPriceEl = document.getElementById("detBuyPrice");
                     if (detBuyPriceEl) detBuyPriceEl.innerText = formattedPrice;
                     updateBuyCalculations();
                 }
-            } else {
-                await fetchLivePrice(chartSymbol, name || '');
             }
+            await fetchLivePrice(chartSymbol, name || '');
         }
 
         let currentYahooChart = null;
@@ -6160,7 +6187,7 @@
                     let marketPrice = toFiniteNumber(s.price) ?? 0;
                     const me = window.MarketEngine;
 
-                    if (isOTC && me) {
+                    if ((isOTC || isIPO) && me) {
                         const cachedLive = me.livePrices ? toFiniteNumber(me.livePrices[marketSymbol]) : null;
                         if (cachedLive !== null && cachedLive > 0) {
                             marketPrice = cachedLive;
@@ -6177,7 +6204,7 @@
                         }
                     }
 
-                    const otcProfitPct = (isOTC && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
+                    const liveProfitPct = ((isOTC || isIPO) && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
                         ? ((marketPrice - subscriptionPrice) / subscriptionPrice) * 100
                         : null;
                     const rawIpoProfit = s.est_profit_percent ?? s.estimated_profit ?? s.profit ?? s.ipo_yield ?? s.yield;
@@ -6187,12 +6214,15 @@
                     const ipoProfitText = hasIpoProfit
                         ? `${ipoProfitNumeric >= 0 ? '+' : ''}${ipoProfitNumeric.toFixed(2)}%`
                         : '--';
-                    const profitRange = isOTC
-                        ? (otcProfitPct === null ? '--' : `${otcProfitPct >= 0 ? '+' : ''}${otcProfitPct.toFixed(2)}%`)
+                    const profitRange = liveProfitPct !== null
+                        ? `${liveProfitPct >= 0 ? '+' : ''}${liveProfitPct.toFixed(2)}%`
                         : (isIPO ? ipoProfitText : "20% - 60%");
-                    const profitColor = isOTC
-                        ? (otcProfitPct === null ? '#94a3b8' : (otcProfitPct >= 0 ? '#10b981' : '#ef4444'))
+                    const profitColor = liveProfitPct !== null
+                        ? (liveProfitPct >= 0 ? '#10b981' : '#ef4444')
                         : (isIPO ? (hasIpoProfit ? '#10b981' : '#94a3b8') : '');
+                    const profitLabel = isIPO
+                        ? (liveProfitPct !== null ? 'Live Profit' : 'Yield')
+                        : (isOTC ? 'Live Profit' : 'Est. Profit');
                     const vipLv = (isIPO && s.level) ? s.level : (isIPO ? "Lv &ge;2" : "Lv &ge;1");
                     const isLocked = false; // Allow all IPOs to be viewable for now as requested
                     const exchange = s.symbol.includes('NSE') ? 'NSE' : 'BSE';
@@ -6244,7 +6274,7 @@
                                     </div>
                                 </div>
                                 <div class="premium-return-rate">
-                                    <span class="premium-return-label">${isIPO ? 'Yield' : (isOTC ? 'Live Profit' : 'Est. Profit')}</span>
+                                    <span class="premium-return-label">${profitLabel}</span>
                                     <span class="premium-return-val" style="${profitColor ? `color: ${profitColor};` : ''}">${profitRange}</span>
                                 </div>
                             </div>
@@ -6263,7 +6293,7 @@
                                 data-type="${s.type?.toUpperCase()}"
                                 data-name="${s.name}"
                                 data-price="${subscriptionPrice}"
-                                data-yield="${isOTC ? (otcProfitPct === null ? 0 : otcProfitPct.toFixed(2)) : (hasIpoProfit ? ipoProfitNumeric.toFixed(2) : 0)}">
+                                data-yield="${liveProfitPct !== null ? liveProfitPct.toFixed(2) : (hasIpoProfit ? ipoProfitNumeric.toFixed(2) : 0)}">
                                 ${isLocked ? 'Locked' : 'Subscribe'}
                             </button>
                         </div>
@@ -8247,8 +8277,19 @@
 
                 document.getElementById('hdPremiumTitle').innerText = trade.name + ' (QIB)';
                 const yieldVal = parseNote('PROFIT') || (listing ? listing.yield : '300%');
-                document.getElementById('hdPremiumYield').innerText = yieldVal;
-                document.getElementById('hdEstProfit').innerText = yieldVal;
+                let premiumMainText = yieldVal;
+                let premiumPctText = yieldVal;
+                const listingDateRaw = listing?.listingDate || listing?.listing_date || trade.products?.listing_date || '';
+                const listingDate = listingDateRaw ? new Date(listingDateRaw) : null;
+                const isListed = listingDate instanceof Date && !isNaN(listingDate.getTime()) && listingDate <= new Date();
+                if (isListed || isClosed) {
+                    document.getElementById('hdPremiumTitle').innerText = isClosed ? 'Realized Profit' : 'Live Profit';
+                    premiumMainText = `₹${tradeMetrics.profit.toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    premiumPctText = `${tradeMetrics.profit >= 0 ? '+' : ''}${tradeMetrics.profitPct.toFixed(2)}%`;
+                }
+                document.getElementById('hdPremiumYield').innerText = premiumMainText;
+                document.getElementById('hdPremiumYield').style.color = String(premiumMainText).includes('-') ? '#ef4444' : '#10b981';
+                document.getElementById('hdEstProfit').innerText = premiumPctText;
 
                 document.getElementById('hdAssetName').innerText = '₹' + parseFloat(trade.price).toLocaleString('en-IN');
 
