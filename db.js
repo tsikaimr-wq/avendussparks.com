@@ -501,7 +501,7 @@ window.DB = {
     },
 
     // --- SUPABASE OTP AUTH ---
-    async sendEmailOtp(email, registrationData = null) {
+    async sendEmailOtp(email, registrationData = null, shouldCreateUser = true) {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
 
@@ -523,7 +523,7 @@ window.DB = {
         if (regPassword) metadata.reg_password = regPassword;
 
         const otpOptions = {
-            shouldCreateUser: true,
+            shouldCreateUser: shouldCreateUser !== false,
             emailRedirectTo
         };
         if (Object.keys(metadata).length > 0) {
