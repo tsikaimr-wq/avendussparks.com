@@ -255,13 +255,35 @@ window.DB = {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
 
-        // Check mobile OR email
-        const { data, error } = await client
-            .from('users')
-            .select('*')
-            .or(`mobile.eq.${identifier},email.eq.${identifier}`)
-            .eq('password', password)
-            .single();
+        const rawIdentifier = String(identifier || '').trim();
+        const isEmail = rawIdentifier.includes('@');
+        let data = null;
+        let error = null;
+
+        if (isEmail) {
+            ({ data, error } = await client
+                .from('users')
+                .select('*')
+                .eq('email', rawIdentifier)
+                .eq('password', password)
+                .maybeSingle());
+        } else {
+            const digits = rawIdentifier.replace(/\D/g, '');
+            const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+            const candidates = [...new Set([
+                rawIdentifier,
+                digits,
+                last10,
+                last10 ? `+91${last10}` : ''
+            ].filter(Boolean))];
+
+            ({ data, error } = await client
+                .from('users')
+                .select('*')
+                .in('mobile', candidates)
+                .eq('password', password)
+                .maybeSingle());
+        }
 
         if (error || !data) {
             return { success: false, message: 'Invalid credentials.' };

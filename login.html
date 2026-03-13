@@ -1139,7 +1139,86 @@
             }
         };
 
+        async function handleAuthLanding() {
+            try {
+                const client = DB.getClient();
+                if (!client) return;
+
+                const hashText = String(window.location.hash || '').replace(/^#/, '');
+                const hashParams = new URLSearchParams(hashText);
+                const hasHash = hashText.length > 0;
+                const errorCode = String(hashParams.get('error_code') || '');
+                const errorDescription = String(hashParams.get('error_description') || '').replace(/\+/g, ' ');
+
+                if (errorCode && /otp_expired|access_denied/i.test(errorCode.toLowerCase())) {
+                    showAlert('warning', 'Email link has expired. Please resend OTP and use the latest email.', 'Verification Expired');
+                } else if (errorDescription && /expired|invalid/i.test(errorDescription.toLowerCase())) {
+                    showAlert('warning', 'Email link is invalid or expired. Please resend OTP.', 'Verification Expired');
+                }
+
+                const { data: { session }, error: sessionError } = await client.auth.getSession();
+                if (sessionError || !session || !session.user) {
+                    if (hasHash) history.replaceState({}, document.title, window.location.pathname);
+                    return;
+                }
+
+                const authId = session.user.id;
+                const userEmail = String(session.user.email || '').trim();
+                let appUser = null;
+
+                const byAuth = await client
+                    .from('users')
+                    .select('*')
+                    .eq('auth_id', authId)
+                    .maybeSingle();
+                if (!byAuth.error && byAuth.data) appUser = byAuth.data;
+
+                if (!appUser && userEmail) {
+                    const byEmail = await client
+                        .from('users')
+                        .select('*')
+                        .eq('email', userEmail)
+                        .maybeSingle();
+                    if (!byEmail.error && byEmail.data) {
+                        appUser = byEmail.data;
+                        if (!appUser.auth_id) {
+                            await client
+                                .from('users')
+                                .update({ auth_id: authId })
+                                .eq('id', appUser.id);
+                            appUser.auth_id = authId;
+                        }
+                    }
+                }
+
+                if (appUser) {
+                    localStorage.setItem(DB.CURRENT_USER_KEY, JSON.stringify(appUser));
+                    const redirectUrl = sessionStorage.getItem('postLoginRedirect');
+                    if (redirectUrl) {
+                        sessionStorage.removeItem('postLoginRedirect');
+                        window.location.replace(redirectUrl);
+                    } else {
+                        window.location.replace('index.html');
+                    }
+                    return;
+                }
+
+                if (hasHash || session.user.email_confirmed_at) {
+                    showAlert(
+                        'warning',
+                        'Email verified, but your account profile is incomplete. Please click Register Now and finish registration.',
+                        'Registration Incomplete'
+                    );
+                }
+
+                if (hasHash) history.replaceState({}, document.title, window.location.pathname);
+            } catch (e) {
+                console.error('Auth landing handling failed:', e);
+            }
+        }
+
         // Initialize Defaults
+        handleAuthLanding();
         switchLoginTab('email');
     </script>
 </body>
