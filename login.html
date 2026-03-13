@@ -510,7 +510,7 @@
                 </div>
                 <div class="form-group">
                     <label data-i18n="lbl_ver_code">Verification Code</label>
-                    <input type="text" id="regOtpInput" placeholder="Enter 6-digit code" maxlength="6"
+                    <input type="text" id="regOtpInput" placeholder="Enter code from email" maxlength="10"
                         data-i18n="ph_enter_otp">
                 </div>
                 <button class="login-submit-btn" onclick="finishStep2()" data-i18n="btn_next">Next</button>
@@ -1028,7 +1028,7 @@
 
             DB.sendEmailOtp(email, otpRegistrationPayload).then(res => {
                 if (res.success) {
-                    showAlert('success', '6-digit OTP sent to ' + email + '. Enter the code here directly, no need to open the email link.');
+                    showAlert('success', 'OTP sent to ' + email + '. Enter the numeric code shown in email.');
                     let count = 60;
                     const timer = setInterval(() => {
                         count--;
@@ -1058,7 +1058,7 @@
             const otp = String(document.getElementById('regOtpInput').value || '').trim();
 
             if (!email) return showAlert('warning', 'Please enter email address.');
-            if (!/^\d{6}$/.test(otp)) return showAlert('warning', 'Please enter a valid 6-digit verification code.');
+            if (!/^\d{6,10}$/.test(otp)) return showAlert('warning', 'Please enter the numeric verification code from email.');
 
             const btn = event.target;
             const originalText = btn.innerText;
