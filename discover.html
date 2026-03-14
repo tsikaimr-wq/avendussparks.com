@@ -4727,6 +4727,82 @@
             return `${sign}${num.toFixed(digits)}%`;
         }
 
+        function getConfiguredProfitRawValue(source) {
+            if (!source) return null;
+            return source.est_profit_percent
+                ?? source.estimated_profit
+                ?? source.profit
+                ?? source.ipo_yield
+                ?? source.yield
+                ?? null;
+        }
+
+        function parseConfiguredProfitInfo(rawValue) {
+            const rawText = String(rawValue ?? '').trim();
+            if (!rawText) {
+                return { value: null, text: '--', hasValue: false };
+            }
+
+            const numeric = Number(rawText.replace(/,/g, '').replace('%', '').trim());
+            if (Number.isFinite(numeric)) {
+                return {
+                    value: numeric,
+                    text: `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%`,
+                    hasValue: true
+                };
+            }
+
+            return {
+                value: null,
+                text: rawText,
+                hasValue: false
+            };
+        }
+
+        function getConfiguredProfitInfo(source) {
+            if (!source) return parseConfiguredProfitInfo(null);
+            if (source.products) {
+                return parseConfiguredProfitInfo(getConfiguredProfitRawValue({
+                    est_profit_percent: source.est_profit_percent ?? source.products.est_profit_percent,
+                    estimated_profit: source.estimated_profit ?? source.products.estimated_profit,
+                    profit: source.profit ?? source.products.profit,
+                    ipo_yield: source.ipo_yield ?? source.products.ipo_yield,
+                    yield: source.yield ?? source.products.yield
+                }));
+            }
+            return parseConfiguredProfitInfo(getConfiguredProfitRawValue(source));
+        }
+
+        function isPreListingIpoTrade(trade) {
+            const type = String(trade?.type || trade?.products?.type || '').trim().toLowerCase().replace(/_/g, '.');
+            if (type !== 'ipo') return false;
+
+            const listingDateRaw = trade?.products?.listing_date ?? trade?.listing_date ?? '';
+            if (!listingDateRaw) return false;
+
+            const listingDate = new Date(listingDateRaw);
+            if (Number.isNaN(listingDate.getTime())) return false;
+            return listingDate > new Date();
+        }
+
+        function getIpoEstimatedReturnMetrics(source) {
+            const profitInfo = getConfiguredProfitInfo(source);
+            const totalAmount = toFiniteNumber(source?.total_amount);
+            const quantity = toFiniteNumber(source?.quantity);
+            const price = toFiniteNumber(source?.price);
+            const baseAmount = (totalAmount !== null && totalAmount > 0)
+                ? totalAmount
+                : ((quantity !== null && quantity > 0 && price !== null && price > 0) ? quantity * price : null);
+            const amount = (profitInfo.hasValue && baseAmount !== null)
+                ? baseAmount * (profitInfo.value / 100)
+                : null;
+
+            return {
+                ...profitInfo,
+                amount
+            };
+        }
+
         function normalizeLabelKey(label) {
             return String(label || '').replace(/\s+/g, ' ').trim().toUpperCase();
         }
@@ -6340,25 +6416,19 @@
                         }
                     }
 
-                    const liveProfitPct = ((isOTC || isIPO) && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
+                    const liveProfitPct = (isOTC && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
                         ? ((marketPrice - subscriptionPrice) / subscriptionPrice) * 100
                         : null;
-                    const rawIpoProfit = s.est_profit_percent ?? s.estimated_profit ?? s.profit ?? s.ipo_yield ?? s.yield;
-                    const ipoProfitTextRaw = String(rawIpoProfit ?? '').trim();
-                    const ipoProfitNumeric = Number(ipoProfitTextRaw.replace(/,/g, '').replace('%', '').trim());
-                    const hasIpoProfit = ipoProfitTextRaw !== '' && Number.isFinite(ipoProfitNumeric);
-                    const ipoProfitText = hasIpoProfit
-                        ? `${ipoProfitNumeric >= 0 ? '+' : ''}${ipoProfitNumeric.toFixed(2)}%`
-                        : '--';
-                    const profitRange = liveProfitPct !== null
-                        ? `${liveProfitPct >= 0 ? '+' : ''}${liveProfitPct.toFixed(2)}%`
-                        : (isIPO ? ipoProfitText : "20% - 60%");
-                    const profitColor = liveProfitPct !== null
-                        ? (liveProfitPct >= 0 ? '#10b981' : '#ef4444')
-                        : (isIPO ? (hasIpoProfit ? '#10b981' : '#94a3b8') : '');
-                    const profitLabel = isIPO
-                        ? (liveProfitPct !== null ? 'Live Profit' : 'Yield')
-                        : (isOTC ? 'Live Profit' : 'Est. Profit');
+                    const ipoProfitInfo = getConfiguredProfitInfo(s);
+                    const profitRange = isIPO
+                        ? ipoProfitInfo.text
+                        : (liveProfitPct !== null
+                            ? `${liveProfitPct >= 0 ? '+' : ''}${liveProfitPct.toFixed(2)}%`
+                            : "20% - 60%");
+                    const profitColor = isIPO
+                        ? (ipoProfitInfo.hasValue ? (ipoProfitInfo.value >= 0 ? '#10b981' : '#ef4444') : '#94a3b8')
+                        : (liveProfitPct !== null ? (liveProfitPct >= 0 ? '#10b981' : '#ef4444') : '');
+                    const profitLabel = isIPO ? 'EST. Profit' : (isOTC ? 'Live Profit' : 'Est. Profit');
                     const vipLv = (isIPO && s.level) ? s.level : (isIPO ? "Lv &ge;2" : "Lv &ge;1");
                     const isLocked = false; // Allow all IPOs to be viewable for now as requested
                     const exchange = s.symbol.includes('NSE') ? 'NSE' : 'BSE';
@@ -6429,7 +6499,7 @@
                                 data-type="${s.type?.toUpperCase()}"
                                 data-name="${s.name}"
                                 data-price="${subscriptionPrice}"
-                                data-yield="${liveProfitPct !== null ? liveProfitPct.toFixed(2) : (hasIpoProfit ? ipoProfitNumeric.toFixed(2) : 0)}">
+                                data-yield="${isIPO ? (ipoProfitInfo.hasValue ? ipoProfitInfo.value.toFixed(2) : 0) : (liveProfitPct !== null ? liveProfitPct.toFixed(2) : 0)}">
                                 ${isLocked ? 'Locked' : 'Subscribe'}
                             </button>
                         </div>
@@ -7033,13 +7103,8 @@
             const baseAmount = subscriptionPrice > 0 ? (qty * subscriptionPrice) : minInvest;
             const total = baseAmount;
 
-            const rawYield = product.est_profit_percent ?? product.estimated_profit ?? product.ipo_yield ?? product.yield ?? product.profit;
-            const rawYieldText = String(rawYield ?? '').trim();
-            const parsedYield = Number(rawYieldText.replace(/,/g, '').replace('%', '').trim());
-            const hasYield = rawYieldText !== '' && Number.isFinite(parsedYield);
-            const yieldText = hasYield
-                ? `${parsedYield >= 0 ? '+' : ''}${parsedYield.toFixed(2)}%`
-                : '--';
+            const yieldInfo = getConfiguredProfitInfo(product);
+            const yieldText = yieldInfo.text;
 
             const startDateRaw = product.start_date || product.subDate || product.startDate || '';
             const endDateRaw = product.end_date || product.deadline || product.endDate || '';
@@ -7286,12 +7351,21 @@
                     if (myTrades.length > 0) {
                         list.innerHTML = myTrades.map(t => {
                             const date = new Date(t.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-                            const cp = getTradeDisplayPrice(t);
-                            const metrics = getTradeUnrealizedMetrics(t, cp);
-                            refreshTradeDisplayPrice(t);
+                            const isPreListing = isPreListingIpoTrade(t);
+                            const cp = isPreListing ? (toFiniteNumber(t.price) ?? 0) : getTradeDisplayPrice(t);
+                            const metrics = isPreListing ? null : getTradeUnrealizedMetrics(t, cp);
+                            if (!isPreListing) refreshTradeDisplayPrice(t);
 
-                            const prof = metrics.profit;
-                            const profDisplay = `${prof >= 0 ? '+' : '-'}₹${Math.abs(prof).toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${metrics.profitPct >= 0 ? '+' : ''}${metrics.profitPct.toFixed(2)}%)`;
+                            const ipoEstimated = isPreListing ? getIpoEstimatedReturnMetrics(t) : null;
+                            const prof = metrics ? metrics.profit : (ipoEstimated?.amount ?? 0);
+                            const profDisplay = isPreListing
+                                ? (ipoEstimated?.hasValue && ipoEstimated.amount !== null
+                                    ? `${ipoEstimated.amount >= 0 ? '+' : '-'}₹${Math.abs(ipoEstimated.amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${ipoEstimated.text})`
+                                    : (ipoEstimated?.text || '--'))
+                                : `${prof >= 0 ? '+' : '-'}₹${Math.abs(prof).toLocaleString('en-IN', { minimumFractionDigits: 2 })} (${metrics.profitPct >= 0 ? '+' : ''}${metrics.profitPct.toFixed(2)}%)`;
+                            const profColor = isPreListing
+                                ? (ipoEstimated?.hasValue ? (ipoEstimated.value >= 0 ? '#10b981' : '#ef4444') : '#94a3b8')
+                                : (prof >= 0 ? '#10b981' : '#ef4444');
 
                             return `
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid #f1f5f9;">
@@ -7310,7 +7384,7 @@
                                     </div>
                                     <div style="text-align: right;">
                                         <div style="font-weight: 700; color: #d4af37;">₹${parseFloat(t.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</div>
-                                        <div style="font-size: 0.75rem; color: ${prof >= 0 ? '#10b981' : '#ef4444'}; font-weight: 600;">${profDisplay}</div>
+                                        <div style="font-size: 0.75rem; color: ${profColor}; font-weight: 600;">${profDisplay}</div>
                                     </div>
                                 </div>
                             `;
@@ -7398,23 +7472,28 @@
             if (tabName === 'holding') {
                 let html = `<div class="premium-trade-grid">`;
                 data.forEach(item => {
-                    const mockCurrPrice = getTradeDisplayPrice(item);
-                    refreshTradeDisplayPrice(item);
-                    const unrealized = getTradeUnrealizedMetrics(item, mockCurrPrice);
-                    const profit = unrealized.profit;
-                    const profitPct = unrealized.profitPct;
+                    const isIPOItem = item.type?.toLowerCase() === 'ipo';
+                    const isPreListingIPO = isIPOItem && isPreListingIpoTrade(item);
+                    const ipoEstimated = isIPOItem ? getIpoEstimatedReturnMetrics(item) : null;
+                    const mockCurrPrice = isPreListingIPO ? (toFiniteNumber(item.price) ?? 0) : getTradeDisplayPrice(item);
+                    if (!isPreListingIPO) refreshTradeDisplayPrice(item);
+                    const unrealized = isPreListingIPO ? null : getTradeUnrealizedMetrics(item, mockCurrPrice);
+                    const profit = isPreListingIPO ? (ipoEstimated?.amount ?? 0) : unrealized.profit;
+                    const profitPct = isPreListingIPO ? (ipoEstimated?.value ?? 0) : unrealized.profitPct;
 
                     const now = new Date();
                     const lockupUntil = item.lockup_until ? new Date(item.lockup_until) : null;
                     const isLocked = lockupUntil && lockupUntil > now;
-                    let leftLabel = 'Current Price';
-                    let leftVal = '₹' + mockCurrPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+                    let leftLabel = isIPOItem ? 'Allocation Price' : 'Current Price';
+                    let leftVal = isIPOItem
+                        ? '₹' + (toFiniteNumber(item.price) ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+                        : '₹' + mockCurrPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 });
                     const lockDate = lockupUntil ? lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
 
-                    if (isLocked) {
+                    if (!isIPOItem && isLocked) {
                         leftLabel = 'Locked Until';
                         leftVal = `Locked ${lockDate}`;
-                    } else if (lockupUntil) {
+                    } else if (!isIPOItem && lockupUntil) {
                         leftLabel = 'Locked Until';
                         leftVal = `Lock Expired ${lockDate}`;
                     }
@@ -7423,7 +7502,7 @@
                         <div class="premium-trade-card">
                             <div class="premium-card-head">
                                 <div class="premium-asset-info">
-                                    <div class="premium-asset-name" style="color: #ffffff !important;">${item.name}${item.type?.toLowerCase() === 'ipo' ? ' <span style="color:#d4af37; font-size:0.85rem;">(IPO)</span>' : ''} <span style="font-size: 0.8em; color: #888;">(${item.symbol})</span></div>
+                                    <div class="premium-asset-name" style="color: #ffffff !important;">${item.name}${isIPOItem ? ' <span style="color:#d4af37; font-size:0.85rem;">(IPO)</span>' : ''} <span style="font-size: 0.8em; color: #888;">(${item.symbol})</span></div>
                                     <div class="premium-asset-meta" style="color: #888 !important; font-size: 0.8rem;">BSE  - IN 
                                         ${isLocked ? `<span style="color:#f59e0b; margin-left:8px; font-weight:700;">LOCKED</span>` : (lockupUntil ? `<span style="color:#10b981; margin-left:8px; font-weight:700;">LOCK EXPIRED</span>` : '')}
                                     </div>
@@ -7440,10 +7519,11 @@
                                     <span class="value" style="color: #ffffff !important;" id="hPrice-${item.id}">${leftVal}</span>
                                 </div>
                                 <div class="premium-detail-item">
-                                    <span class="label" style="color: #888 !important;">Unrealized P&L</span>
-                                    <span class="value" style="color: ${profit >= 0 ? '#10b981' : '#ef4444'} !important;" id="hProfit-${item.id}">
-                                        ₹${profit.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
-                                        <span style="font-size:0.75rem;">(${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(2)}%)</span>
+                                    <span class="label" style="color: #888 !important;">${isPreListingIPO ? 'EST. Profit' : 'Unrealized P&L'}</span>
+                                    <span class="value" style="color: ${isPreListingIPO ? (ipoEstimated?.hasValue ? (ipoEstimated.value >= 0 ? '#10b981' : '#ef4444') : '#94a3b8') : (profit >= 0 ? '#10b981' : '#ef4444')} !important;" id="hProfit-${item.id}">
+                                        ${isPreListingIPO && !(ipoEstimated?.hasValue && ipoEstimated.amount !== null)
+                                            ? (ipoEstimated?.text || '--')
+                                            : `₹${profit.toLocaleString('en-IN', { maximumFractionDigits: 2 })} <span style="font-size:0.75rem;">(${profitPct >= 0 ? '+' : ''}${profitPct.toFixed(2)}%)</span>`}
                                     </span>
                                 </div>
                             </div>
@@ -7478,14 +7558,32 @@
                         return;
                     }
                     data.forEach(item => {
+                        const prEl = document.getElementById(`hPrice-${item.id}`);
+                        const pEl = document.getElementById(`hProfit-${item.id}`);
+
+                        const isPreListingIPO = item.type?.toLowerCase() === 'ipo' && isPreListingIpoTrade(item);
+                        if (isPreListingIPO) {
+                            const estimated = getIpoEstimatedReturnMetrics(item);
+                            if (pEl) {
+                                pEl.innerHTML = (estimated?.hasValue && estimated.amount !== null)
+                                    ? `₹${estimated.amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })} <span style="font-size:0.75rem;">(${estimated.text})</span>`
+                                    : (estimated?.text || '--');
+                                pEl.className = 'h-stat-val';
+                                pEl.style.setProperty('color', estimated?.hasValue ? (estimated.value >= 0 ? '#10b981' : '#ef4444') : '#94a3b8', 'important');
+                            }
+                            if (prEl) {
+                                prEl.innerText = '₹' + (toFiniteNumber(item.price) ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+                                prEl.className = 'h-stat-val';
+                                prEl.style.setProperty('color', '#ffffff', 'important');
+                            }
+                            return;
+                        }
+
                         refreshTradeDisplayPrice(item);
                         const currPrice = getTradeDisplayPrice(item);
                         const unrealized = getTradeUnrealizedMetrics(item, currPrice);
                         const prof = unrealized.profit;
                         const profPct = unrealized.profitPct;
-
-                        const prEl = document.getElementById(`hPrice-${item.id}`);
-                        const pEl = document.getElementById(`hProfit-${item.id}`);
 
                         if (prEl) {
                             prEl.innerText = '₹' + currPrice.toLocaleString('en-IN', { maximumFractionDigits: 2 });

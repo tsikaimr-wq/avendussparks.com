@@ -1588,7 +1588,7 @@ window.DB = {
 
         return (data || []).map(trade => ({
             ...trade,
-            est_profit_percent: trade.products ? (trade.products.est_profit_percent || trade.products.profit) : null,
+            est_profit_percent: trade.products ? (trade.products.est_profit_percent ?? trade.products.profit) : null,
             exchange: trade.products ? trade.products.exchange : null
         }));
     },
@@ -1613,7 +1613,7 @@ window.DB = {
 
         return (data || []).map(trade => ({
             ...trade,
-            est_profit_percent: trade.products ? (trade.products.est_profit_percent || trade.products.profit) : null,
+            est_profit_percent: trade.products ? (trade.products.est_profit_percent ?? trade.products.profit) : null,
             exchange: trade.products ? trade.products.exchange : null
         }));
     },
