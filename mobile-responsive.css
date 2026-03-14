@@ -682,6 +682,199 @@ iframe {
         padding-right: 0 !important;
     }
 
+    .market-shell #meView {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        padding: 0.25rem 0 6rem !important;
+        background: transparent !important;
+    }
+
+    .market-shell .me-left-col,
+    .market-shell .me-right-col {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow: visible !important;
+        padding-right: 0 !important;
+    }
+
+    .market-shell .me-card {
+        min-width: 0 !important;
+        padding: 1.1rem !important;
+        border-radius: 18px !important;
+    }
+
+    .market-shell .me-card[style*="height: 100%"] {
+        height: auto !important;
+    }
+
+    .market-shell .me-card-tag {
+        top: 1rem !important;
+        right: 1rem !important;
+    }
+
+    .market-shell .me-title-row {
+        margin-bottom: 1rem !important;
+        padding-right: 2rem !important;
+        line-height: 1.4 !important;
+    }
+
+    .market-shell .me-profile-main {
+        align-items: flex-start !important;
+        flex-wrap: wrap !important;
+        gap: 1rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    .market-shell .me-p-avatar {
+        width: 64px !important;
+        height: 64px !important;
+        flex: 0 0 64px !important;
+        font-size: 1.35rem !important;
+    }
+
+    .market-shell .me-p-info {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+    }
+
+    .market-shell .me-p-info h2 {
+        font-size: 1.25rem !important;
+        line-height: 1.25 !important;
+        word-break: break-word !important;
+    }
+
+    .market-shell .me-p-info p {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 0.35rem !important;
+        line-height: 1.5 !important;
+    }
+
+    .market-shell #meKycStatusBadge {
+        display: inline-flex !important;
+        align-items: center !important;
+        max-width: 100% !important;
+    }
+
+    .market-shell .me-vip-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 0.75rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    .market-shell .me-stat-item {
+        min-width: 0 !important;
+        padding: 0.95rem 0.75rem !important;
+    }
+
+    .market-shell .me-stat-label,
+    .market-shell .me-as-lbl,
+    .market-shell .me-as-sub {
+        line-height: 1.4 !important;
+        word-break: break-word !important;
+    }
+
+    .market-shell .me-stat-val {
+        font-size: 1.15rem !important;
+        line-height: 1.25 !important;
+        word-break: break-word !important;
+    }
+
+    .market-shell .me-btn-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 0.75rem !important;
+    }
+
+    .market-shell .me-btn {
+        width: 100% !important;
+        min-width: 0 !important;
+        min-height: 50px !important;
+        padding: 0.95rem 0.85rem !important;
+        border-radius: 14px !important;
+        font-size: 0.95rem !important;
+    }
+
+    .market-shell .me-asset-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 0.75rem !important;
+    }
+
+    .market-shell .me-as-card {
+        min-width: 0 !important;
+        padding: 0.95rem !important;
+    }
+
+    .market-shell .me-as-val,
+    .market-shell .me-as-val .asset-value {
+        display: block !important;
+        min-width: 0 !important;
+        line-height: 1.4 !important;
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+    }
+
+    .market-shell .gauge-wrap {
+        padding: 0.5rem 0 0 !important;
+    }
+
+    .market-shell .gauge-score-text {
+        font-size: 2rem !important;
+    }
+
+    .market-shell .gauge-svg {
+        width: 100% !important;
+        max-width: 280px !important;
+        height: auto !important;
+    }
+
+    .market-shell .score-details {
+        gap: 0.6rem !important;
+    }
+
+    .market-shell .score-row {
+        align-items: flex-start !important;
+        gap: 0.75rem !important;
+    }
+
+    .market-shell .score-row span {
+        min-width: 0 !important;
+        flex: 1 1 auto !important;
+    }
+
+    .market-shell .score-info-box {
+        margin-top: 0.75rem !important;
+        padding: 1rem !important;
+    }
+
+    .market-shell .me-apps-header {
+        margin-bottom: 1rem !important;
+    }
+
+    .market-shell .app-pill-row {
+        gap: 0.45rem !important;
+        padding-bottom: 0.35rem !important;
+        margin-bottom: 0.5rem !important;
+        scrollbar-width: none !important;
+    }
+
+    .market-shell .app-pill-row::-webkit-scrollbar {
+        display: none !important;
+    }
+
+    .market-shell .app-pill {
+        flex: 0 0 auto !important;
+    }
+
+    .market-shell .no-data-wrap {
+        min-height: 220px !important;
+        padding: 2.5rem 0 !important;
+        text-align: center !important;
+    }
+
     .market-shell .footer-market {
         padding: 1rem 0.95rem 5.5rem !important;
         flex-direction: column !important;
@@ -1436,6 +1629,64 @@ iframe {
 
     .market-shell .portfolio-fund-summary {
         font-size: 0.78rem !important;
+    }
+
+    .market-shell #meView {
+        gap: 0.85rem !important;
+        padding-bottom: 6.25rem !important;
+    }
+
+    .market-shell .me-card {
+        padding: 0.95rem !important;
+        border-radius: 16px !important;
+    }
+
+    .market-shell .me-title-row {
+        font-size: 0.95rem !important;
+    }
+
+    .market-shell .me-profile-main {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+    }
+
+    .market-shell .me-p-avatar {
+        width: 60px !important;
+        height: 60px !important;
+        flex-basis: 60px !important;
+    }
+
+    .market-shell .me-p-info {
+        width: 100% !important;
+    }
+
+    .market-shell .me-p-info h2 {
+        font-size: 1.1rem !important;
+    }
+
+    .market-shell .me-vip-stats,
+    .market-shell .me-btn-row,
+    .market-shell .me-asset-grid {
+        grid-template-columns: 1fr !important;
+    }
+
+    .market-shell .me-btn {
+        min-height: 48px !important;
+        font-size: 0.9rem !important;
+    }
+
+    .market-shell .gauge-score-text {
+        font-size: 1.8rem !important;
+    }
+
+    .market-shell .score-row {
+        flex-direction: column !important;
+        gap: 0.3rem !important;
+    }
+
+    .market-shell .no-data-wrap {
+        min-height: 180px !important;
+        padding: 2rem 0 !important;
     }
 
     .market-shell .footer-market {
