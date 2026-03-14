@@ -4495,9 +4495,17 @@
             return `₹${numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
 
+        function getMoverNoQuoteState() {
+            const marketOpen = isIndiaRegularMarketOpenNow();
+            return {
+                text: marketOpen ? 'Quote unavailable' : '休盘中',
+                color: '#94a3b8'
+            };
+        }
+
         function describeMarketPayload(payload) {
             if (!payload || payload.status === 'error') {
-                return { text: 'Quote unavailable', color: '#94a3b8' };
+                return getMoverNoQuoteState();
             }
             const source = String(payload.source || '').toLowerCase();
             if (payload.delayed || source.includes('fallback')) {
@@ -4551,14 +4559,16 @@
             if (!state) return;
             state.exchange = exchange;
             const requestId = ++state.requestId;
+            const noQuote = getMoverNoQuoteState();
+            const marketClosed = noQuote.text === '休盘中';
             const seedRows = (stockData[type]?.[exchange] || []).map(item => ({
                 t: item.t,
                 n: item.n,
                 p: '--',
-                c: 'Checking API...',
+                c: marketClosed ? noQuote.text : 'Checking API...',
                 changeClass: type === 'gainers' ? 'green' : 'red',
                 changeColor: '#94a3b8',
-                metaText: 'Loading live quote',
+                metaText: marketClosed ? noQuote.text : 'Loading live quote',
                 metaColor: '#94a3b8',
                 detailColor: type === 'gainers' ? '#10b981' : '#ef4444'
             }));
@@ -4578,9 +4588,10 @@
                 const changePercent = Number(payload?.changePercent);
                 const hasChange = Number.isFinite(changePercent);
                 const isPositive = hasChange ? changePercent >= 0 : type === 'gainers';
+                const noQuote = getMoverNoQuoteState();
                 const changeText = hasChange
                     ? `${isPositive ? '+' : ''}${changePercent.toFixed(2)}%`
-                    : 'Quote unavailable';
+                    : noQuote.text;
                 const quoteMeta = describeMarketPayload(payload);
 
                 liveRows.push({
