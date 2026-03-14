@@ -2920,6 +2920,19 @@
                     </div>
                 </div>
 
+                <div class="kyc-form-group"
+                    style="margin-top:15px; background: #eff6ff; padding: 12px; border-radius: 8px; border: 1px solid #bfdbfe;">
+                    <div style="display:flex; align-items:center; justify-content:space-between;">
+                        <div>
+                            <div style="font-weight:700; color:#1d4ed8; font-size:0.85rem;">Lock Customer Sell</div>
+                            <div style="font-size:0.75rem; color:#2563eb;">贷款未还清时，可锁定该客户的卖出功能</div>
+                        </div>
+                        <div style="transform: scale(1.2);">
+                            <input type="checkbox" id="olm_lock_sell" style="cursor:pointer;">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="kyc-form-group">
                     <label data-i18n="lbl_admin_note">Admin Internal Note</label>
                     <textarea id="olm_admin_note" rows="2"
@@ -5677,11 +5690,15 @@
         async function executeRepayment() {
             const loanId = window._pendingRepayLoanId;
             if (!loanId) return;
+            const userId = document.getElementById('olm_user_id')?.value;
 
             showLoader(true);
             try {
                 const res = await window.DB.markLoanAsRepaid(loanId);
                 if (res.success) {
+                    if (userId) {
+                        await persistUserSellLockState(userId, false, { loanId, onlyLoanSource: true });
+                    }
                     showAlert('success', "Loan marked as fully repaid.", "Payment Successful");
                     closeLoanRepayConfirmModal();
                     closeLoanOperateModal();
@@ -6206,6 +6223,11 @@
         let _searchTimeout = null;
         window.debouncedAdminSearch = async function (query) {
             const resultsDiv = document.getElementById('admin_search_results');
+            const currentSource = document.getElementById('p_data_source')?.value || 'yahoo';
+            if (currentSource !== 'yahoo') {
+                if (resultsDiv) resultsDiv.style.display = 'none';
+                return;
+            }
             if (!query || query.length < 2) {
                 resultsDiv.style.display = 'none';
                 return;
@@ -6253,6 +6275,10 @@
 
             // Store data globally for manual type-switch re-trigger
             window._lastSelectedYahooData = data;
+            if (document.getElementById('p_data_source')) {
+                document.getElementById('p_data_source').value = 'yahoo';
+                applyProductDataSourceUI('yahoo');
+            }
 
             // 1. SMART PRODUCT TYPE DETECTION
             let detectedType = 'IPO';
@@ -6322,6 +6348,7 @@
             const sellLockGroup = document.getElementById('p_sell_lock_group');
             const sellLockInput = document.getElementById('p_sell_locked');
             const canLockSell = type === 'IPO' || type === 'OTC';
+            applyProductDataSourceUI(document.getElementById('p_data_source')?.value || getDefaultProductDataSource(type));
 
             if (sellLockGroup) sellLockGroup.style.display = canLockSell ? 'flex' : 'none';
             if (!canLockSell && sellLockInput) sellLockInput.checked = false;
@@ -6372,7 +6399,9 @@
         }
 
         const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
+        const USER_SELL_LOCKS_KEY = 'user_sell_locks';
         let cachedProductSellLockMap = null;
+        let cachedUserSellLockMap = null;
 
         function parseAdminPlatformSettingObject(value) {
             if (!value) return {};
@@ -6447,6 +6476,86 @@
             return result;
         }
 
+        async function loadUserSellLockMap(force = false) {
+            if (!force && cachedUserSellLockMap) return cachedUserSellLockMap;
+            const rawValue = await window.DB.getPlatformSettings(USER_SELL_LOCKS_KEY);
+            cachedUserSellLockMap = parseAdminPlatformSettingObject(rawValue);
+            return cachedUserSellLockMap;
+        }
+
+        function getUserSellLockEntry(userId, lockMap = cachedUserSellLockMap || {}) {
+            const key = String(userId || '').trim();
+            if (!key) return null;
+            const direct = lockMap[key];
+            return direct && direct.locked ? direct : null;
+        }
+
+        async function persistUserSellLockState(userId, locked, options = {}) {
+            const key = String(userId || '').trim();
+            if (!key) return { success: false, error: { message: 'User ID is required to sync sell lock state.' } };
+
+            const currentMap = await loadUserSellLockMap(true);
+            const nextMap = { ...currentMap };
+            const currentEntry = nextMap[key];
+
+            if (locked) {
+                nextMap[key] = {
+                    locked: true,
+                    user_id: key,
+                    source: options.source || currentEntry?.source || 'manual',
+                    loan_id: options.loanId || currentEntry?.loan_id || null,
+                    reason: options.reason || currentEntry?.reason || 'Customer sell function is locked by the backend.',
+                    updated_at: new Date().toISOString()
+                };
+            } else {
+                if (options.onlyLoanSource && currentEntry?.source && currentEntry.source !== 'loan') {
+                    return { success: true };
+                }
+                if (options.loanId && currentEntry?.loan_id && String(currentEntry.loan_id) !== String(options.loanId) && options.force !== true) {
+                    return { success: true };
+                }
+                delete nextMap[key];
+            }
+
+            const result = await window.DB.updatePlatformSettings(USER_SELL_LOCKS_KEY, nextMap);
+            if (result.success) cachedUserSellLockMap = nextMap;
+            return result;
+        }
+
+        function getDefaultProductDataSource(type) {
+            if (type === 'Ins.stocks') return 'yahoo';
+            if (type === 'IPO' || type === 'OTC') return 'turbo';
+            return 'manual';
+        }
+
+        function applyProductDataSourceUI(source) {
+            const resolvedSource = source || document.getElementById('p_data_source')?.value || getDefaultProductDataSource(currentProductFilter);
+            const yahooBlock = document.getElementById('p_yahoo_search_block');
+            const turboBlock = document.getElementById('p_turbo_source_block');
+            const helpBlock = document.getElementById('p_source_help');
+            const searchResults = document.getElementById('admin_search_results');
+            const productType = document.getElementById('p_product_type')?.value || currentProductFilter || 'IPO';
+
+            if (document.getElementById('p_data_source')) {
+                document.getElementById('p_data_source').value = resolvedSource;
+            }
+
+            if (yahooBlock) yahooBlock.style.display = resolvedSource === 'yahoo' ? 'block' : 'none';
+            if (turboBlock) turboBlock.style.display = resolvedSource === 'turbo' ? 'block' : 'none';
+            if (searchResults && resolvedSource !== 'yahoo') searchResults.style.display = 'none';
+
+            if (helpBlock) {
+                const label = productType === 'Ins.stocks' ? 'Ins.Stock' : productType;
+                if (resolvedSource === 'yahoo') {
+                    helpBlock.innerText = `当前来源：真实股票数据库（Yahoo Finance），适合 ${label} 实时股票。`;
+                } else if (resolvedSource === 'turbo') {
+                    helpBlock.innerText = `当前来源：Turbo 数据库，适合 ${label} 的后台产品快速填充。`;
+                } else {
+                    helpBlock.innerText = `当前来源：手动录入，你可以直接填写 ${label} 产品资料。`;
+                }
+            }
+        }
+
         async function openIpoFetchModal() {
             const modal = document.getElementById('ipoFetchModal');
             const list = document.getElementById('ipoFetchList');
@@ -6516,6 +6625,10 @@
             
             // Open Add Product modal
             openAddProductModal();
+            if (document.getElementById('p_data_source')) {
+                document.getElementById('p_data_source').value = 'turbo';
+                applyProductDataSourceUI('turbo');
+            }
             
             // Standardize Symbol
             let fullSymbol = data.symbol;
@@ -6583,6 +6696,9 @@
             if (document.getElementById('p_product_type')) {
                 document.getElementById('p_product_type').value = currentProductFilter;
             }
+            if (document.getElementById('p_data_source')) {
+                document.getElementById('p_data_source').value = getDefaultProductDataSource(currentProductFilter);
+            }
             if (document.getElementById('p_sell_locked')) {
                 document.getElementById('p_sell_locked').checked = false;
             }
@@ -6626,6 +6742,9 @@
             if (document.getElementById('p_exchange')) {
                 document.getElementById('p_exchange').value = p.exchange || 'NSE';
             }
+            if (document.getElementById('p_data_source')) {
+                document.getElementById('p_data_source').value = p.product_type === 'Ins.stocks' ? 'yahoo' : 'manual';
+            }
             if (document.getElementById('p_sell_locked')) {
                 const sellLockMap = await loadProductSellLockMap();
                 document.getElementById('p_sell_locked').checked = !!getProductSellLockEntry(p, sellLockMap)?.locked;
@@ -6648,6 +6767,7 @@
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
             let rawSymbol = document.getElementById('p_market_symbol').value || '';
             let processedSymbol = rawSymbol.trim().toUpperCase();
+            const productSource = document.getElementById('p_data_source')?.value || getDefaultProductDataSource(document.getElementById('p_product_type')?.value);
 
             const p = {
                 name: document.getElementById('p_name').value,
@@ -6706,7 +6826,7 @@
                     await dbClient.from('market_cache').upsert({
                         symbol: rawSymbolStore,
                         price: p.subscription_price || p.price || 0,
-                        source: 'yahoo',
+                        source: productSource,
                         updated_at: new Date().toISOString()
                     }, { onConflict: 'symbol' });
                 } catch (syncErr) {
@@ -7309,6 +7429,9 @@
                 safeSet('olm_terms', displayTerms);
                 safeSet('olm_admin_note', displayNote);
                 safeSet('olm_eligibility', !!loan.users.loan_enabled, 'checked');
+                const userSellLockMap = await loadUserSellLockMap();
+                const userSellLock = getUserSellLockEntry(uid, userSellLockMap);
+                safeSet('olm_lock_sell', !!(userSellLock?.locked && (!userSellLock.loan_id || String(userSellLock.loan_id) === String(loan.id))), 'checked');
 
                 // --- MARK AS REPAID BUTTON VISIBILITY ---
                 const btnRepaid = document.getElementById('btn_mark_repaid');
@@ -7363,6 +7486,7 @@
             const terms = document.getElementById('olm_terms').value;
             let adminNote = document.getElementById('olm_admin_note').value.trim();
             const eligibility = document.getElementById('olm_eligibility').checked;
+            const lockSell = !!document.getElementById('olm_lock_sell')?.checked;
 
             // STATUS-BASED DEFAULT NOTE GENERATION
             if (!adminNote) {
@@ -7389,7 +7513,26 @@
 
             showLoader(false);
             if (res.success) {
-                showAlert('success', "Loan application updated successfully!");
+                let sellLockSyncError = null;
+                const normalizedStatus = String(status || '').toUpperCase();
+                if (normalizedStatus === 'APPROVED') {
+                    const lockRes = await persistUserSellLockState(userId, lockSell, {
+                        loanId: id,
+                        onlyLoanSource: true,
+                        source: 'loan',
+                        reason: 'Customer sell function is locked by the backend until the approved loan is fully repaid.'
+                    });
+                    if (!lockRes.success) {
+                        sellLockSyncError = lockRes.error?.message || 'Failed to sync loan sell lock.';
+                    }
+                } else if (['REJECTED', 'FULLY_REPAID'].includes(normalizedStatus)) {
+                    const unlockRes = await persistUserSellLockState(userId, false, { loanId: id, onlyLoanSource: true });
+                    if (!unlockRes.success) {
+                        sellLockSyncError = unlockRes.error?.message || 'Failed to clear loan sell lock.';
+                    }
+                }
+
+                showAlert(sellLockSyncError ? 'warning' : 'success', sellLockSyncError ? `Loan updated, but sell-lock sync failed: ${sellLockSyncError}` : "Loan application updated successfully!");
                 closeLoanOperateModal();
                 init(); // Refresh dashboard
             } else {
@@ -7428,8 +7571,18 @@
                         data-lucide="x"></i></button>
             </div>
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                <div class="fm-group">
+                    <label>Data Source</label>
+                    <select id="p_data_source" class="vsl-input" onchange="applyProductDataSourceUI(this.value)">
+                        <option value="yahoo">Real Stock (Yahoo)</option>
+                        <option value="turbo">Turbo Database</option>
+                        <option value="manual">Manual Entry</option>
+                    </select>
+                </div>
+                <div class="fm-group" id="p_source_help" style="grid-column: span 2; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; color:#475569; font-size:0.78rem;">
+                </div>
                 <!-- Yahoo Search Integration -->
-                <div class="fm-group" style="grid-column: span 2; position: relative;">
+                <div class="fm-group" id="p_yahoo_search_block" style="grid-column: span 2; position: relative;">
                     <label style="color:#d4af37; font-weight:700;" data-i18n="lbl_yahoo_search">Yahoo Finance Search
                         (Assistant)</label>
                     <div style="display:flex; gap:0.5rem;">
@@ -7442,6 +7595,13 @@
                     </div>
                     <div id="admin_search_results"
                         style="display:none; position:absolute; top:100%; left:0; right:0; background:white; border:1px solid #e2e8f0; border-radius:8px; box-shadow:0 10px 25px -5px rgba(0,0,0,0.1); z-index:100; max-height:250px; overflow-y:auto; margin-top:5px;">
+                    </div>
+                </div>
+                <div class="fm-group" id="p_turbo_source_block" style="grid-column: span 2; display:none;">
+                    <label style="color:#10b981; font-weight:700;">Turbo Database</label>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; background:#ecfdf5; border:1px solid #bbf7d0; border-radius:10px; padding:12px;">
+                        <div style="font-size:0.78rem; color:#166534;">使用后台 Turbo 数据库快速选择真实/预设产品。</div>
+                        <button type="button" class="vsl-btn-small" style="background:#10b981; color:white; border:none;" onclick="openIpoFetchModal()">Open Turbo</button>
                     </div>
                 </div>
 

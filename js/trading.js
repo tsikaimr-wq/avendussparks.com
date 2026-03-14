@@ -10,9 +10,12 @@ const SELL_TXN_RATE = 0.0003;
 const tradePriceRefreshAt = {};
 const TRADE_PRICE_REFRESH_COOLDOWN_MS = 4000;
 const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
+const USER_SELL_LOCKS_KEY = 'user_sell_locks';
 const PRODUCT_SELL_LOCK_CACHE_TTL_MS = 5000;
+const USER_SELL_LOCK_CACHE_TTL_MS = 5000;
 const USER_LOAN_LOCK_CACHE_TTL_MS = 5000;
 let productSellLockCache = { ts: 0, data: {} };
+let userSellLockCache = { ts: 0, data: {} };
 const userLoanRestrictionCache = {};
 
 const tradeToFiniteNumber = (value) => {
@@ -284,6 +287,35 @@ const loadProductSellLockMap = async (options = {}) => {
     }
 };
 
+const loadUserSellLockMap = async (options = {}) => {
+    const force = options.force === true;
+    const now = Date.now();
+    if (!force && userSellLockCache.ts && (now - userSellLockCache.ts) < USER_SELL_LOCK_CACHE_TTL_MS) {
+        return userSellLockCache.data || {};
+    }
+
+    try {
+        const rawValue = await window.DB?.getPlatformSettings?.(USER_SELL_LOCKS_KEY);
+        userSellLockCache = {
+            ts: now,
+            data: normalizeProductSellLockMap(rawValue)
+        };
+        return userSellLockCache.data;
+    } catch (error) {
+        console.warn("Failed to load user sell locks:", error);
+        return userSellLockCache.data || {};
+    }
+};
+
+const getUserSellLock = async (user, options = {}) => {
+    const userId = String(user?.id || '').trim();
+    if (!userId) return null;
+    const lockMap = await loadUserSellLockMap(options);
+    const directEntry = lockMap[userId];
+    if (directEntry?.locked) return directEntry;
+    return null;
+};
+
 const getTradeSellLock = async (trade, options = {}) => {
     if (!trade || !['ipo', 'otc'].includes(normalizeTradeType(trade?.type))) return null;
     const sellLocks = await loadProductSellLockMap(options);
@@ -380,6 +412,11 @@ const fetchUserLoanRestriction = async (userId, options = {}) => {
 };
 
 const getTradeSellRestrictionMessage = async (trade, user, options = {}) => {
+    const userSellLock = await getUserSellLock(user, options);
+    if (userSellLock) {
+        return userSellLock.reason || 'Selling for this customer is locked by the backend.';
+    }
+
     const sellLock = await getTradeSellLock(trade, options);
     if (sellLock) {
         return sellLock.reason || 'Selling for this product has been locked by the backend.';
