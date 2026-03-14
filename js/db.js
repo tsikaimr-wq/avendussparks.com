@@ -677,7 +677,7 @@ window.DB = {
             .from('users')
             .insert([insertData])
             .select()
-            .single();
+            .maybeSingle();
 
         if (error) {
             console.error("Registration Error:", error);
@@ -2211,12 +2211,16 @@ window.DB = {
                 return await client
                     .from('products')
                     .update(data)
-                    .eq('id', data.id);
+                    .eq('id', data.id)
+                    .select()
+                    .maybeSingle();
             } else {
                 const { id, ...saveData } = data;
                 return await client
                     .from('products')
-                    .insert([saveData]);
+                    .insert([saveData])
+                    .select()
+                    .maybeSingle();
             }
         };
 
@@ -2241,7 +2245,7 @@ window.DB = {
             result = await performSave(fallbackData);
         }
 
-        return { success: !result.error, error: result.error };
+        return { success: !result.error, data: result.data || null, error: result.error };
     },
 
     async deleteProduct(id) {

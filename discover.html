@@ -16,7 +16,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="stocktv_config.js?v=1.0.2"></script>
-    <script src="db.js?v=20260313h"></script>
+    <script src="db.js?v=20260314a"></script>
     <script src="market_data.js?v=20260311f"></script>
     <style>
         /* Using global styles from styles.css */
@@ -6831,6 +6831,78 @@
             if (modal) modal.style.display = 'none';
         }
 
+        function resolveDetailTradeProduct(symbol) {
+            const base = String(symbol || document.getElementById('detSymbol')?.innerText || '').toUpperCase();
+            const compact = base
+                .replace(/^NSE:|^BSE:/, '')
+                .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+            return window.MarketEngine?.getProduct?.(currentProductId)
+                || window.MarketEngine?.getProduct?.(symbol)
+                || window.MarketEngine?.getProduct?.(base)
+                || window.MarketEngine?.getProduct?.(compact)
+                || window.MarketEngine?.getProduct?.(`${compact}.NS`)
+                || window.MarketEngine?.getProduct?.(`${compact}.BO`)
+                || null;
+        }
+
+        async function resolveExecutionCalc(type, symbol, stockName, calc) {
+            const normalizedType = String(type || '').toLowerCase();
+            const quantity = Math.max(0, parseFloat(calc?.qty) || 0);
+            const product = resolveDetailTradeProduct(symbol);
+            const buildCalc = (price, taxRate, feeRate) => {
+                const numericPrice = toFiniteNumber(price) ?? 0;
+                const baseTotal = quantity * numericPrice;
+                const tax = baseTotal * taxRate;
+                const txnCharge = baseTotal * feeRate;
+                return {
+                    ...calc,
+                    qty: quantity,
+                    price: numericPrice,
+                    baseTotal,
+                    tax,
+                    txnCharge,
+                    total: baseTotal + tax + txnCharge
+                };
+            };
+
+            if (normalizedType === 'otc' || normalizedType === 'ipo') {
+                const backendPrice = toFiniteNumber(product?.subscription_price)
+                    ?? toFiniteNumber(product?.price)
+                    ?? toFiniteNumber(calc?.price);
+                return buildCalc(backendPrice, 0, 0);
+            }
+
+            let livePrice = null;
+            try {
+                const liveQuote = await window.DB?.getMarketPrice?.(symbol, stockName);
+                const numericLivePrice = toFiniteNumber(liveQuote?.price);
+                if (numericLivePrice !== null && numericLivePrice > 0) {
+                    livePrice = numericLivePrice;
+                }
+            } catch (error) {
+                console.warn("Live market buy price refresh failed:", error);
+            }
+
+            if ((!Number.isFinite(livePrice) || livePrice <= 0) && window.DB?.getCachedMarketPrice) {
+                try {
+                    const cachedPrice = Number(await window.DB.getCachedMarketPrice(symbol, stockName));
+                    if (Number.isFinite(cachedPrice) && cachedPrice > 0) {
+                        livePrice = cachedPrice;
+                    }
+                } catch (error) {
+                    console.warn("Cached market buy price refresh failed:", error);
+                }
+            }
+
+            if (!Number.isFinite(livePrice) || livePrice <= 0) {
+                livePrice = toFiniteNumber(product?.price)
+                    ?? toFiniteNumber(calc?.price)
+                    ?? 0;
+            }
+
+            return buildCalc(livePrice, 0.0012, 0.0003);
+        }
+
         async function executeConfirmedTrade(type, symbol, stockName, calc) {
             const btn = document.getElementById('ocConfirmBtn');
             const originalText = btn.innerText;
@@ -6847,11 +6919,12 @@
                 }
 
                 // 2. Validate Balance
+                const executionCalc = await resolveExecutionCalc(type, symbol, stockName, calc);
                 const currentBalance = parseFloat(freshUser.balance || 0);
-                const isInsufficient = calc.total > currentBalance;
+                const isInsufficient = executionCalc.total > currentBalance;
 
                 if (type.toLowerCase() !== 'ipo' && isInsufficient) {
-                    showModal('error', 'Insufficient Balance', `Your available balance is ₹${currentBalance.toFixed(2)}, but total cost is ₹${calc.total.toFixed(2)}.`, () => {
+                    showModal('error', 'Insufficient Balance', `Your available balance is ₹${currentBalance.toFixed(2)}, but total cost is ₹${executionCalc.total.toFixed(2)}.`, () => {
                         closeOrderConfirm();
                     });
                     return;
@@ -6869,12 +6942,12 @@
                     symbol: symbol,
                     name: stockName,
                     type: type.toLowerCase(),
-                    quantity: calc.qty,
-                    requested_quantity: calc.qty,
-                    price: calc.price,
-                    total_amount: calc.total,
-                    tax_amount: 0,
-                    txn_charge: 0,
+                    quantity: executionCalc.qty,
+                    requested_quantity: executionCalc.qty,
+                    price: executionCalc.price,
+                    total_amount: executionCalc.total,
+                    tax_amount: executionCalc.tax,
+                    txn_charge: executionCalc.txnCharge,
                     admin_note: isInsufficient ? 'OUTSTANDING:' + currentBalance : '',
                     status: 'AWAITING_APPROVAL',
                     order_status: isIPO ? 'PENDING' : 'OPEN'
@@ -6914,7 +6987,7 @@
                 if (result.success) {
                     // OTC must debit immediately on subscription click.
                     if (type.toLowerCase() === 'otc') {
-                        const expectedDebit = parseFloat(calc.total || 0);
+                        const expectedDebit = parseFloat(executionCalc.total || 0);
                         const expectedFrozen = expectedDebit;
                         let syncedUser = await window.DB.refreshCurrentUser();
 
@@ -7001,7 +7074,7 @@
                             });
                         });
                     } else if (isInsufficient) {
-                        showModal('warning', 'Order Queued', `Your balance of ₹${currentBalance.toLocaleString('en-IN')} has been applied. Please settle the remaining ₹${(calc.total - currentBalance).toLocaleString('en-IN')} to finalize your subscription.`, () => {
+                        showModal('warning', 'Order Queued', `Your balance of ₹${currentBalance.toLocaleString('en-IN')} has been applied. Please settle the remaining ₹${(executionCalc.total - currentBalance).toLocaleString('en-IN')} to finalize your subscription.`, () => {
                             window.DB.refreshCurrentUser().then(() => {
                                 if (typeof syncUserData === 'function') syncUserData();
                                 showDiscoverView('transactions');
@@ -7010,7 +7083,7 @@
                         });
                     } else {
                         // For OTC/IPO that isn't insufficient but just needs a nicer approval modal
-                        openPurchaseModal(type, symbol, stockName, calc.qty, calc.total);
+                        openPurchaseModal(type, symbol, stockName, executionCalc.qty, executionCalc.total);
                     }
                 } else {
                     const errStr = result.error?.message || result.error || "Unknown error";
@@ -7173,8 +7246,14 @@
 
             try {
                 const freshUser = await window.DB.refreshCurrentUser();
-                const tradePrice = currentIpoData.subscriptionPrice || currentIpoData.price || 0;
-                const qty = tradePrice > 0 ? Math.max(1, Math.floor(currentIpoData.baseAmount / tradePrice)) : 1;
+                const product = resolveDetailTradeProduct(currentIpoData.symbol);
+                const tradePrice = toFiniteNumber(product?.subscription_price)
+                    ?? toFiniteNumber(currentIpoData.subscriptionPrice)
+                    ?? toFiniteNumber(currentIpoData.price)
+                    ?? 0;
+                const baseAmount = toFiniteNumber(currentIpoData.baseAmount) ?? toFiniteNumber(currentIpoData.total) ?? 0;
+                const qty = tradePrice > 0 ? Math.max(1, Math.floor(baseAmount / tradePrice)) : 1;
+                const totalAmount = tradePrice > 0 ? (qty * tradePrice) : baseAmount;
 
                 const tradeData = {
                     user_id: freshUser.id,
@@ -7185,7 +7264,7 @@
                     quantity: qty,
                     requested_quantity: qty,
                     price: tradePrice,
-                    total_amount: currentIpoData.total,
+                    total_amount: totalAmount,
                     status: 'AWAITING_APPROVAL',
                     order_status: 'PENDING',
                     allotment_date: currentIpoData.allotmentDateRaw || null,
@@ -7282,6 +7361,28 @@
             return window.TradePricing || null;
         }
 
+        function getTradeRestrictionLabel(message = '') {
+            const normalized = String(message || '').toLowerCase();
+            if (!normalized) return '';
+            if (normalized.includes('loan')) return 'Locked: Loan Outstanding';
+            if (normalized.includes('backend')) return 'Locked by Backend';
+            return 'Selling Restricted';
+        }
+
+        async function enrichTradeSellRestrictions(trades, user) {
+            const pricing = getTradePricingUtils();
+            if (!pricing || typeof pricing.getTradeSellRestrictionMessage !== 'function' || !Array.isArray(trades) || !user) {
+                return trades;
+            }
+
+            await Promise.all(trades.map(async (trade) => {
+                const restrictionMessage = await pricing.getTradeSellRestrictionMessage(trade, user);
+                trade.sell_restriction_message = restrictionMessage || '';
+                trade.sell_restriction_label = restrictionMessage ? getTradeRestrictionLabel(restrictionMessage) : '';
+            }));
+            return trades;
+        }
+
         function getTradeDisplayPrice(trade) {
             const pricing = getTradePricingUtils();
             if (pricing && typeof pricing.getCachedTradeMarketPrice === 'function') {
@@ -7342,6 +7443,7 @@
             const updateList = async () => {
                 try {
                     const trades = await window.DB.getTradesByUserId(user.id);
+                    await enrichTradeSellRestrictions(trades, user);
                     const myTrades = trades.filter(t => {
                         const status = String(t.status || '').toUpperCase();
                         return ['HOLDING', 'APPROVED', 'SETTLED', 'CONFIRMED'].includes(status)
@@ -7379,6 +7481,9 @@
                                         const lDateStr = new Date(pListingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
                                         return `<button class="h-btn close" style="margin-top: 0.5rem; padding: 4px 12px; height: auto; font-size: 0.70rem; background:#475569 !important; border-color:#475569 !important; cursor:not-allowed; opacity:0.8;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
                                     }
+                                    if (t.sell_restriction_message) {
+                                        return `<button class="h-btn close" style="margin-top: 0.5rem; padding: 4px 12px; height: auto; font-size: 0.70rem; background:#475569 !important; border-color:#475569 !important; cursor:not-allowed; opacity:0.8;" disabled>${t.sell_restriction_label || 'Selling Restricted'}</button>`;
+                                    }
                                     return `<button class="h-btn close close-order-btn" style="margin-top: 0.5rem; padding: 4px 12px; height: auto; font-size: 0.75rem;" data-id="${t.id}">Close Order</button>`;
                                 })()}
                                     </div>
@@ -7415,6 +7520,7 @@
 
             // Fetch latest trades
             const trades = await window.DB.getTradesByUserId(user.id);
+            await enrichTradeSellRestrictions(trades, user);
             console.log("Trade Statuses:", trades.map(t => t.status));
 
             // Frontend-only categorization: Standardize legacy stock statuses to 'Holding'
@@ -7536,6 +7642,8 @@
                                 return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked until ${lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</button>`;
                             } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
                                 return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked (Unpaid)</button>`;
+                            } else if (item.sell_restriction_message) {
+                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>${item.sell_restriction_label || 'Selling Restricted'}</button>`;
                             } else if (isPreListing) {
                                 const lDateStr = new Date(pListingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
                                 return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
@@ -9980,7 +10088,7 @@
             color: #fff;
         }
     </style>
-    <script src="js/trading.js?v=1.0.5"></script>
+    <script src="js/trading.js?v=1.0.6"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             if (typeof openStockDetailFromRoute === 'function' && openStockDetailFromRoute(false)) {

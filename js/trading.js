@@ -9,6 +9,11 @@ const SELL_TAX_RATE = 0.0012;
 const SELL_TXN_RATE = 0.0003;
 const tradePriceRefreshAt = {};
 const TRADE_PRICE_REFRESH_COOLDOWN_MS = 4000;
+const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
+const PRODUCT_SELL_LOCK_CACHE_TTL_MS = 5000;
+const USER_LOAN_LOCK_CACHE_TTL_MS = 5000;
+let productSellLockCache = { ts: 0, data: {} };
+const userLoanRestrictionCache = {};
 
 const tradeToFiniteNumber = (value) => {
     const numeric = Number(value);
@@ -205,6 +210,191 @@ const refreshTradeMarketPrice = async (trade, options = {}) => {
     return getCachedTradeMarketPrice(trade);
 };
 
+const parsePlatformSettingObject = (value) => {
+    if (!value) return {};
+    if (typeof value === 'string') {
+        try {
+            const parsed = JSON.parse(value);
+            return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+        } catch (_) {
+            return {};
+        }
+    }
+    return (typeof value === 'object' && !Array.isArray(value)) ? value : {};
+};
+
+const normalizeProductSellLockMap = (rawValue) => {
+    const parsed = parsePlatformSettingObject(rawValue);
+    const normalized = {};
+    Object.entries(parsed).forEach(([key, value]) => {
+        if (!key) return;
+        if (typeof value === 'boolean') {
+            normalized[String(key)] = { locked: value };
+            return;
+        }
+        if (typeof value === 'string') {
+            normalized[String(key)] = { locked: value.toLowerCase() !== 'false', reason: value };
+            return;
+        }
+        if (value && typeof value === 'object') {
+            normalized[String(key)] = {
+                ...value,
+                locked: value.locked !== false
+            };
+        }
+    });
+    return normalized;
+};
+
+const normalizeTradeKeyValue = (value) => String(value || '').trim().toUpperCase();
+
+const getTradeIdentifierSet = (trade) => {
+    const identifiers = new Set();
+    [
+        trade?.product_id,
+        trade?.products?.id,
+        trade?.symbol,
+        trade?.products?.symbol,
+        trade?.market_symbol,
+        trade?.products?.market_symbol
+    ].forEach((value) => {
+        const normalized = normalizeTradeKeyValue(value);
+        if (normalized) identifiers.add(normalized);
+    });
+    return identifiers;
+};
+
+const loadProductSellLockMap = async (options = {}) => {
+    const force = options.force === true;
+    const now = Date.now();
+    if (!force && productSellLockCache.ts && (now - productSellLockCache.ts) < PRODUCT_SELL_LOCK_CACHE_TTL_MS) {
+        return productSellLockCache.data || {};
+    }
+
+    try {
+        const rawValue = await window.DB?.getPlatformSettings?.(PRODUCT_SELL_LOCKS_KEY);
+        productSellLockCache = {
+            ts: now,
+            data: normalizeProductSellLockMap(rawValue)
+        };
+        return productSellLockCache.data;
+    } catch (error) {
+        console.warn("Failed to load product sell locks:", error);
+        return productSellLockCache.data || {};
+    }
+};
+
+const getTradeSellLock = async (trade, options = {}) => {
+    if (!trade || !['ipo', 'otc'].includes(normalizeTradeType(trade?.type))) return null;
+    const sellLocks = await loadProductSellLockMap(options);
+    const identifiers = getTradeIdentifierSet(trade);
+
+    for (const identifier of identifiers) {
+        if (sellLocks[identifier]?.locked) {
+            return sellLocks[identifier];
+        }
+    }
+
+    for (const entry of Object.values(sellLocks)) {
+        if (!entry?.locked) continue;
+        const aliases = new Set();
+        [
+            entry.product_id,
+            entry.id,
+            entry.symbol,
+            entry.market_symbol
+        ].forEach((value) => {
+            const normalized = normalizeTradeKeyValue(value);
+            if (normalized) aliases.add(normalized);
+        });
+        for (const identifier of identifiers) {
+            if (aliases.has(identifier)) return entry;
+        }
+    }
+
+    return null;
+};
+
+const fetchUserLoanRestriction = async (userId, options = {}) => {
+    const numericUserId = Number(userId);
+    if (!Number.isFinite(numericUserId) || numericUserId <= 0) return null;
+
+    const force = options.force === true;
+    const cached = userLoanRestrictionCache[numericUserId];
+    const now = Date.now();
+    if (!force && cached && (now - cached.ts) < USER_LOAN_LOCK_CACHE_TTL_MS) {
+        return cached.data;
+    }
+
+    const client = window.DB?.getClient?.();
+    if (!client) return null;
+
+    const buildLoanRestriction = (rows) => {
+        const activeLoan = (rows || []).find((loan) => {
+            const status = String(loan?.status || '').trim().toUpperCase();
+            if (!status || ['REJECTED', 'REPAID', 'FULLY_REPAID'].includes(status)) return false;
+            const remainingBalance = tradeToFiniteNumber(loan?.remaining_balance);
+            if (remainingBalance !== null) return remainingBalance > 0;
+            if (loan?.loan_disbursed === true) return true;
+            return ['APPROVED', 'ACTIVE', 'DISBURSED', 'OVERDUE'].includes(status);
+        });
+
+        if (!activeLoan) return null;
+
+        const remainingBalance = tradeToFiniteNumber(activeLoan.remaining_balance);
+        const amountText = remainingBalance !== null && remainingBalance > 0
+            ? ` Outstanding loan balance: ₹${remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`
+            : '';
+        return {
+            loanId: activeLoan.id,
+            message: `This IPO position cannot be sold until all active loans are fully repaid.${amountText}`
+        };
+    };
+
+    let restriction = null;
+    try {
+        const { data, error } = await client
+            .from('loans')
+            .select('id, status, remaining_balance, loan_disbursed')
+            .eq('user_id', numericUserId)
+            .order('created_at', { ascending: false });
+        if (error) throw error;
+        restriction = buildLoanRestriction(data);
+    } catch (error) {
+        try {
+            const { data, error: fallbackError } = await client
+                .from('loans')
+                .select('id, status, amount')
+                .eq('user_id', numericUserId)
+                .order('created_at', { ascending: false });
+            if (fallbackError) throw fallbackError;
+            restriction = buildLoanRestriction(data);
+        } catch (fallbackErr) {
+            console.warn("Failed to load active loan restriction:", fallbackErr);
+            restriction = null;
+        }
+    }
+
+    userLoanRestrictionCache[numericUserId] = { ts: now, data: restriction };
+    return restriction;
+};
+
+const getTradeSellRestrictionMessage = async (trade, user, options = {}) => {
+    const sellLock = await getTradeSellLock(trade, options);
+    if (sellLock) {
+        return sellLock.reason || 'Selling for this product has been locked by the backend.';
+    }
+
+    if (normalizeTradeType(trade?.type) === 'ipo') {
+        const loanRestriction = await fetchUserLoanRestriction(user?.id, options);
+        if (loanRestriction?.message) {
+            return loanRestriction.message;
+        }
+    }
+
+    return null;
+};
+
 window.TradePricing = {
     SELL_TAX_RATE,
     SELL_TXN_RATE,
@@ -216,11 +406,13 @@ window.TradePricing = {
     refreshTradeMarketPrice,
     getTradeCostBasis,
     computeUnrealizedTradeMetrics,
-    computeRealizedTradeMetrics
+    computeRealizedTradeMetrics,
+    getTradeSellLock,
+    getTradeSellRestrictionMessage
 };
 
 // Attach to window for global access
-window.openCloseOrderModal = function (tradeOrId) {
+window.openCloseOrderModal = async function (tradeOrId) {
     const user = window.DB ? window.DB.getCurrentUser() : null;
     if (user && parseFloat(user.balance) < 0) {
         alert("Selling is disabled because your account has a negative balance. Please repay the outstanding amount to resume selling.");
@@ -250,6 +442,12 @@ window.openCloseOrderModal = function (tradeOrId) {
             alert(`You cannot sell this asset before its official listing date (${listingDate.toLocaleDateString('en-IN')}).`);
             return;
         }
+    }
+
+    const sellRestrictionMessage = await getTradeSellRestrictionMessage(trade, user);
+    if (sellRestrictionMessage) {
+        alert(sellRestrictionMessage);
+        return;
     }
 
     const tradeId = trade.id;
@@ -410,6 +608,11 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
             if (listingDate > new Date()) {
                 throw new Error(`You cannot sell this asset before its official listing date (${listingDate.toLocaleDateString('en-IN')}).`);
             }
+        }
+
+        const sellRestrictionMessage = await getTradeSellRestrictionMessage(trade, user, { force: true });
+        if (sellRestrictionMessage) {
+            throw new Error(sellRestrictionMessage);
         }
 
         const finalSellPrice = await refreshTradeMarketPrice(trade, { force: true }) || getCachedTradeMarketPrice(trade) || sellPrice;

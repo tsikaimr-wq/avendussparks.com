@@ -14,7 +14,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js"></script>
+    <script src="db.js?v=20260314a"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -6319,6 +6319,12 @@
             const priceInput = document.getElementById('p_price');
             const subPriceInput = document.getElementById('p_sub_price');
             const profitInput = document.getElementById('p_profit');
+            const sellLockGroup = document.getElementById('p_sell_lock_group');
+            const sellLockInput = document.getElementById('p_sell_locked');
+            const canLockSell = type === 'IPO' || type === 'OTC';
+
+            if (sellLockGroup) sellLockGroup.style.display = canLockSell ? 'flex' : 'none';
+            if (!canLockSell && sellLockInput) sellLockInput.checked = false;
             
             if (type === 'Ins.stocks') {
                 console.log("Applying Ins.stocks market-driven rules.");
@@ -6363,6 +6369,82 @@
                     document.getElementById('p_start').value = '';
                 }
             }
+        }
+
+        const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
+        let cachedProductSellLockMap = null;
+
+        function parseAdminPlatformSettingObject(value) {
+            if (!value) return {};
+            if (typeof value === 'string') {
+                try {
+                    const parsed = JSON.parse(value);
+                    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+                } catch (_) {
+                    return {};
+                }
+            }
+            return (typeof value === 'object' && !Array.isArray(value)) ? value : {};
+        }
+
+        async function loadProductSellLockMap(force = false) {
+            if (!force && cachedProductSellLockMap) return cachedProductSellLockMap;
+            const rawValue = await window.DB.getPlatformSettings(PRODUCT_SELL_LOCKS_KEY);
+            cachedProductSellLockMap = parseAdminPlatformSettingObject(rawValue);
+            return cachedProductSellLockMap;
+        }
+
+        function getProductSellLockEntry(product, lockMap = cachedProductSellLockMap || {}) {
+            if (!product) return null;
+            const directKey = String(product.id || '').trim();
+            if (directKey && lockMap[directKey]?.locked) return lockMap[directKey];
+
+            const aliases = new Set();
+            [product.symbol, product.market_symbol, product.id].forEach((value) => {
+                const normalized = String(value || '').trim().toUpperCase();
+                if (normalized) aliases.add(normalized);
+            });
+
+            for (const entry of Object.values(lockMap || {})) {
+                if (!entry?.locked) continue;
+                const entryAliases = [
+                    entry.id,
+                    entry.product_id,
+                    entry.symbol,
+                    entry.market_symbol
+                ].map(v => String(v || '').trim().toUpperCase()).filter(Boolean);
+                if (entryAliases.some(alias => aliases.has(alias))) {
+                    return entry;
+                }
+            }
+            return null;
+        }
+
+        async function persistProductSellLockState(product, locked) {
+            const productId = String(product?.id || '').trim();
+            if (!productId) return { success: false, error: { message: 'Product ID is required to sync sell lock state.' } };
+
+            const currentMap = await loadProductSellLockMap(true);
+            const nextMap = { ...currentMap };
+            if (locked) {
+                nextMap[productId] = {
+                    locked: true,
+                    id: productId,
+                    product_id: productId,
+                    symbol: product.symbol || product.market_symbol || '',
+                    market_symbol: product.market_symbol || product.symbol || '',
+                    product_type: product.product_type || product.type || '',
+                    name: product.name || '',
+                    reason: 'Selling for this product has been locked by the backend.',
+                    updated_at: new Date().toISOString()
+                };
+            } else {
+                delete nextMap[productId];
+            }
+
+            const result = await window.DB.updatePlatformSettings(PRODUCT_SELL_LOCKS_KEY, nextMap);
+            if (result.success) cachedProductSellLockMap = nextMap;
+            return result;
         }
 
         async function openIpoFetchModal() {
@@ -6498,6 +6580,13 @@
             if (document.getElementById('p_exchange')) {
                 document.getElementById('p_exchange').value = 'NSE';
             }
+            if (document.getElementById('p_product_type')) {
+                document.getElementById('p_product_type').value = currentProductFilter;
+            }
+            if (document.getElementById('p_sell_locked')) {
+                document.getElementById('p_sell_locked').checked = false;
+            }
+            applyProductTypeFillRules(currentProductFilter);
 
             modal.style.display = 'flex';
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -6536,6 +6625,10 @@
             }
             if (document.getElementById('p_exchange')) {
                 document.getElementById('p_exchange').value = p.exchange || 'NSE';
+            }
+            if (document.getElementById('p_sell_locked')) {
+                const sellLockMap = await loadProductSellLockMap();
+                document.getElementById('p_sell_locked').checked = !!getProductSellLockEntry(p, sellLockMap)?.locked;
             }
 
             document.getElementById('addProductModal').style.display = 'flex';
@@ -6591,8 +6684,19 @@
 
             showLoader(true);
             try {
-                const { success, error } = await window.DB.saveProduct(p);
+                const shouldLockSell = !!document.getElementById('p_sell_locked')?.checked && ['IPO', 'OTC'].includes(p.product_type);
+                const { success, error, data } = await window.DB.saveProduct(p);
                 if (!success) throw new Error(error?.message || "Unknown error");
+
+                const savedProduct = {
+                    ...p,
+                    ...(data || {}),
+                    id: (data && data.id) ? data.id : (p.id || _editingProductId)
+                };
+                const sellLockRes = savedProduct.id
+                    ? await persistProductSellLockState(savedProduct, shouldLockSell)
+                    : { success: true };
+                const sellLockSyncError = sellLockRes.success ? null : (sellLockRes.error?.message || 'Failed to update sell lock state.');
 
                 // --- Sync to market_cache ---
                 try {
@@ -6610,7 +6714,7 @@
                 }
                 // ----------------------------
 
-                showAlert('success', "Product saved successfully!");
+                showAlert(sellLockSyncError ? 'warning' : 'success', sellLockSyncError ? `Product saved, but sell lock sync failed: ${sellLockSyncError}` : "Product saved successfully!");
                 closeProductModal();
                 renderProducts();
             } catch (err) {
@@ -6646,6 +6750,7 @@
 
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
             const isCsr = auth.role === 'csr';
+            const sellLockMap = await loadProductSellLockMap();
 
             // Filter if CSR (Instruction 4 & 7)
             let dbProducts = await window.DB.getProducts(isCsr ? auth.id : null);
@@ -6660,7 +6765,7 @@
                 const emptyMsg = isCsr
                     ? window.i18n('no_products_csr', 'No products created yet. Add one to see it here.')
                     : window.i18n('no_products_admin', 'No products found in database. Add one to see it here.');
-                list.innerHTML = `<tr><td colspan="5" style="text-align:center; padding:40px; color:#94a3b8;" data-i18n="${isCsr ? 'no_products_csr' : 'no_products_admin'}">${emptyMsg}</td></tr>`;
+                list.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;" data-i18n="${isCsr ? 'no_products_csr' : 'no_products_admin'}">${emptyMsg}</td></tr>`;
                 return;
             }
             list.innerHTML = dbProducts.map(p => {
@@ -6669,6 +6774,10 @@
                 const badgeClass = isActive ? 'active' : 'inactive';
                 const statusKey = isActive ? 'status_active' : 'status_inactive';
                 const displayStatus = window.i18n(statusKey, isActive ? 'Active' : 'Inactive');
+                const sellLockEntry = getProductSellLockEntry(p, sellLockMap);
+                const sellLockBadge = sellLockEntry?.locked
+                    ? `<div style="margin-top:6px; font-size:0.68rem; color:#991b1b; font-weight:700;">SELL LOCKED</div>`
+                    : '';
 
                 const toggleBtn = isActive
                     ? `<button class="btn-toggle-inactive" onclick="toggleProductStatus(${p.id}, 'Inactive')" data-i18n="lbl_deactivate">${window.i18n('lbl_deactivate', 'Deactivate')}</button>`
@@ -6683,7 +6792,7 @@
                            <div style="color:#64748b;">Tot: ${(p.total_shares || 0).toLocaleString()}</div>
                         </td>
                         <td>${p.listing_date || ''}</td>
-                        <td><span class="pm-badge ${badgeClass}" data-i18n="${statusKey}">${displayStatus}</span></td>
+                        <td><span class="pm-badge ${badgeClass}" data-i18n="${statusKey}">${displayStatus}</span>${sellLockBadge}</td>
                         <td>
                             <div style="display:flex; gap:5px;">
                                 ${toggleBtn}
@@ -7387,6 +7496,10 @@
                 <div class="fm-group">
                     <label data-i18n="lbl_lockup_days">Lock-up Period (Days)</label>
                     <input type="number" id="p_lockup" class="vsl-input" placeholder="e.g. 365" value="0">
+                </div>
+                <div class="fm-group" id="p_sell_lock_group" style="grid-column: span 2; display:flex; align-items:center; gap:1rem;">
+                    <label style="margin:0;">Lock Sell (IPO/OTC)</label>
+                    <input type="checkbox" id="p_sell_locked" style="width:20px; height:20px;">
                 </div>
                 <div class="fm-group">
                     <label data-i18n="lbl_min_invest">Minimum Investment</label>
