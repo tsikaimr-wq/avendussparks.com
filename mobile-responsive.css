@@ -40,6 +40,120 @@ iframe {
     .video-text-content h1 {
         font-size: clamp(2.6rem, 6vw, 3.5rem) !important;
     }
+
+    .market-shell #meView {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        padding: 0.5rem 0 6rem !important;
+        background: transparent !important;
+    }
+
+    .market-shell .me-left-col,
+    .market-shell .me-right-col {
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow: visible !important;
+        padding-right: 0 !important;
+    }
+
+    .market-shell .me-card,
+    .market-shell .me-stat-item,
+    .market-shell .me-btn,
+    .market-shell .me-as-card,
+    .market-shell .score-info-box {
+        box-sizing: border-box !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .market-shell .me-card {
+        padding: 1.1rem !important;
+        border-radius: 18px !important;
+    }
+
+    .market-shell .me-card[style*="height: 100%"] {
+        height: auto !important;
+    }
+
+    .market-shell .me-title-row {
+        margin-bottom: 1rem !important;
+        padding-right: 2rem !important;
+        line-height: 1.4 !important;
+    }
+
+    .market-shell .me-profile-main {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        align-items: flex-start !important;
+        gap: 1rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    .market-shell .me-p-info {
+        flex: 1 1 0 !important;
+        min-width: 0 !important;
+    }
+
+    .market-shell .me-p-info h2,
+    .market-shell .me-p-info p,
+    .market-shell .me-stat-label,
+    .market-shell .me-stat-val,
+    .market-shell .me-as-lbl,
+    .market-shell .me-as-val,
+    .market-shell .me-as-sub {
+        word-break: break-word !important;
+        overflow-wrap: anywhere !important;
+    }
+
+    .market-shell #meKycStatusBadge {
+        display: inline-flex !important;
+        align-items: center !important;
+        max-width: 100% !important;
+    }
+
+    .market-shell .me-vip-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 0.75rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    .market-shell .me-btn-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 0.75rem !important;
+    }
+
+    .market-shell .me-btn {
+        min-height: 50px !important;
+        padding: 0.95rem 0.85rem !important;
+        border-radius: 14px !important;
+    }
+
+    .market-shell .me-asset-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 0.75rem !important;
+    }
+
+    .market-shell .gauge-svg {
+        width: 100% !important;
+        max-width: 280px !important;
+        height: auto !important;
+    }
+
+    .market-shell .app-pill-row {
+        scrollbar-width: none !important;
+    }
+
+    .market-shell .app-pill-row::-webkit-scrollbar {
+        display: none !important;
+    }
 }
 
 @media (max-width: 768px) {
