@@ -444,6 +444,509 @@ iframe {
     button {
         font-size: 16px !important;
     }
+
+    .home-page .app-wrapper {
+        padding-left: 0.9rem !important;
+        padding-right: 0.9rem !important;
+    }
+
+    .home-page .header {
+        padding: 0.85rem 0 !important;
+        row-gap: 0.8rem !important;
+    }
+
+    .home-page .header-left {
+        width: 100% !important;
+        order: 1 !important;
+        flex: 1 1 100% !important;
+    }
+
+    .home-page .header-right {
+        order: 2 !important;
+        justify-content: flex-end !important;
+        gap: 0.6rem !important;
+    }
+
+    .home-page .nav {
+        order: 3 !important;
+        width: 100% !important;
+        padding: 0.3rem !important;
+        gap: 0.35rem !important;
+        border-radius: 14px !important;
+        scrollbar-width: none !important;
+    }
+
+    .home-page .nav::-webkit-scrollbar {
+        display: none !important;
+    }
+
+    .home-page .nav-item {
+        min-height: 42px !important;
+        padding: 0.7rem 0.95rem !important;
+        font-size: 0.76rem !important;
+        gap: 0.3rem !important;
+        border-radius: 11px !important;
+    }
+
+    .home-page .header-right .settings-btn {
+        width: 46px !important;
+        height: 46px !important;
+        padding: 0 !important;
+        border-radius: 12px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2) !important;
+    }
+
+    .home-page .header-right .settings-btn .csr-badge {
+        top: 6px !important;
+        right: 6px !important;
+    }
+
+    .home-page .search-container {
+        width: 100% !important;
+    }
+
+    .home-page .search-input {
+        min-height: 48px !important;
+        padding-left: 2.85rem !important;
+        border-radius: 14px !important;
+        font-size: 0.95rem !important;
+    }
+
+    .home-page .search-icon {
+        left: 14px !important;
+    }
+
+    .home-page .video-promo-section {
+        margin: 1rem 0 1.25rem !important;
+        border-radius: 18px !important;
+    }
+
+    .home-page .video-container {
+        min-height: 470px !important;
+    }
+
+    .home-page .video-overlay {
+        padding: 1.25rem !important;
+    }
+
+    .home-page .video-text-content {
+        max-width: 100% !important;
+    }
+
+    .home-page .video-text-content .badge {
+        margin-bottom: 0.85rem !important;
+        padding: 0.4rem 0.9rem !important;
+        font-size: 0.72rem !important;
+    }
+
+    .home-page .video-text-content h1 {
+        font-size: clamp(2.2rem, 11vw, 3rem) !important;
+        margin-bottom: 0.7rem !important;
+        letter-spacing: -0.03em !important;
+    }
+
+    .home-page .video-text-content .tagline {
+        max-width: 19rem !important;
+        margin: 0 auto 1.4rem !important;
+        font-size: 0.9rem !important;
+        letter-spacing: 1.8px !important;
+        line-height: 1.5 !important;
+    }
+
+    .home-page #promoActions {
+        width: 100% !important;
+        max-width: 320px !important;
+        margin: 0 auto !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.75rem !important;
+    }
+
+    .home-page #promoActions > div {
+        width: 100% !important;
+    }
+
+    .home-page .join-btn-large {
+        width: 100% !important;
+        max-width: none !important;
+        min-height: 50px !important;
+        padding: 1rem 1.25rem !important;
+        border-radius: 14px !important;
+        box-shadow: 0 12px 24px rgba(212, 175, 55, 0.2) !important;
+    }
+
+    .home-page .homepage-main {
+        padding: 0 !important;
+    }
+
+    .home-page .homepage-market-summary,
+    .home-page #portfolioBar,
+    .home-page #marketAuthPrompt,
+    .home-page .homepage-offers-section {
+        margin-bottom: 1.25rem !important;
+    }
+
+    .home-page #portfolioBar {
+        padding: 1rem !important;
+        gap: 1rem !important;
+        border-radius: 16px !important;
+    }
+
+    .home-page .user-greeting {
+        gap: 0.9rem !important;
+    }
+
+    .home-page .user-avatar {
+        width: 52px !important;
+        height: 52px !important;
+        font-size: 1.2rem !important;
+        border-radius: 14px !important;
+    }
+
+    .home-page .user-text h3 {
+        font-size: 1.15rem !important;
+    }
+
+    .home-page .user-text p {
+        font-size: 0.82rem !important;
+        line-height: 1.45 !important;
+    }
+
+    .home-page .action-btns {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 0.75rem !important;
+        width: 100% !important;
+    }
+
+    .home-page .btn-deposit,
+    .home-page .btn-withdraw {
+        width: 100% !important;
+        min-height: 48px !important;
+        padding: 0.95rem 1rem !important;
+        border-radius: 14px !important;
+        font-size: 0.78rem !important;
+        letter-spacing: 1.2px !important;
+    }
+
+    .home-page .btn-deposit {
+        box-shadow: 0 10px 24px rgba(212, 175, 55, 0.2) !important;
+    }
+
+    .home-page .btn-withdraw {
+        background: rgba(212, 175, 55, 0.06) !important;
+    }
+
+    .home-page .homepage-market-summary .card-header,
+    .home-page .breaking-news .card-header,
+    .home-page .recommendation .card-header,
+    .home-page .homepage-offers-section .card-header {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+        gap: 0.75rem !important;
+    }
+
+    .home-page .homepage-market-summary .card-header {
+        padding-top: 1.1rem !important;
+        padding-bottom: 0.9rem !important;
+    }
+
+    .home-page .market-cards-grid {
+        grid-template-columns: 1fr !important;
+        gap: 0.8rem !important;
+    }
+
+    .home-page .stock-card {
+        padding: 1.1rem 1rem !important;
+        border-radius: 16px !important;
+        min-height: 72px !important;
+    }
+
+    .home-page .stock-card .stock-info {
+        justify-content: flex-start !important;
+        width: 100% !important;
+    }
+
+    .home-page .stock-card .stock-name {
+        font-size: 1.15rem !important;
+    }
+
+    .home-page .homepage-feature-grid {
+        display: grid !important;
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+        margin-bottom: 1.25rem !important;
+    }
+
+    .home-page .homepage-feature-stack {
+        gap: 1rem !important;
+    }
+
+    .home-page .breaking-news,
+    .home-page .recommendation {
+        border-radius: 16px !important;
+        overflow: hidden !important;
+    }
+
+    .home-page .news-carousel-container {
+        border-radius: 16px !important;
+    }
+
+    .home-page .news-slide-card {
+        height: 290px !important;
+    }
+
+    .home-page .news-badge {
+        top: 1rem !important;
+        left: 1rem !important;
+        padding: 0.32rem 0.72rem !important;
+        font-size: 0.66rem !important;
+        letter-spacing: 0.8px !important;
+        border-radius: 999px !important;
+    }
+
+    .home-page .news-image-overlay {
+        padding: 1rem 1rem 4rem !important;
+    }
+
+    .home-page .news-meta {
+        margin-bottom: 0.55rem !important;
+    }
+
+    .home-page .news-time {
+        font-size: 0.72rem !important;
+    }
+
+    .home-page .news-image-overlay h3 {
+        font-size: 1.12rem !important;
+        margin-bottom: 0.55rem !important;
+        line-height: 1.3 !important;
+    }
+
+    .home-page .news-image-overlay p {
+        font-size: 0.82rem !important;
+        line-height: 1.45 !important;
+    }
+
+    .home-page .nav-arrow {
+        top: auto !important;
+        bottom: 0.9rem !important;
+        transform: none !important;
+        width: 36px !important;
+        height: 36px !important;
+        background: rgba(10, 10, 10, 0.75) !important;
+        backdrop-filter: blur(8px) !important;
+        opacity: 1 !important;
+    }
+
+    .home-page .nav-arrow.prev {
+        left: 1rem !important;
+    }
+
+    .home-page .nav-arrow.next {
+        right: 1rem !important;
+    }
+
+    .home-page .news-dots-container {
+        left: 50% !important;
+        right: auto !important;
+        bottom: 1rem !important;
+        transform: translateX(-50%) !important;
+        gap: 0.45rem !important;
+    }
+
+    .home-page .news-dot {
+        width: 7px !important;
+        height: 7px !important;
+    }
+
+    .home-page .news-dot.active {
+        width: 20px !important;
+    }
+
+    .home-page #recommendationSection .card-header {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+
+    .home-page .recommendation-item {
+        gap: 0.85rem !important;
+        padding: 0.95rem 1rem !important;
+        align-items: flex-start !important;
+    }
+
+    .home-page .recommendation-item h4 {
+        font-size: 0.95rem !important;
+        line-height: 1.35 !important;
+    }
+
+    .home-page .recommendation-item p {
+        font-size: 0.82rem !important;
+        line-height: 1.45 !important;
+    }
+
+    .home-page .rec-thumb {
+        width: 72px !important;
+        height: 56px !important;
+        border-radius: 12px !important;
+    }
+
+    .home-page #marketAuthPrompt {
+        padding: 1rem !important;
+        border-radius: 16px !important;
+        text-align: left !important;
+    }
+
+    .home-page #marketAuthPrompt p {
+        margin-bottom: 0.75rem !important;
+        font-size: 0.84rem !important;
+        line-height: 1.5 !important;
+    }
+
+    .home-page .login-btn-small {
+        min-height: 48px !important;
+        width: 100% !important;
+        padding: 0.9rem 1rem !important;
+        border-radius: 14px !important;
+        text-align: center !important;
+    }
+
+    .home-page .homepage-offers-section {
+        padding: 0 0 1rem !important;
+    }
+
+    .home-page .offers-grid {
+        grid-template-columns: 1fr !important;
+        gap: 1rem !important;
+    }
+
+    .home-page .offer-card {
+        border-radius: 16px !important;
+        overflow: hidden !important;
+    }
+
+    .home-page .offer-img-wrapper {
+        height: 170px !important;
+    }
+
+    .home-page .offer-info {
+        padding: 1rem !important;
+    }
+
+    .home-page .offer-info h3 {
+        font-size: 1rem !important;
+        line-height: 1.3 !important;
+    }
+
+    .home-page .offer-info p {
+        font-size: 0.84rem !important;
+        line-height: 1.5 !important;
+    }
+
+    .home-page .footer {
+        padding: 1.25rem 0 1.5rem !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.6rem !important;
+        font-size: 0.82rem !important;
+        line-height: 1.6 !important;
+    }
+
+    .home-page .footer-left {
+        max-width: 28rem !important;
+    }
+
+    .home-page .message-center-modal {
+        border-top-left-radius: 18px !important;
+        border-bottom-left-radius: 18px !important;
+    }
+
+    .home-page .mc-list {
+        padding: 1rem !important;
+        gap: 0.75rem !important;
+    }
+
+    .home-page .mc-item {
+        padding: 0.85rem !important;
+        border-radius: 14px !important;
+    }
+
+    .home-page .mc-msg-title {
+        font-size: 0.85rem !important;
+        line-height: 1.4 !important;
+    }
+
+    .home-page .settings-content {
+        padding: 1.5rem 1rem 1rem !important;
+    }
+
+    .home-page .settings-item {
+        gap: 0.85rem !important;
+        padding: 1rem 0.5rem !important;
+    }
+
+    .home-page .settings-item-title {
+        font-size: 0.96rem !important;
+    }
+
+    .home-page .settings-item-desc {
+        font-size: 0.8rem !important;
+        line-height: 1.4 !important;
+    }
+
+    .home-page .badge-row {
+        gap: 0.75rem !important;
+        flex-wrap: wrap !important;
+    }
+
+    .home-page .s-badge {
+        padding: 0.55rem 0.85rem !important;
+        font-size: 0.8rem !important;
+    }
+
+    .home-page #csModal {
+        right: 0.75rem !important;
+        bottom: 0.75rem !important;
+        width: calc(100vw - 1.5rem) !important;
+        max-width: calc(100vw - 1.5rem) !important;
+        height: min(72vh, 560px) !important;
+    }
+
+    .home-page .cs-modal-content {
+        border-radius: 18px !important;
+    }
+
+    .home-page #csMinimizedBar {
+        width: auto !important;
+        max-width: calc(100vw - 1.5rem) !important;
+        padding: 0.85rem 1rem !important;
+        border-radius: 999px !important;
+    }
+
+    .home-page .rec-detail-content {
+        max-width: calc(100vw - 1.5rem) !important;
+        border-radius: 18px !important;
+    }
+
+    .home-page .rec-detail-image {
+        height: 220px !important;
+    }
+
+    .home-page .rec-detail-body {
+        padding: 1.25rem !important;
+    }
+
+    .home-page .rec-detail-title {
+        font-size: 1.2rem !important;
+    }
+
+    .home-page .rec-detail-desc {
+        font-size: 0.92rem !important;
+        margin-bottom: 1.25rem !important;
+    }
 }
 
 @media (max-width: 480px) {
@@ -599,5 +1102,307 @@ iframe {
     .section-title,
     .ba-title {
         font-size: 1rem !important;
+    }
+
+    .home-page .app-wrapper {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+
+    .home-page .header {
+        padding: 0.75rem 0 0.1rem !important;
+        gap: 0.7rem !important;
+    }
+
+    .home-page .header-right {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        justify-content: stretch !important;
+    }
+
+    .home-page .header-right .settings-btn {
+        width: 100% !important;
+        max-width: none !important;
+        height: 44px !important;
+        border-radius: 12px !important;
+        min-width: 0 !important;
+    }
+
+    .home-page .nav {
+        padding: 0.25rem !important;
+        border-radius: 12px !important;
+    }
+
+    .home-page .nav-item {
+        min-height: 40px !important;
+        padding: 0.62rem 0.85rem !important;
+        font-size: 0.72rem !important;
+        letter-spacing: 0.8px !important;
+    }
+
+    .home-page .search-input {
+        min-height: 46px !important;
+        font-size: 0.92rem !important;
+        padding-left: 2.7rem !important;
+    }
+
+    .home-page .video-promo-section {
+        margin: 0.85rem 0 1rem !important;
+    }
+
+    .home-page .video-container {
+        min-height: 420px !important;
+    }
+
+    .home-page .video-overlay {
+        padding: 1rem !important;
+    }
+
+    .home-page .video-text-content .badge {
+        margin-bottom: 0.75rem !important;
+    }
+
+    .home-page .video-text-content h1 {
+        font-size: 1.95rem !important;
+    }
+
+    .home-page .video-text-content .tagline {
+        font-size: 0.82rem !important;
+        letter-spacing: 1.2px !important;
+        margin-bottom: 1.1rem !important;
+    }
+
+    .home-page #promoActions {
+        gap: 0.65rem !important;
+        max-width: 100% !important;
+    }
+
+    .home-page .join-btn-large {
+        min-height: 48px !important;
+        font-size: 0.82rem !important;
+        letter-spacing: 1.4px !important;
+    }
+
+    .home-page #portfolioBar {
+        padding: 0.9rem !important;
+        gap: 0.9rem !important;
+    }
+
+    .home-page .user-avatar {
+        width: 46px !important;
+        height: 46px !important;
+        font-size: 1.05rem !important;
+    }
+
+    .home-page .user-text h3 {
+        font-size: 1rem !important;
+    }
+
+    .home-page .action-btns {
+        grid-template-columns: 1fr !important;
+    }
+
+    .home-page .btn-deposit,
+    .home-page .btn-withdraw {
+        font-size: 0.76rem !important;
+        padding: 0.9rem !important;
+        letter-spacing: 1px !important;
+    }
+
+    .home-page .homepage-market-summary .card-header,
+    .home-page .breaking-news .card-header,
+    .home-page .recommendation .card-header,
+    .home-page .homepage-offers-section .card-header {
+        padding-left: 0.9rem !important;
+        padding-right: 0.9rem !important;
+    }
+
+    .home-page .market-cards-grid {
+        gap: 0.7rem !important;
+    }
+
+    .home-page .stock-card {
+        padding: 0.95rem 0.9rem !important;
+        min-height: 68px !important;
+    }
+
+    .home-page .stock-card .stock-name {
+        font-size: 1rem !important;
+    }
+
+    .home-page .homepage-feature-grid {
+        gap: 0.85rem !important;
+        margin-bottom: 1rem !important;
+    }
+
+    .home-page .homepage-feature-stack {
+        gap: 0.85rem !important;
+    }
+
+    .home-page .news-slide-card {
+        height: 250px !important;
+    }
+
+    .home-page .news-badge {
+        top: 0.85rem !important;
+        left: 0.85rem !important;
+        font-size: 0.62rem !important;
+    }
+
+    .home-page .news-image-overlay {
+        padding: 0.9rem 0.9rem 3.7rem !important;
+    }
+
+    .home-page .news-image-overlay h3 {
+        font-size: 1rem !important;
+    }
+
+    .home-page .news-image-overlay p {
+        font-size: 0.78rem !important;
+        -webkit-line-clamp: 3 !important;
+        line-clamp: 3 !important;
+    }
+
+    .home-page .nav-arrow {
+        width: 34px !important;
+        height: 34px !important;
+        bottom: 0.8rem !important;
+    }
+
+    .home-page .news-dots-container {
+        bottom: 0.9rem !important;
+    }
+
+    .home-page .recommendation-item {
+        padding: 0.85rem 0.9rem !important;
+        gap: 0.75rem !important;
+    }
+
+    .home-page .rec-thumb {
+        width: 64px !important;
+        height: 52px !important;
+    }
+
+    .home-page .recommendation-item h4 {
+        font-size: 0.9rem !important;
+    }
+
+    .home-page .recommendation-item p {
+        font-size: 0.8rem !important;
+    }
+
+    .home-page #marketAuthPrompt {
+        padding: 0.9rem !important;
+    }
+
+    .home-page .login-btn-small {
+        padding: 0.85rem 0.95rem !important;
+        font-size: 0.78rem !important;
+    }
+
+    .home-page .homepage-offers-section {
+        padding-bottom: 0.75rem !important;
+    }
+
+    .home-page .offer-img-wrapper {
+        height: 152px !important;
+    }
+
+    .home-page .offer-info {
+        padding: 0.9rem !important;
+    }
+
+    .home-page .offer-info h3 {
+        font-size: 0.95rem !important;
+    }
+
+    .home-page .offer-info p {
+        font-size: 0.8rem !important;
+    }
+
+    .home-page .footer {
+        padding: 1rem 0 1.25rem !important;
+        font-size: 0.78rem !important;
+    }
+
+    .home-page .message-center-modal {
+        border-radius: 18px 18px 0 0 !important;
+    }
+
+    .home-page .mc-header {
+        padding: 0.95rem !important;
+    }
+
+    .home-page .mc-actions {
+        padding: 0.8rem 0.95rem !important;
+        gap: 0.6rem !important;
+    }
+
+    .home-page .mc-btn {
+        flex: 1 1 calc(50% - 0.3rem) !important;
+        min-height: 42px !important;
+    }
+
+    .home-page .mc-list {
+        padding: 0.9rem !important;
+    }
+
+    .home-page .settings-content {
+        padding: 1.3rem 0.9rem 0.9rem !important;
+    }
+
+    .home-page .avatar-circle {
+        width: 82px !important;
+        height: 82px !important;
+        font-size: 2rem !important;
+        margin-bottom: 0.85rem !important;
+    }
+
+    .home-page .badge-row {
+        gap: 0.5rem !important;
+    }
+
+    .home-page .s-badge {
+        width: 100% !important;
+        justify-content: center !important;
+    }
+
+    .home-page #csModal {
+        right: 0.5rem !important;
+        bottom: 0.5rem !important;
+        width: calc(100vw - 1rem) !important;
+        max-width: calc(100vw - 1rem) !important;
+        height: min(78vh, 520px) !important;
+    }
+
+    .home-page .cs-modal-content {
+        border-radius: 16px !important;
+    }
+
+    .home-page #csMinimizedBar {
+        max-width: calc(100vw - 1rem) !important;
+        padding: 0.8rem 0.95rem !important;
+        gap: 0.75rem !important;
+    }
+
+    .home-page .rec-detail-modal {
+        padding: 0.75rem !important;
+    }
+
+    .home-page .rec-detail-image {
+        height: 180px !important;
+    }
+
+    .home-page .rec-detail-body {
+        padding: 1rem !important;
+    }
+
+    .home-page .rec-detail-title {
+        font-size: 1.08rem !important;
+    }
+
+    .home-page .rec-detail-desc {
+        font-size: 0.86rem !important;
+        line-height: 1.55 !important;
     }
 }
