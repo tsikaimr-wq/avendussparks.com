@@ -7561,6 +7561,21 @@
         }
         window.fetchUserTransactions = fetchUserTransactions;
 
+        function buildTransactionCardFooter(primaryActionHtml, secondaryActionHtml = '', noteText = '') {
+            const normalizedNote = String(noteText || '').trim();
+            return `
+                <div class="transaction-card-footer">
+                    <div class="transaction-card-actions">
+                        ${primaryActionHtml || '<div class="transaction-action-placeholder" aria-hidden="true"></div>'}
+                        ${secondaryActionHtml || '<div class="transaction-action-placeholder" aria-hidden="true"></div>'}
+                    </div>
+                    <div class="transaction-card-note${normalizedNote ? '' : ' is-empty'}">
+                        <div class="transaction-card-note-box">${normalizedNote ? `Note: ${normalizedNote}` : '&nbsp;'}</div>
+                    </div>
+                </div>
+            `;
+        }
+
         function switchTransactionTab(el, tabName) {
             document.querySelectorAll('#transactionTabs .d-tab-pill').forEach(pill => pill.classList.remove('active'));
             if (el) el.classList.add('active');
@@ -7604,6 +7619,23 @@
                         leftVal = `Lock Expired ${lockDate}`;
                     }
 
+                    const primaryActionHtml = `<button class="premium-subscribe-btn transaction-action-btn" style="background:rgba(212, 175, 55, 0.1); color:#d4af37; border:1px solid #d4af37; pointer-events: auto !important; position: relative; z-index: 10;" onclick="openHoldingDetail('${item.id}')">View Details</button>`;
+                    const secondaryActionHtml = (() => {
+                        const pListingDate = item.products ? item.products.listing_date : null;
+                        const isPreListing = pListingDate && new Date(pListingDate) > new Date();
+                        if (isLocked) {
+                            return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked until ${lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</button>`;
+                        } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
+                            return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked (Unpaid)</button>`;
+                        } else if (item.sell_restriction_message) {
+                            return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>${item.sell_restriction_label || 'Selling Restricted'}</button>`;
+                        } else if (isPreListing) {
+                            const lDateStr = new Date(pListingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                            return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
+                        }
+                        return `<button class="premium-subscribe-btn transaction-action-btn close-order-btn" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid #ef4444;" data-id="${item.id}">Close Order</button>`;
+                    })();
+
                     html += `
                         <div class="premium-trade-card">
                             <div class="premium-card-head">
@@ -7633,25 +7665,7 @@
                                     </span>
                                 </div>
                             </div>
-                            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: auto;">
-                                <button class="premium-subscribe-btn" style="background:rgba(212, 175, 55, 0.1); color:#d4af37; border:1px solid #d4af37; pointer-events: auto !important; position: relative; z-index: 10;" onclick="openHoldingDetail('${item.id}')">View Details</button>
-                                ${(() => {
-                            const pListingDate = item.products ? item.products.listing_date : null;
-                            const isPreListing = pListingDate && new Date(pListingDate) > new Date();
-                            if (isLocked) {
-                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked until ${lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</button>`;
-                            } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
-                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked (Unpaid)</button>`;
-                            } else if (item.sell_restriction_message) {
-                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>${item.sell_restriction_label || 'Selling Restricted'}</button>`;
-                            } else if (isPreListing) {
-                                const lDateStr = new Date(pListingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
-                                return `<button class="premium-subscribe-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
-                            } else {
-                                return `<button class="premium-subscribe-btn close-order-btn" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid #ef4444;" data-id="${item.id}">Close Order</button>`;
-                            }
-                        })()}
-                            </div>
+                            ${buildTransactionCardFooter(primaryActionHtml, secondaryActionHtml, item.admin_note || '')}
                         </div>
                     `;
                 });
@@ -7721,6 +7735,8 @@
                         statusText = 'Awaiting';
                     }
 
+                    const primaryActionHtml = `<button class="premium-subscribe-btn transaction-action-btn" style="background:rgba(212, 175, 55, 0.1); color:#d4af37; border:1px solid #d4af37; pointer-events: auto !important; position: relative; z-index: 10;" onclick="openHoldingDetail('${item.id}')">View Details</button>`;
+
                     html += `
                         <div class="premium-trade-card">
                             <div class="premium-card-head">
@@ -7751,10 +7767,8 @@
                                     <span class="value" style="color: #ffffff !important;">₹${parseFloat(item.total_amount).toLocaleString('en-IN')}</span>
                                 </div>
                             </div>
-                            
-                            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: auto;">
-                                <button class="premium-subscribe-btn" style="background:rgba(212, 175, 55, 0.1); color:#d4af37; border:1px solid #d4af37; pointer-events: auto !important; position: relative; z-index: 10;" onclick="openHoldingDetail('${item.id}')">View Details</button>
-                            </div>
+
+                            ${buildTransactionCardFooter(primaryActionHtml, '', item.admin_note || '')}
                         </div>
                     `;
                 });
@@ -7769,6 +7783,10 @@
                     if (item.status === 'Approved' || item.status === 'Settled') statusColor = '#10b981';
                     if (item.status === 'Rejected' || item.admin_note === 'OUTSTANDING_BALANCE') statusColor = '#ef4444';
                     if (item.status === 'Sold') statusColor = '#3b82f6';
+
+                    const primaryActionHtml = (item.type.toLowerCase().includes('stock') || item.type.toLowerCase().includes('otc') || item.type.toLowerCase().includes('ipo') || (item.admin_note || "").includes('OUTSTANDING'))
+                        ? `<button class="premium-subscribe-btn transaction-action-btn" style="background:rgba(212, 175, 55, 0.1); color:#d4af37; border:1px solid #d4af37; pointer-events: auto !important; position: relative; z-index: 10;" onclick="openHoldingDetail('${item.id}')">View Details</button>`
+                        : '';
 
                     html += `
                         <div class="premium-trade-card">
@@ -7798,13 +7816,8 @@
                                     <span class="value" style="color: #ffffff !important;">₹${parseFloat(item.total_amount).toLocaleString('en-IN')}</span>
                                 </div>
                             </div>
-                            
-                            <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: auto;">
-                                ${(item.type.toLowerCase().includes('stock') || item.type.toLowerCase().includes('otc') || item.type.toLowerCase().includes('ipo') || (item.admin_note || "").includes('OUTSTANDING')) ? `
-                                    <button class="premium-subscribe-btn" style="background:rgba(212, 175, 55, 0.1); color:#d4af37; border:1px solid #d4af37; pointer-events: auto !important; position: relative; z-index: 10;" onclick="openHoldingDetail('${item.id}')">View</button>
-                                ` : ''}
-                                ${item.admin_note ? `<div style="font-size: 0.75rem; color: #ef4444; margin-top: 0.5rem; padding: 0.5rem; background: #fff1f2; border-radius: 4px; border:1px solid rgba(239, 68, 68, 0.1);">Note: ${item.admin_note}</div>` : ''}
-                            </div>
+
+                            ${buildTransactionCardFooter(primaryActionHtml, '', item.admin_note || '')}
                         </div>
                     `;
                 });
@@ -10685,6 +10698,115 @@
         color: #000 !important;
         border-color: #d4af37 !important;
         font-weight: 700 !important;
+    }
+
+    #transactionTabs {
+        display: grid !important;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 0.75rem !important;
+        margin-bottom: 1.5rem !important;
+        padding-bottom: 0 !important;
+        border-bottom: 1px solid #262626 !important;
+    }
+
+    #transactionTabs .d-tab-pill {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        min-height: 46px !important;
+        margin: 0 !important;
+        padding: 0.75rem 1rem !important;
+        border-radius: 14px !important;
+        font-size: 0.84rem !important;
+        line-height: 1.2 !important;
+        text-align: center !important;
+        white-space: normal !important;
+    }
+
+    #transactionsSection .premium-trade-grid {
+        align-items: stretch !important;
+    }
+
+    #transactionsSection .premium-trade-card {
+        height: 100% !important;
+        min-height: 100% !important;
+    }
+
+    #transactionsSection .transaction-card-footer {
+        margin-top: auto;
+        padding-top: 1rem;
+        border-top: 1px solid #262626;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    #transactionsSection .transaction-card-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    #transactionsSection .transaction-action-btn,
+    #transactionsSection .transaction-action-placeholder {
+        min-height: 48px;
+        border-radius: 12px !important;
+    }
+
+    #transactionsSection .transaction-action-btn {
+        width: 100%;
+        margin: 0 !important;
+        padding: 0.85rem 1rem !important;
+        font-size: 0.92rem !important;
+        line-height: 1.3 !important;
+        text-align: center !important;
+        white-space: normal !important;
+    }
+
+    #transactionsSection .transaction-action-placeholder {
+        visibility: hidden;
+        pointer-events: none;
+    }
+
+    #transactionsSection .transaction-card-note {
+        min-height: 42px;
+        display: flex;
+        align-items: stretch;
+    }
+
+    #transactionsSection .transaction-card-note.is-empty {
+        visibility: hidden;
+    }
+
+    #transactionsSection .transaction-card-note-box {
+        width: 100%;
+        padding: 0.65rem 0.8rem;
+        background: #fff1f2;
+        border: 1px solid rgba(239, 68, 68, 0.12);
+        border-radius: 10px;
+        color: #ef4444;
+        font-size: 0.75rem;
+        line-height: 1.4;
+        display: flex;
+        align-items: center;
+    }
+
+    @media (max-width: 1200px) {
+        #transactionTabs {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 768px) {
+        #transactionTabs {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        #transactionTabs .d-tab-pill {
+            min-height: 44px !important;
+            font-size: 0.8rem !important;
+            padding: 0.7rem 0.85rem !important;
+        }
     }
 
     /* Transaction List Items */
