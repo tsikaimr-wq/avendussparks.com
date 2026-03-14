@@ -711,7 +711,7 @@
                     Your documents have been submitted. Our compliance team is reviewing them — please allow up to 48
                     hours.
                 </p>
-                <button class="login-submit-btn" onclick="window.location.reload()" data-i18n="btn_back_home">Return to
+                <button class="login-submit-btn" onclick="finishRegistrationAfterKyc()" data-i18n="btn_back_home">Return to
                     Home</button>
             </div>
         </div>
@@ -902,6 +902,100 @@
         let regData = {};
         const PENDING_REG_KEY = 'avendus_pending_registration';
 
+        function normalizeRegMobile(value) {
+            const digits = String(value || '').replace(/\D/g, '');
+            if (!digits) return '';
+            return digits.length > 10 ? digits.slice(-10) : digits;
+        }
+
+        function getFriendlyRegistrationError(message) {
+            const raw = String(message || '').trim();
+            if (/mobile number is already registered|duplicate key.*mobile|users?_.*mobile.*key|手机号.*已.*存在/i.test(raw)) {
+                return {
+                    title: 'Number Exists',
+                    message: 'This mobile number is already registered. Please sign in instead.'
+                };
+            }
+            if (/email is already registered|duplicate key.*email|users?_.*email.*key|邮箱.*已.*存在/i.test(raw)) {
+                return {
+                    title: 'Email Exists',
+                    message: 'This email address is already registered. Please sign in instead.'
+                };
+            }
+            return null;
+        }
+
+        async function findExistingRegistrationIdentity({ mobile = '', email = '' } = {}) {
+            const client = DB.getClient();
+            if (!client) return { mobileUser: null, emailUser: null };
+
+            let mobileUser = null;
+            let emailUser = null;
+
+            const normalizedMobile = normalizeRegMobile(mobile);
+            if (normalizedMobile) {
+                const mobileCandidates = (window.DB && typeof window.DB.buildMobileCandidates === 'function')
+                    ? window.DB.buildMobileCandidates(normalizedMobile)
+                    : [normalizedMobile];
+                const { data } = await client
+                    .from('users')
+                    .select('id, mobile, email, auth_id, kyc, full_name, invitation_code')
+                    .in('mobile', mobileCandidates)
+                    .limit(1);
+                mobileUser = Array.isArray(data) && data.length > 0 ? data[0] : null;
+            }
+
+            const normalizedEmail = String(email || '').trim().toLowerCase();
+            if (normalizedEmail) {
+                const { data } = await client
+                    .from('users')
+                    .select('id, mobile, email, auth_id, kyc, full_name, invitation_code')
+                    .eq('email', normalizedEmail)
+                    .limit(1);
+                emailUser = Array.isArray(data) && data.length > 0 ? data[0] : null;
+            }
+
+            return { mobileUser, emailUser };
+        }
+
+        function primeRegistrationForKyc(user, overrides = {}) {
+            const pending = readPendingRegistration() || {};
+            const normalizedMobile = normalizeRegMobile(overrides.mobile || user?.mobile || pending.mobile || regData.mobile);
+            regData = {
+                ...pending,
+                ...regData,
+                mobile: normalizedMobile,
+                password: '',
+                inviteCode: overrides.inviteCode || regData.inviteCode || pending.inviteCode || user?.invitation_code || '',
+                email: String(overrides.email || user?.email || pending.email || regData.email || '').trim().toLowerCase(),
+                authId: overrides.authId || user?.auth_id || pending.authId || regData.authId || '',
+                userId: overrides.userId || user?.id || pending.userId || regData.userId || null,
+                name: overrides.name || regData.name || pending.name || user?.full_name || '',
+                dob: overrides.dob || regData.dob || pending.dob || '',
+                gender: overrides.gender || regData.gender || pending.gender || ''
+            };
+
+            savePendingRegistration({
+                mobile: regData.mobile,
+                email: regData.email,
+                inviteCode: regData.inviteCode,
+                authId: regData.authId,
+                userId: regData.userId,
+                name: regData.name,
+                dob: regData.dob,
+                gender: regData.gender,
+                stage: 'kyc'
+            });
+        }
+
+        function enterKycRegistrationFlow(user, overrides = {}) {
+            if (user) {
+                localStorage.setItem(DB.CURRENT_USER_KEY, JSON.stringify(user));
+            }
+            primeRegistrationForKyc(user, overrides);
+            showStep(3);
+        }
+
         function readPendingRegistration() {
             try {
                 const raw = localStorage.getItem(PENDING_REG_KEY);
@@ -926,7 +1020,13 @@
         window.openModal = function (id) {
             originalOpenModal(id);
             if (id === 'register') {
-                showStep(1);
+                const pending = readPendingRegistration();
+                if (pending && pending.stage === 'kyc' && pending.userId) {
+                    regData = { ...pending, ...regData };
+                    showStep(3);
+                } else {
+                    showStep(1);
+                }
             }
         };
 
@@ -954,8 +1054,7 @@
 
         window.goToStep2 = async function () {
             const mobileInput = document.getElementById('regMobile').value;
-            const mobileDigits = String(mobileInput || '').replace(/\D/g, '');
-            const mobile = mobileDigits.length > 10 ? mobileDigits.slice(-10) : mobileDigits;
+            const mobile = normalizeRegMobile(mobileInput);
             const pass = document.getElementById('regPass').value;
             const confirmPass = document.getElementById('regConfirmPass').value;
             const inviteCodeRaw = document.getElementById('regInviteCode').value.trim();
@@ -982,15 +1081,9 @@
                     return showAlert('error', invitationCheck.message || 'Invalid or inactive invitation code.');
                 }
 
-                const client = DB.getClient();
-                const mobileCandidates = (window.DB && typeof window.DB.buildMobileCandidates === 'function')
-                    ? window.DB.buildMobileCandidates(mobileInput)
-                    : [mobile];
-
-                // Check if mobile already exists (informational)
-                const { data: existingMob } = await client.from('users').select('id').in('mobile', mobileCandidates).maybeSingle();
-                if (existingMob) {
-                    return showAlert('error', 'Mobile number already registered.');
+                const existing = await findExistingRegistrationIdentity({ mobile });
+                if (existing.mobileUser) {
+                    return showAlert('error', 'This mobile number is already registered. Please sign in instead.', 'Number Exists');
                 }
 
                 // Store Step 1 Data
@@ -1013,10 +1106,22 @@
             }
         };
 
-        window.triggerEmailOtp = function () {
-            const email = document.getElementById('regEmail').value;
+        window.triggerEmailOtp = async function () {
+            const email = String(document.getElementById('regEmail').value || '').trim().toLowerCase();
             if (!email) return showAlert('warning', 'Please enter a valid email address.');
-            savePendingRegistration({ email: String(email).trim() });
+
+            const existing = await findExistingRegistrationIdentity({
+                mobile: regData.mobile || document.getElementById('regMobile').value,
+                email
+            });
+            if (existing.mobileUser) {
+                return showAlert('error', 'This mobile number is already registered. Please sign in instead.', 'Number Exists');
+            }
+            if (existing.emailUser) {
+                return showAlert('error', 'This email address is already registered. Please sign in instead.', 'Email Exists');
+            }
+
+            savePendingRegistration({ email });
             const otpRegistrationPayload = {
                 mobile: regData.mobile || document.getElementById('regMobile').value,
                 password: regData.password || document.getElementById('regPass').value,
@@ -1073,29 +1178,56 @@
                     return showAlert('error', 'Invalid OTP or expired.');
                 }
 
+                const client = DB.getClient();
+
+                const existing = await findExistingRegistrationIdentity({
+                    mobile: regData.mobile,
+                    email
+                });
+                if (existing.mobileUser) {
+                    if (client?.auth) await client.auth.signOut();
+                    return showAlert('error', 'This mobile number is already registered. Please sign in instead.', 'Number Exists');
+                }
+                if (existing.emailUser) {
+                    if (client?.auth) await client.auth.signOut();
+                    return showAlert('error', 'This email address is already registered. Please sign in instead.', 'Email Exists');
+                }
+
                 // 2. Create Account (DB.register)
                 const regRes = await DB.register(regData.mobile, regData.password, email, res.authId, regData.inviteCode);
                 if (!regRes.success) {
+                    if (client?.auth) await client.auth.signOut();
+                    const friendly = getFriendlyRegistrationError(regRes.message);
+                    if (friendly) {
+                        return showAlert('error', friendly.message, friendly.title);
+                    }
                     return showAlert('error', regRes.message || 'Registration failed.');
                 }
 
                 regData.email = email;
                 regData.authId = res.authId;
                 regData.userId = regRes.user.id; // Store for KYC steps
-                clearPendingRegistration();
-                localStorage.removeItem(DB.CURRENT_USER_KEY);
-                const client = DB.getClient();
-                if (client && client.auth) {
-                    await client.auth.signOut();
-                }
+                regData.password = '';
+                primeRegistrationForKyc(regRes.user, {
+                    email,
+                    authId: res.authId,
+                    userId: regRes.user.id,
+                    mobile: regData.mobile,
+                    inviteCode: regData.inviteCode
+                });
 
                 showAlert(
                     'success',
-                    'Email verification successful. Please login with your mobile number and password.',
+                    'Email verification successful. Please continue with KYC now.',
                     'Verified',
                     () => {
-                        closeModal('register');
-                        window.location.replace('login.html');
+                        enterKycRegistrationFlow(regRes.user, {
+                            email,
+                            authId: res.authId,
+                            userId: regRes.user.id,
+                            mobile: regData.mobile,
+                            inviteCode: regData.inviteCode
+                        });
                     }
                 );
             } catch (err) {
@@ -1183,6 +1315,7 @@
                 );
 
                 if (kycRes.success) {
+                    clearPendingRegistration();
                     showStep('FinalReview');
                 } else {
                     throw new Error(kycRes.error?.message || "KYC submission failed.");
@@ -1195,6 +1328,17 @@
                 btn.innerText = originalText;
                 btn.disabled = false;
             }
+        };
+
+        window.finishRegistrationAfterKyc = async function () {
+            try {
+                clearPendingRegistration();
+                if (window.DB && typeof window.DB.refreshCurrentUser === 'function') {
+                    await window.DB.refreshCurrentUser();
+                }
+            } catch (_) { }
+            closeModal('register');
+            window.location.replace('index.html');
         };
 
         async function handleAuthLanding() {
@@ -1297,46 +1441,40 @@
                         );
                         if (regRes?.success && regRes?.user) {
                             appUser = regRes.user;
-                            clearPendingRegistration();
                             break;
                         }
 
-                        const mobileCandidates = (window.DB && typeof window.DB.buildMobileCandidates === 'function')
-                            ? window.DB.buildMobileCandidates(String(pending.mobile))
-                            : [];
-                        if (mobileCandidates.length === 0) continue;
-
-                        const byMobile = await client
-                            .from('users')
-                            .select('*')
-                            .in('mobile', mobileCandidates)
-                            .maybeSingle();
-                        const mobileUser = byMobile?.data || null;
-                        const mobileEmail = String(mobileUser?.email || '').trim().toLowerCase();
-                        if (byMobile?.error || !mobileUser) continue;
-                        if (mobileEmail && mobileEmail !== sessionEmail) continue;
-
-                        if (!mobileUser.auth_id || String(mobileUser.auth_id) !== String(authId)) {
-                            const updatePayload = { auth_id: authId };
-                            if (userEmail) updatePayload.email = userEmail;
-                            await client
-                                .from('users')
-                                .update(updatePayload)
-                                .eq('id', mobileUser.id);
-                            mobileUser.auth_id = authId;
-                            if (!mobileUser.email && userEmail) mobileUser.email = userEmail;
+                        const friendly = getFriendlyRegistrationError(regRes?.message);
+                        if (friendly) {
+                            await client.auth.signOut();
+                            showAlert('error', friendly.message, friendly.title);
+                            if (hasHash || hasSearch) history.replaceState({}, document.title, window.location.pathname);
+                            return;
                         }
-                        appUser = mobileUser;
-                        clearPendingRegistration();
-                        break;
                     }
                 }
 
                 if (appUser) {
-                    // Keep user on login page and let them sign in with password as requested.
-                    localStorage.removeItem(DB.CURRENT_USER_KEY);
-                    await client.auth.signOut();
-                    showAlert('success', 'Email verification successful. Please enter your mobile number and password to sign in.', 'Verified');
+                    primeRegistrationForKyc(appUser, {
+                        email: userEmail,
+                        authId,
+                        userId: appUser.id,
+                        mobile: appUser.mobile
+                    });
+                    showAlert(
+                        'success',
+                        'Email verification successful. Please continue with KYC now.',
+                        'Verified',
+                        () => {
+                            originalOpenModal('register');
+                            enterKycRegistrationFlow(appUser, {
+                                email: userEmail,
+                                authId,
+                                userId: appUser.id,
+                                mobile: appUser.mobile
+                            });
+                        }
+                    );
                 } else {
                     await client.auth.signOut();
                     showAlert(

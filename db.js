@@ -692,6 +692,13 @@ window.DB = {
 
         if (error) {
             console.error("Registration Error:", error);
+            const rawMessage = String(error.message || '').trim();
+            if (/duplicate key|unique constraint|users?_.*mobile.*key/i.test(rawMessage) && /mobile/i.test(rawMessage)) {
+                return { success: false, message: "This mobile number is already registered." };
+            }
+            if (/duplicate key|unique constraint|users?_.*email.*key/i.test(rawMessage) && /email/i.test(rawMessage)) {
+                return { success: false, message: "This email is already registered." };
+            }
             return { success: false, message: error.message };
         }
 
@@ -1157,7 +1164,8 @@ window.DB = {
             email: extra.email,
             auth_id: extra.auth_id,
             username: extra.username,
-            gender: extra.gender
+            gender: extra.gender,
+            kyc: 'Pending'
             // Note: We skip 'mobile' because it's the unique ID and already set.
         };
 
