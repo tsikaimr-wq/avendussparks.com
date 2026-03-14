@@ -10601,9 +10601,45 @@
                 return numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
 
+            function isIndiaRegularMarketOpenNow() {
+                try {
+                    const parts = new Intl.DateTimeFormat('en-GB', {
+                        timeZone: 'Asia/Kolkata',
+                        weekday: 'short',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                        hourCycle: 'h23'
+                    }).formatToParts(new Date()).reduce((acc, part) => {
+                        if (part.type !== 'literal') acc[part.type] = part.value;
+                        return acc;
+                    }, {});
+
+                    const weekday = String(parts.weekday || '');
+                    const hour = Number(parts.hour);
+                    const minute = Number(parts.minute);
+                    if (!Number.isFinite(hour) || !Number.isFinite(minute)) return true;
+                    if (weekday === 'Sat' || weekday === 'Sun') return false;
+
+                    const totalMinutes = (hour * 60) + minute;
+                    return totalMinutes >= ((9 * 60) + 15) && totalMinutes < ((15 * 60) + 30);
+                } catch (_) {
+                    return true;
+                }
+            }
+
+            function getIndexNoQuoteState() {
+                const marketOpen = isIndiaRegularMarketOpenNow();
+                return {
+                    changeText: marketOpen ? 'Waiting for quote...' : '休盘',
+                    statusText: marketOpen ? 'Awaiting API data' : '休盘',
+                    color: '#94a3b8'
+                };
+            }
+
             function describeIndexCardStatus(idx) {
                 if (!idx?.hasMarketQuote) {
-                    return { text: 'Awaiting API data', color: '#94a3b8' };
+                    const noQuote = getIndexNoQuoteState();
+                    return { text: noQuote.statusText, color: noQuote.color };
                 }
 
                 const source = String(idx.quoteSource || '').toLowerCase();
@@ -10627,6 +10663,7 @@
                 // Build Layout if empty
                 if (container.children.length === 0 && indices.length > 0) {
                     indices.forEach((idx, i) => {
+                        const noQuote = getIndexNoQuoteState();
                         const div = document.createElement('div');
                         div.className = `index-card`;
                         // Ensure consistent width styling inline
@@ -10659,7 +10696,7 @@
                                 </div>
                                 <div class="index-body" style="text-align: center;">
                                     <div class="index-val" id="idx-val-${i}" style="font-size: 1.4rem; font-weight: 700; color: #fff;">${formatIndexDisplayValue(idx.hasMarketQuote ? idx.price : null)}</div>
-                                    <div class="index-change" id="idx-change-${i}" style="font-size: 0.9rem; font-weight: 600;">${idx.hasMarketQuote ? `${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)` : 'Waiting for quote...'}</div>
+                                    <div class="index-change" id="idx-change-${i}" style="font-size: 0.9rem; font-weight: 600;">${idx.hasMarketQuote ? `${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)` : noQuote.changeText}</div>
                                     <div id="idx-status-${i}" style="font-size: 0.72rem; margin-top: 0.3rem; color: ${describeIndexCardStatus(idx).color};">${describeIndexCardStatus(idx).text}</div>
                                 </div>
                             </div>
@@ -10687,8 +10724,9 @@
                             changeEl.innerText = `${sign}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)`;
                             changeEl.style.color = idx.change >= 0 ? '#10b981' : '#ef4444';
                         } else {
-                            changeEl.innerText = 'Waiting for quote...';
-                            changeEl.style.color = '#94a3b8';
+                            const noQuote = getIndexNoQuoteState();
+                            changeEl.innerText = noQuote.changeText;
+                            changeEl.style.color = noQuote.color;
                         }
                     }
                     if (statusEl) {
