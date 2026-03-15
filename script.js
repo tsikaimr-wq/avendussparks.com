@@ -1079,7 +1079,7 @@ window.loadUserAssets = async function (userId) {
     try {
         const { data: dbUser, error } = await client
             .from('users')
-            .select('id, balance, invested, frozen, outstanding, username, full_name, kyc, credit_score, vip, loan_enabled, borrowed_funds')
+            .select('*')
             .eq('id', userId)
             .single();
 
@@ -1105,11 +1105,29 @@ window.loadUserAssets = async function (userId) {
             }
         }
 
+        let pendingDepositAmount = 0;
+        try {
+            const { data: pendingDeposits, error: pendingDepositsError } = await client
+                .from('deposits')
+                .select('amount')
+                .eq('user_id', userId)
+                .eq('status', 'Pending');
+
+            if (!pendingDepositsError && pendingDeposits) {
+                pendingDepositAmount = pendingDeposits.reduce((sum, item) => {
+                    return sum + (parseFloat(item.amount) || 0);
+                }, 0);
+            }
+        } catch (pendingErr) {
+            console.warn("Unable to load pending deposits for asset display:", pendingErr);
+        }
+
         // --- Data Extraction & Safe Fallbacks ---
         const rawBalance = parseFloat(dbUser.balance) || 0;
         const inv = parseFloat(dbUser.invested) || 0;
         const frozen = parseFloat(dbUser.frozen) || 0;
         const bonus = parseFloat(dbUser.bonus) || 0;
+        const displayPendingFunds = frozen + pendingDepositAmount;
         const portfolioProfit = window.__LATEST_TOTAL_PROFIT__ || 0;
         const totalAssets = rawBalance + frozen + inv + portfolioProfit;
 
@@ -1208,7 +1226,7 @@ window.loadUserAssets = async function (userId) {
         // These are usually elements with 'asset-amount' class in order 0-5
         const assetAmounts = document.querySelectorAll('.asset-amount');
         if (assetAmounts.length >= 6) {
-            const vals = [rawBalance, inv, bonus, frozen, loan, outstanding];
+            const vals = [rawBalance, inv, bonus, displayPendingFunds, loan, outstanding];
             assetAmounts.forEach((el, idx) => {
                 if (vals[idx] !== undefined) {
                     fitText(el, formatCurrency(vals[idx]));
@@ -1220,7 +1238,8 @@ window.loadUserAssets = async function (userId) {
         updateVal('meTotalAssets', totalAssets);
         updateVal('meAvailableBalance', rawBalance);
         updateVal('meCurrentInvestments', inv);
-        updateVal('meFrozenFunds', frozen);
+        updateVal('meBonusCredits', bonus);
+        updateVal('meFrozenFunds', displayPendingFunds);
         updateVal('meBorrowedFunds', loan);
         updateVal('mePendingSettlement', outstanding);
 
@@ -1234,7 +1253,7 @@ window.loadUserAssets = async function (userId) {
         updateVal('pAvailableBalance', rawBalance);
         updateVal('pCurrentInvested', inv);
         updateVal('pPromoCredits', bonus);
-        updateVal('pPendingFunds', frozen);
+        updateVal('pPendingFunds', displayPendingFunds);
         updateVal('pBorrowedFunds', loan);
         updateVal('pPendingSettlement', outstanding);
 
@@ -1252,7 +1271,11 @@ window.loadUserAssets = async function (userId) {
         investedEls.forEach(el => fitText(el, formatCurrency(inv)));
 
         // Update LocalStorage to keep session fresh
-        localStorage.setItem(window.DB.CURRENT_USER_KEY, JSON.stringify(dbUser));
+        if (window.DB && window.DB.CURRENT_USER_KEY) {
+            const localUser = localStorage.getItem(window.DB.CURRENT_USER_KEY);
+            const mergedUser = localUser ? { ...JSON.parse(localUser), ...dbUser } : { ...dbUser };
+            localStorage.setItem(window.DB.CURRENT_USER_KEY, JSON.stringify(mergedUser));
+        }
 
         // --- Sync Profile Information (Name & Avatar) ---
         const displayName = dbUser.username || 'User';

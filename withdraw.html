@@ -907,16 +907,12 @@
                                                 style: 'currency', currency: 'INR'
                                             }).format(val || 0);
 
-                                            // 1. Calculate and Show Effective Balance
-                                            const [pD,
-                                                pW,
-                                                pT] = await Promise.all([client.from('deposits').select('amount').eq('user_id', user.id).eq('status', 'Pending'),
-                                                client.from('withdrawals').select('amount').eq('user_id', user.id).eq('status', 'Pending'),
-                                                client.from('trades').select('total_amount, admin_note').eq('user_id', user.id).eq('status', 'Pending')]);
-
-                                            const lockedDeposits = (pD.data || []).reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
-                                            const lockedWithdrawals = (pW.data || []).reduce((sum, w) => sum + (parseFloat(w.amount) || 0), 0);
-                                            const lockedTrades = (pT.data || []).reduce((sum, t) => sum + (parseFloat(t.total_amount) || 0), 0);
+                                            // 1. Show actual spendable wallet balance only
+                                            const pT = await client
+                                                .from('trades')
+                                                .select('total_amount, admin_note')
+                                                .eq('user_id', user.id)
+                                                .eq('status', 'Pending');
 
                                             // RECONCILIATION: Extract real outstanding debt from trade notes
                                             const realOutstanding = (pT.data || []).filter(t => (t.admin_note || "").startsWith('OUTSTANDING')).reduce((sum, t) => {
@@ -937,8 +933,7 @@
 
                                                 , 0);
 
-                                            let effectiveBalance = (parseFloat(dbUser.balance) || 0) + lockedDeposits - lockedWithdrawals - lockedTrades;
-                                            if (effectiveBalance < 0) effectiveBalance = 0;
+                                            const effectiveBalance = Math.max(parseFloat(dbUser.balance) || 0, 0);
 
                                             const balEl = document.getElementById('accDisplayBal');
                                             if (balEl) balEl.textContent = fmt(effectiveBalance);

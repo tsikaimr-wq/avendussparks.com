@@ -8440,9 +8440,17 @@
         // Settings Modal Logic
         // Consolidate Page-Specific Sync with Global State
         window.syncUserData = async function (skipRender = false) {
-            const user = (window.UserService && typeof window.UserService.getCurrentUser === "function")
-                ? window.UserService.getCurrentUser()
-                : (window.DB ? window.DB.getCurrentUser() : null);
+            let user = null;
+            if (window.UserService && typeof window.UserService.refreshCurrentUser === "function") {
+                user = await window.UserService.refreshCurrentUser().catch(() => null);
+            } else if (window.DB && typeof window.DB.refreshCurrentUser === "function") {
+                user = await window.DB.refreshCurrentUser().catch(() => null);
+            }
+            if (!user) {
+                user = (window.UserService && typeof window.UserService.getCurrentUser === "function")
+                    ? window.UserService.getCurrentUser()
+                    : (window.DB ? window.DB.getCurrentUser() : null);
+            }
 
             if (!user) {
                 console.warn("UserService not ready - skipping syncUserData");
@@ -8474,6 +8482,9 @@
             const formats = { minimumFractionDigits: 2 };
             const inv = parseFloat(dbUser.invested) || 0;
             const rawBalance = parseFloat(dbUser.balance) || 0;
+            const bonus = parseFloat(dbUser.bonus) || 0;
+            const loan = parseFloat(dbUser.borrowed_funds ?? dbUser.loan) || 0;
+            const outstanding = parseFloat(dbUser.outstanding_balance ?? dbUser.outstanding) || 0;
 
             // Updated targets for specific views
             const updateVal = (id, val) => {
@@ -8483,6 +8494,18 @@
                     else el.textContent = (val < 0 ? '-' : '') + '₹' + Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
             };
+
+            updateVal('meAvailableBalance', rawBalance);
+            updateVal('meCurrentInvestments', inv);
+            updateVal('meBonusCredits', bonus);
+            updateVal('meBorrowedFunds', loan);
+            updateVal('mePendingSettlement', outstanding);
+
+            updateVal('pAvailableBalance', rawBalance);
+            updateVal('pCurrentInvested', inv);
+            updateVal('pPromoCredits', bonus);
+            updateVal('pBorrowedFunds', loan);
+            updateVal('pPendingSettlement', outstanding);
 
             updateVal('pInvestedMain', inv);
             updateVal('pPortfolioTotal', inv);
