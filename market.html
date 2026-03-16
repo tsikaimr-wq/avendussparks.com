@@ -5433,6 +5433,48 @@
         async function fetchLivePrice(symbol, name = '') {
             console.log("fetchLivePrice CALLED:", symbol);
 
+            const fetchDetailQuoteDirect = async (rawSymbol, rawName = '') => {
+                const candidates = [...new Set([
+                    rawSymbol,
+                    ...buildYahooSymbolCandidates(rawSymbol, inferExchangeFromStockParam(rawSymbol))
+                ].filter(Boolean))];
+
+                for (const candidate of candidates) {
+                    for (const base of detailMarketApiBases()) {
+                        try {
+                            const baseUrl = String(base || '').replace(/\/$/, '');
+                            const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                            const response = isFnBase
+                                ? await fetch(`${baseUrl}/get-market-price`, {
+                                    method: 'POST',
+                                    headers: detailEdgeHeaders(),
+                                    body: JSON.stringify({ symbol: candidate, name: rawName || undefined }),
+                                    cache: 'no-store'
+                                })
+                                : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(candidate)}${rawName ? `&name=${encodeURIComponent(rawName)}` : ''}`, {
+                                    cache: 'no-store'
+                                });
+                            if (!response.ok) continue;
+                            const payload = await response.json();
+                            const price = toFiniteNumber(payload?.price);
+                            if (payload?.success && price !== null && price > 0) {
+                                return {
+                                    status: 'success',
+                                    symbol: payload.symbol || candidate,
+                                    name: payload.name || rawName || '',
+                                    price,
+                                    previousClose: toFiniteNumber(payload?.previousClose ?? payload?.prevClose),
+                                    prevClose: toFiniteNumber(payload?.previousClose ?? payload?.prevClose),
+                                    change: toFiniteNumber(payload?.change),
+                                    changePercent: toFiniteNumber(payload?.changePercent)
+                                };
+                            }
+                        } catch (_) { }
+                    }
+                }
+                return null;
+            };
+
             const syncStaticDetailBuyPrice = () => {
                 const detailType = String(document.getElementById('buyBtn')?.dataset?.type || '').toUpperCase();
                 if (!['OTC', 'IPO'].includes(detailType)) return false;
@@ -5461,9 +5503,10 @@
             };
 
             const updatePriceUI = async () => {
-                const liveQuote = (window.DB && typeof window.DB.getMarketPrice === 'function')
+                const directQuote = await fetchDetailQuoteDirect(symbol, name);
+                const liveQuote = directQuote || ((window.DB && typeof window.DB.getMarketPrice === 'function')
                     ? await window.DB.getMarketPrice(symbol, name)
-                    : null;
+                    : null);
                 const livePriceValue = toFiniteNumber(liveQuote?.price);
                 const hasLivePrice = liveQuote && liveQuote.status !== 'error' && livePriceValue !== null && livePriceValue > 0;
                 const cacheData = hasLivePrice
