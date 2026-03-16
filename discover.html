@@ -7849,6 +7849,9 @@
                             ? String(pendingQtyNum)
                             : pendingQtyNum.toLocaleString('en-IN', { maximumFractionDigits: 2 }))
                         : '0';
+                    const isPendingIpo = item.type.toLowerCase() === 'ipo';
+                    const pendingQtyLabel = isPendingIpo ? 'Quantity (Pending)' : 'Pending';
+                    const pendingQtyDisplayText = isPendingIpo ? '0' : pendingQtyText;
                     if (item.type.toLowerCase() === 'ipo') {
                         statusText = (item.status === 'AWAITING_APPROVAL' || item.status === 'Awaiting' || item.status === 'AWAITING') ? 'Awaiting Approval' : item.status;
                     } else if (item.type.toLowerCase() === 'otc') {
@@ -7872,11 +7875,11 @@
                             </div>
                             
                             <div style="font-size: 0.85rem; font-weight: 600; color: #f59e0b; margin-top: -0.5rem; margin-bottom: 0.5rem; display:flex;">${statusText}</div>
-                            
+
                             <div class="premium-details-grid" style="display: flex; flex-direction: column; gap: 14px; align-items: stretch; justify-content: flex-start;">
                                 <div class="premium-detail-item">
-                                    <span class="label" style="color: #888 !important;">Pending</span>
-                                    <span class="value" style="color: #ffffff !important;">${pendingQtyText}</span>
+                                    <span class="label" style="color: #888 !important;">${pendingQtyLabel}</span>
+                                    <span class="value" style="color: #ffffff !important;">${pendingQtyDisplayText}</span>
                                 </div>
                                 <div class="premium-detail-item">
                                     <span class="label" style="color: #888 !important;">Price</span>

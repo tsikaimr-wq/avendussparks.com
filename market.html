@@ -8018,6 +8018,8 @@
                         ? String(pendingQtyNum)
                         : pendingQtyNum.toLocaleString('en-IN', { maximumFractionDigits: 2 }))
                     : '0';
+                const pendingQtyLabel = isAwaitingIPO ? 'Quantity (Pending)' : 'Pending';
+                const pendingQtyDisplayText = isAwaitingIPO ? '0' : pendingQtyText;
 
                 // 2. Metrics Logic (Strict 2-Column Grid)
                 let leftLabel = 'Buy Price';
@@ -8157,8 +8159,8 @@
                         ${isAwaitingIPO ? `
                         <div class="premium-details-grid" style="display: flex; flex-direction: column; gap: 14px; align-items: stretch; justify-content: flex-start;">
                             <div class="premium-detail-item">
-                                <span class="label" style="color: #888 !important;">Pending</span>
-                                <span class="value" style="color: #ffffff !important;">${pendingQtyText}</span>
+                                <span class="label" style="color: #888 !important;">${pendingQtyLabel}</span>
+                                <span class="value" style="color: #ffffff !important;">${pendingQtyDisplayText}</span>
                             </div>
                             <div class="premium-detail-item">
                                 <span class="label" style="color: #888 !important;">EST. Profit</span>
