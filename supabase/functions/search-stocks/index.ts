@@ -12,6 +12,7 @@ serve(async (req: Request) => {
 
     try {
         const { query } = await req.json()
+        const isBroad = req.headers.get('x-broad-search') === 'true'
 
         if (!query || query.length < 2) {
             return new Response(JSON.stringify([]), {
@@ -20,7 +21,27 @@ serve(async (req: Request) => {
             })
         }
 
-        const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&newsCount=0&listsCount=0&quotesCount=10`;
+        const normalizeSymbol = (value: string = '') =>
+            String(value || '')
+                .trim()
+                .toUpperCase()
+                .replace(/^(NSE|BSE):/, '')
+                .replace(/\.(NS|BO)$/, '')
+
+        const isIndiaQuote = (row: any) => {
+            const symbol = String(row?.symbol || '').toUpperCase()
+            const exchange = String(row?.exchDisp || row?.exch || row?.exchange || '').toUpperCase()
+            return symbol.endsWith('.NS')
+                || symbol.endsWith('.BO')
+                || exchange.includes('NSE')
+                || exchange.includes('BSE')
+                || exchange.includes('NSI')
+                || exchange.includes('BOM')
+        }
+
+        const normalizedQuery = normalizeSymbol(query)
+        const quotesCount = isBroad ? 30 : 25
+        const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&newsCount=0&listsCount=0&quotesCount=${quotesCount}`;
 
         const response = await fetch(url, {
             headers: {
@@ -34,13 +55,29 @@ serve(async (req: Request) => {
 
         const data = await response.json()
         const quotes = data.quotes || []
-        const isBroad = req.headers.get('x-broad-search') === 'true'
+        const rankQuote = (row: any) => {
+            const symbol = String(row?.symbol || '').toUpperCase()
+            const symbolKey = normalizeSymbol(symbol)
+            const name = String(row?.shortname || row?.longname || '').toUpperCase()
+            const type = String(row?.quoteType || row?.type || '').toUpperCase()
+            let rank = Number(row?.score) || 0
+
+            if (type === 'EQUITY' || type === 'STOCK' || type === 'INDEX') rank += 40
+            if (isIndiaQuote(row)) rank += 100
+            if (symbolKey === normalizedQuery) rank += 240
+            else if (symbolKey.startsWith(normalizedQuery)) rank += 140
+            else if (name.includes(normalizedQuery)) rank += 60
+
+            return rank
+        }
 
         // Filter and Format
         const filtered = quotes.filter((q: any) => {
+            if (!q?.symbol) return false
             if (isBroad) return true // Allow global for Admin
-            return q.symbol.endsWith('.NS') || q.symbol.endsWith('.BO')
-        })
+            return isIndiaQuote(q)
+        }).sort((left: any, right: any) => rankQuote(right) - rankQuote(left))
+            .slice(0, isBroad ? 20 : 15)
 
         // Fetch prices in parallel for Institutional Stocks if needed
         const formatted = await Promise.all(filtered.map(async (q: any) => {
@@ -82,7 +119,12 @@ serve(async (req: Request) => {
             }
         }))
 
-        return new Response(JSON.stringify(formatted), {
+        const ranked = formatted.map((row: any) => ({
+            ...row,
+            rank: rankQuote(row)
+        })).sort((left: any, right: any) => right.rank - left.rank)
+
+        return new Response(JSON.stringify(ranked), {
             headers: { ...corsHeaders, "Content-Type": "application/json" },
             status: 200,
         })

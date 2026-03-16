@@ -324,13 +324,14 @@ window.DB = {
         }
     },
 
-    async searchStocks(query) {
+    async searchStocks(query, broad = false) {
         const client = this.getClient();
         if (!client) return [];
 
         try {
             const { data, error } = await client.functions.invoke('search-stocks', {
-                body: { query }
+                body: { query },
+                headers: { 'x-broad-search': broad ? 'true' : 'false' }
             });
 
             if (error) throw error;

@@ -3267,11 +3267,47 @@
                 sResults.style.display = 'block';
 
                 try {
+                    const escapeSearchValue = (value) => String(value ?? '')
+                        .replace(/\\/g, '\\\\')
+                        .replace(/'/g, "\\'");
                     const normalizeSearchSymbol = (value) => String(value || '')
                         .trim()
                         .toUpperCase()
                         .replace(/^(NSE|BSE):/, '')
                         .replace(/\.(NS|BO)$/, '');
+                    const scoreSearchResult = (row, rawQuery) => {
+                        const type = String(row?.type || '').toLowerCase();
+                        const exch = String(row?.exch || row?.exchange || '').toUpperCase();
+                        const sym = String(row?.symbol || '').toUpperCase();
+                        const normalizedQuery = normalizeSearchSymbol(rawQuery);
+                        const normalizedSymbol = normalizeSearchSymbol(sym);
+                        const name = String(row?.name || '').toUpperCase();
+                        let rank = Number(row?.score) || 0;
+
+                        if (type === 'stock' || type === 'equity') rank += 80;
+                        if (exch.includes('NSE') || exch.includes('BSE') || exch.includes('NSI') || exch.includes('BOM')) rank += 70;
+                        if (sym.endsWith('.NS')) rank += 40;
+                        if (sym.endsWith('.BO')) rank += 35;
+                        if (normalizedSymbol === normalizedQuery) rank += 220;
+                        else if (normalizedSymbol.startsWith(normalizedQuery)) rank += 120;
+                        else if (name.includes(normalizedQuery)) rank += 40;
+
+                        return rank;
+                    };
+                    const rankSearchResults = (items, rawQuery) => [...(items || [])]
+                        .sort((left, right) => scoreSearchResult(right, rawQuery) - scoreSearchResult(left, rawQuery));
+                    const formatInitialPrice = (value) => {
+                        const numeric = Number(value);
+                        return Number.isFinite(numeric) && numeric > 0 ? numeric.toFixed(2) : 'Loading...';
+                    };
+                    const formatInitialChange = (value) => {
+                        const numeric = Number(value);
+                        return Number.isFinite(numeric) ? `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%` : '+0.00%';
+                    };
+                    const formatInitialColor = (value) => {
+                        const numeric = Number(value);
+                        return Number.isFinite(numeric) && numeric < 0 ? '#ef4444' : '#10b981';
+                    };
                     const dedupeSearchResults = (items) => {
                         const map = new Map();
                         const score = (row, targetExch) => {
@@ -3300,12 +3336,15 @@
                     };
 
                     // Use new Yahoo Search API via Supabase Edge Function
-                    const results = dedupeSearchResults(await window.DB.searchStocks(query));
+                    const results = rankSearchResults(
+                        dedupeSearchResults(await window.DB.searchStocks(query, true)),
+                        query
+                    );
 
                     if (results && results.length > 0) {
                         sResults.innerHTML = results.map(m => `
                             <div class="search-item" style="display: flex; gap: 12px; align-items: center; padding: 12px; cursor: pointer;" 
-                                 onclick="selectStock('${m.symbol}', '${m.name.replace(/'/g, "\\'")}', 'stock', '${(m.exch || '').replace(/'/g, "\\'")}')">
+                                 onclick="selectStock('${escapeSearchValue(m.symbol)}', '${escapeSearchValue(m.name)}', '${escapeSearchValue(m.type || 'stock')}', '${escapeSearchValue(m.exch || '')}', '${escapeSearchValue(formatInitialPrice(m.price))}', '${escapeSearchValue(formatInitialChange(m.changePercent))}', '${formatInitialColor(m.changePercent)}')">
                                 <div style="flex: 1;">
                                     <div class="search-symbol">${m.symbol}</div>
                                     <div class="search-name">${m.name}</div>
@@ -3316,11 +3355,11 @@
                     } else {
                         // Fallback to Local Database Search
                         console.log("Yahoo search empty, falling back to local DB");
-                        const localResults = dedupeSearchResults(MarketEngine.search(query));
+                        const localResults = rankSearchResults(dedupeSearchResults(MarketEngine.search(query)), query);
                         if (localResults.length > 0) {
                             sResults.innerHTML = localResults.map(m => `
                                 <div class="search-item" style="display: flex; gap: 12px; align-items: center; padding: 12px; cursor: pointer;" 
-                                     onclick="selectStock('${m.symbol}', '${m.name.replace(/'/g, "\\'")}', '${m.type || 'stock'}', '${(m.exchange || m.exch || '').replace(/'/g, "\\'")}')">
+                                     onclick="selectStock('${escapeSearchValue(m.symbol)}', '${escapeSearchValue(m.name)}', '${escapeSearchValue(m.type || 'stock')}', '${escapeSearchValue(m.exchange || m.exch || '')}', '${escapeSearchValue(formatInitialPrice(m.price))}', '${escapeSearchValue(formatInitialChange(m.changePercent))}', '${formatInitialColor(m.changePercent)}')">
                                     <div style="flex: 1;">
                                         <div class="search-symbol">${m.symbol}</div>
                                         <div class="search-name">${m.name}</div>
@@ -3339,7 +3378,7 @@
             }
 
 
-            window.selectStock = function (sym, name, type = 'stock', exchHint = '') {
+            window.selectStock = function (sym, name, type = 'stock', exchHint = '', initialPrice = 'Loading...', initialChange = '+0.00%', initialColor = '#10b981') {
                 const sInput = document.getElementById('globalSearchInput');
                 const sResults = document.getElementById('searchResults');
                 if (sInput) sInput.value = '';
@@ -3356,7 +3395,7 @@
                         : (hint.includes('BSE') ? 'BSE' : 'NSE'));
 
                 if (typeof window.openStockDetail === 'function') {
-                    window.openStockDetail(sym, name, exchange, 'Loading...', '0.00%', '#10b981', product.type);
+                    window.openStockDetail(sym, name, exchange, initialPrice, initialChange, initialColor, product.type);
                 } else {
                     // Fallback to older handlers if openStockDetail is not available
                     if (product.type === 'stock') {
@@ -4498,7 +4537,7 @@
         function getMoverNoQuoteState() {
             const marketOpen = isIndiaRegularMarketOpenNow();
             return {
-                text: marketOpen ? 'Quote unavailable' : '休盘中',
+                text: marketOpen ? 'Quote unavailable' : 'Closed',
                 color: '#94a3b8'
             };
         }
@@ -4560,7 +4599,7 @@
             state.exchange = exchange;
             const requestId = ++state.requestId;
             const noQuote = getMoverNoQuoteState();
-            const marketClosed = noQuote.text === '休盘中';
+            const marketClosed = noQuote.text === 'Closed';
             const seedRows = (stockData[type]?.[exchange] || []).map(item => ({
                 t: item.t,
                 n: item.n,
@@ -5577,11 +5616,18 @@
             // Fetch actual exchange from MarketEngine if available
             const actualExchange = (product && product.exchange) ? product.exchange : exchange;
 
+            const initialPriceValue = Number(price);
+            const hasInitialPrice = Number.isFinite(initialPriceValue) && initialPriceValue > 0;
+            const initialPriceLabel = hasInitialPrice
+                ? `₹${initialPriceValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                : 'Loading...';
+            const initialChangeText = String(change || '').trim() || '+0.00%';
+
             document.getElementById('detExchange').innerText = `${actualExchange}  - IN`;
-            document.getElementById('detPrice').innerText = "Loading...";
-            document.getElementById('detChange').innerText = change;
-            document.getElementById('detChange').className = `index-chg ${change.startsWith('+') ? 'green' : 'red'}`;
-            document.getElementById('detBuyPrice').innerText = "Loading...";
+            document.getElementById('detPrice').innerText = initialPriceLabel;
+            document.getElementById('detChange').innerText = initialChangeText;
+            document.getElementById('detChange').className = `index-chg ${initialChangeText.startsWith('-') ? 'red' : 'green'}`;
+            document.getElementById('detBuyPrice').innerText = (!['OTC', 'IPO'].includes(normalizedType) && hasInitialPrice) ? initialPriceLabel : "Loading...";
             document.getElementById('detSymbol').innerText = chartSymbol;
             detailStatsSnapshot = null;
             resetDetailStatsPanel();
@@ -5710,7 +5756,8 @@
                 upperChart.includes('BANKNIFTY') ||
                 upperChart.includes('INDIAVIX') ||
                 upperChart.includes(' VIX ');
-            const shouldUseTradingView = isIndexLike;
+            const allowTradingViewFallback = !['OTC', 'IPO'].includes(normalizedType);
+            const shouldUseTradingView = isIndexLike || (!product && allowTradingViewFallback);
             console.log('[DetailChart][market]', {
                 chartSymbol,
                 shouldUseTradingView,
@@ -5748,7 +5795,11 @@
                     }
                 });
             } else {
-                await loadYahooChart(toYahooSymbol(chartSymbol), 'tradingview_det');
+                await loadYahooChart(toYahooSymbol(chartSymbol), 'tradingview_det', {
+                    originalSymbol: chartSymbol,
+                    exchangeHint: actualExchange || exchange,
+                    allowTradingViewFallback
+                });
             }
 
             window.scrollTo(0, 0);
@@ -5795,7 +5846,75 @@
             currentYahooChart = null;
             container.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-family: Outfit, sans-serif;">Loading realtime chart...</div>';
 
+            const allowTradingViewFallback = options.allowTradingViewFallback !== false;
+            const resolveTradingViewSymbol = (rawSymbol, exchangeHint = '') => {
+                const input = String(rawSymbol || '').trim().toUpperCase();
+                if (!input) return 'NSE:RELIANCE';
+                if (input.startsWith('^')) return input;
+                if (input.includes(':')) {
+                    const parts = input.split(':');
+                    const prefix = (parts[0] || '').trim().toUpperCase();
+                    const code = (parts.slice(1).join(':') || '').trim().toUpperCase().replace(/\.(NS|BO|NSE|BSE|BOM|KS|KRX)$/i, '').replace(/\s+/g, '');
+                    if (!code) return 'NSE:RELIANCE';
+                    if (prefix === 'BSE') return `BSE:${code}`;
+                    if (prefix === 'KRX') return `KRX:${code}`;
+                    return `NSE:${code}`;
+                }
+                if (input.endsWith('.NS')) return `NSE:${input.slice(0, -3)}`;
+                if (input.endsWith('.BO')) return `BSE:${input.slice(0, -3)}`;
+                if (input.endsWith('.KS')) return `KRX:${input.slice(0, -3)}`;
+                if (input.includes('.')) {
+                    const [ticker, suffix] = input.split('.');
+                    if (suffix === 'NSE' || suffix === 'NS') return `NSE:${ticker}`;
+                    if (suffix === 'BSE' || suffix === 'BO' || suffix === 'BOM') return `BSE:${ticker}`;
+                    if (suffix === 'KRX' || suffix === 'KS') return `KRX:${ticker}`;
+                }
+                const hint = String(exchangeHint || '').toUpperCase();
+                if (hint.includes('BSE') || hint.includes('BOM')) return `BSE:${input}`;
+                if (hint.includes('KRX')) return `KRX:${input}`;
+                return `NSE:${input}`;
+            };
+            const renderTradingViewFallback = () => {
+                if (!allowTradingViewFallback || !window.TradingView) return false;
+                try {
+                    container.innerHTML = '';
+                    new TradingView.widget({
+                        "autosize": true,
+                        "symbol": resolveTradingViewSymbol(options.originalSymbol || symbol, options.exchangeHint || ''),
+                        "interval": "D",
+                        "timezone": "Etc/UTC",
+                        "theme": "dark",
+                        "style": "3",
+                        "locale": "en",
+                        "toolbar_bg": "#111111",
+                        "enable_publishing": false,
+                        "allow_symbol_change": true,
+                        "container_id": containerId,
+                        "hide_side_toolbar": false,
+                        "withdateranges": true,
+                        "save_image": true,
+                        "details": true,
+                        "hotlist": true,
+                        "calendar": true,
+                        "overrides": {
+                            "paneProperties.background": "#111111",
+                            "paneProperties.vertGridProperties.color": "#1f1f1f",
+                            "paneProperties.horzGridProperties.color": "#1f1f1f",
+                            "scalesProperties.textColor": "#94a3b8",
+                            "mainSeriesProperties.areaStyle.linecolor": "#d4af37",
+                            "mainSeriesProperties.areaStyle.color1": "rgba(212, 175, 55, 0.2)",
+                            "mainSeriesProperties.areaStyle.color2": "rgba(212, 175, 55, 0.05)"
+                        }
+                    });
+                    return true;
+                } catch (tvError) {
+                    console.error("TradingView fallback failed:", tvError);
+                    return false;
+                }
+            };
+
             if (!window.LightweightCharts) {
+                if (renderTradingViewFallback()) return;
                 container.innerHTML = '<div style="color:#ef4444; text-align:center;">Library Error: Lightweight Charts not loaded.</div>';
                 return;
             }
@@ -6091,6 +6210,7 @@
 
             } catch (error) {
                 console.error("loadYahooChart Error:", error);
+                if (renderTradingViewFallback()) return;
                 container.innerHTML = `<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-size:1.1rem; text-align:center; flex-direction:column; gap:10px; font-family: Outfit, sans-serif;"><i data-lucide="bar-chart-2" style="width:48px;height:48px;opacity:0.5;"></i>Chart data not available for ${symbol}</div>`;
                 if (window.lucide) lucide.createIcons();
             }
@@ -10874,8 +10994,8 @@
             function getIndexNoQuoteState() {
                 const marketOpen = isIndiaRegularMarketOpenNow();
                 return {
-                    changeText: marketOpen ? 'Waiting for quote...' : '休盘',
-                    statusText: marketOpen ? 'Awaiting API data' : '休盘',
+                    changeText: marketOpen ? 'Waiting for quote...' : 'Closed',
+                    statusText: marketOpen ? 'Awaiting API data' : 'Closed',
                     color: '#94a3b8'
                 };
             }
