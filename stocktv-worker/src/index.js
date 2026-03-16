@@ -1,5 +1,11 @@
 const API_BASE = 'https://api.stocktv.top';
 const YAHOO_BASES = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
+const BROWSER_LIKE_HEADERS = {
+  Accept: 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  Referer: 'https://finance.yahoo.com/',
+  'X-Requested-With': 'XMLHttpRequest',
+};
 
 const STOCK_SYMBOL_ALIAS = {
   RELIANCE: 'RELI',
@@ -33,6 +39,14 @@ const INDEX_FALLBACK_QUOTES = {
   '^INDIAVIX': { name: 'INDIA VIX', price: 15.1, previousClose: 13.64 },
 };
 
+const NSE_INDEX_NAMES = {
+  '^NSEI': 'NIFTY 50',
+  '^NSEBANK': 'NIFTY BANK',
+  '^NSESMCP100': 'NIFTY SMALLCAP 100',
+  '^NSEMDCP100': 'NIFTY MIDCAP 100',
+  '^INDIAVIX': 'INDIA VIX',
+};
+
 const buildIndexLookup = () => {
   const lookup = {};
   for (const [yahooSymbol, aliases] of Object.entries(INDEX_ALIAS_GROUPS)) {
@@ -56,6 +70,12 @@ const json = async (url, init = undefined) => {
   }
 };
 
+const textResponse = async (url, init = undefined) => {
+  const res = await fetch(url, init);
+  if (!res.ok) return null;
+  return res.text();
+};
+
 const pick = (obj, keys) => {
   for (const k of keys) {
     if (obj && obj[k] != null) return obj[k];
@@ -64,7 +84,8 @@ const pick = (obj, keys) => {
 };
 
 const toNum = (v) => {
-  const n = Number(v);
+  const normalized = typeof v === 'string' ? v.replace(/,/g, '').trim() : v;
+  const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
 };
 
@@ -463,7 +484,7 @@ const fetchYahooChart = async (symbol, { interval, range }) => {
     url.searchParams.set('interval', interval);
     url.searchParams.set('range', range);
     url.searchParams.set('includePrePost', 'false');
-    const payload = await json(url);
+    const payload = await json(url, { headers: BROWSER_LIKE_HEADERS });
     const result = payload?.chart?.result?.[0];
     if (!result) continue;
     return {
@@ -472,6 +493,36 @@ const fetchYahooChart = async (symbol, { interval, range }) => {
     };
   }
   return null;
+};
+
+const fetchYahooChartViaJina = async (symbol, { interval, range }) => {
+  const target = new URL(`http://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`);
+  target.searchParams.set('interval', interval);
+  target.searchParams.set('range', range);
+  target.searchParams.set('includePrePost', 'false');
+  const proxyUrl = `https://r.jina.ai/${target.toString()}`;
+  const payloadText = await textResponse(proxyUrl, {
+    headers: {
+      Accept: 'text/plain, text/markdown, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      Referer: 'https://r.jina.ai/',
+    },
+  });
+  if (!payloadText) return null;
+  const start = payloadText.indexOf('{');
+  const end = payloadText.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    const payload = JSON.parse(payloadText.slice(start, end + 1));
+    const result = payload?.chart?.result?.[0];
+    if (!result) return null;
+    return {
+      symbol: result?.meta?.symbol || symbol,
+      result,
+    };
+  } catch (_) {
+    return null;
+  }
 };
 
 const extractLastFinite = (arr) => {
@@ -499,7 +550,7 @@ const buildQuoteFromYahooResult = ({ symbol, result }) => {
     success: true,
     symbol,
     pid: null,
-    name: null,
+    name: meta.longName || meta.shortName || INDEX_FALLBACK_QUOTES[symbol]?.name || null,
     price,
     previousClose,
     change,
@@ -553,6 +604,26 @@ const fetchYahooQuote = async ({ symbol, name, indexOnly = false }) => {
   return null;
 };
 
+const fetchYahooQuoteViaJina = async ({ symbol, name, indexOnly = false }) => {
+  const candidates = getYahooCandidates({ symbol, name, indexOnly });
+  if (!candidates.length) return null;
+  const intervals = ['1m', '5m', '15m'];
+  for (const candidate of candidates) {
+    for (const interval of intervals) {
+      const chart = await fetchYahooChartViaJina(candidate, { interval, range: '1d' });
+      if (!chart) continue;
+      const quote = buildQuoteFromYahooResult(chart);
+      if (quote) {
+        return {
+          ...quote,
+          source: 'yahoo_jina_proxy',
+        };
+      }
+    }
+  }
+  return null;
+};
+
 const fetchYahooKline = async ({ symbol, name, period, interval, indexOnly = false }) => {
   const candidates = getYahooCandidates({ symbol, name, indexOnly });
   if (!candidates.length) return null;
@@ -568,6 +639,117 @@ const fetchYahooKline = async ({ symbol, name, period, interval, indexOnly = fal
     }
   }
   return null;
+};
+
+const fetchYahooKlineViaJina = async ({ symbol, name, period, interval, indexOnly = false }) => {
+  const candidates = getYahooCandidates({ symbol, name, indexOnly });
+  if (!candidates.length) return null;
+  const range = mapYahooRange(period);
+  const desired = mapYahooInterval(interval);
+  const intervals = [...new Set([desired, '5m', '15m', '1d'])];
+  for (const candidate of candidates) {
+    for (const iv of intervals) {
+      const chart = await fetchYahooChartViaJina(candidate, { interval: iv, range });
+      if (!chart) continue;
+      const kline = buildKlineFromYahooResult(chart);
+      if (kline) {
+        return {
+          ...kline,
+          source: 'yahoo_jina_proxy',
+        };
+      }
+    }
+  }
+  return null;
+};
+
+const fetchNseIndexQuote = async (indexSymbol) => {
+  const indexName = NSE_INDEX_NAMES[indexSymbol];
+  if (!indexName) return null;
+  const url = new URL('https://www.nseindia.com/api/equity-stockIndices');
+  url.searchParams.set('index', indexName);
+  const payload = await json(url, {
+    headers: {
+      ...BROWSER_LIKE_HEADERS,
+      Referer: 'https://www.nseindia.com/',
+    },
+  });
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const row = rows.find((item) => normalizeMatch(item?.symbol) === normalizeMatch(indexName)) || rows[0];
+  if (!row) return null;
+  const price = toNum(row.lastPrice);
+  const previousClose = toNum(row.previousClose);
+  let change = toNum(row.change);
+  let changePercent = toNum(row.pChange);
+  if (price == null) return null;
+  if (change == null && previousClose != null) change = price - previousClose;
+  if (changePercent == null && previousClose && change != null) {
+    changePercent = (change / previousClose) * 100;
+  }
+  return {
+    success: true,
+    symbol: indexSymbol,
+    pid: null,
+    name: payload?.name || indexName,
+    price,
+    previousClose,
+    change,
+    changePercent,
+    source: 'nse_index',
+  };
+};
+
+const fetchIndexQuote = async ({ symbol, name }) => {
+  const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
+  if (!indexSymbol) return null;
+
+  const yahooQuote = await fetchYahooQuote({ symbol: indexSymbol, indexOnly: true });
+  if (yahooQuote) return yahooQuote;
+
+  const nseQuote = await fetchNseIndexQuote(indexSymbol);
+  if (nseQuote) return nseQuote;
+
+  const jinaQuote = await fetchYahooQuoteViaJina({ symbol: indexSymbol, indexOnly: true });
+  if (jinaQuote) return jinaQuote;
+
+  return getIndexFallbackQuote(indexSymbol);
+};
+
+const fetchIndexKline = async ({ symbol, name, period, interval }) => {
+  const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
+  if (!indexSymbol) return null;
+
+  const yahooKline = await fetchYahooKline({
+    symbol: indexSymbol,
+    period,
+    interval,
+    indexOnly: true,
+  });
+  if (yahooKline) return yahooKline;
+
+  const jinaKline = await fetchYahooKlineViaJina({
+    symbol: indexSymbol,
+    period,
+    interval,
+    indexOnly: true,
+  });
+  if (jinaKline) return jinaKline;
+
+  const liveQuote = await fetchNseIndexQuote(indexSymbol);
+  const synthetic = buildSyntheticKline({
+    symbol: indexSymbol,
+    seedPrice: liveQuote?.price ?? getIndexFallbackQuote(indexSymbol)?.price,
+    period,
+    interval,
+  });
+  if (!synthetic) return null;
+  if (liveQuote?.price != null) {
+    return {
+      ...synthetic,
+      source: 'nse_index_seeded',
+    };
+  }
+  return synthetic;
 };
 
 const fetchYahooFundamentals = async ({ symbol, name }) => {
@@ -690,10 +872,8 @@ export default {
     if (path === '/quote') {
       const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
       if (indexSymbol) {
-        const indexQuote = await fetchYahooQuote({ symbol: indexSymbol, indexOnly: true });
+        const indexQuote = await fetchIndexQuote({ symbol: indexSymbol, name });
         if (indexQuote) return jsonResponse(indexQuote);
-        const fallbackQuote = getIndexFallbackQuote(indexSymbol);
-        if (fallbackQuote) return jsonResponse(fallbackQuote);
         return jsonResponse({ success: false, message: 'index quote unavailable' }, 404);
       }
 
@@ -847,21 +1027,13 @@ export default {
       const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
 
       if (indexSymbol) {
-        const indexKline = await fetchYahooKline({
+        const indexKline = await fetchIndexKline({
           symbol: indexSymbol,
+          name,
           period,
           interval: intervalRaw,
-          indexOnly: true,
         });
         if (indexKline) return jsonResponse(indexKline);
-        const fallbackQuote = getIndexFallbackQuote(indexSymbol);
-        const synthetic = buildSyntheticKline({
-          symbol: indexSymbol,
-          seedPrice: fallbackQuote?.price,
-          period,
-          interval: intervalRaw,
-        });
-        if (synthetic) return jsonResponse(synthetic);
         return jsonResponse({ success: false, message: 'index kline unavailable' }, 404);
       }
 
