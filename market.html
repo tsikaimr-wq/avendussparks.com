@@ -5049,7 +5049,12 @@
                         const payload = await response.json();
                         const price = toFiniteNumber(payload?.price);
                         if (payload?.success && price !== null && price > 0) {
-                            return { price, symbol: payload.symbol || sym };
+                            return {
+                                price,
+                                symbol: payload.symbol || sym,
+                                previousClose: toFiniteNumber(payload?.previousClose ?? payload?.prevClose),
+                                name: payload?.name || ''
+                            };
                         }
                     } catch (_) { }
                 }
@@ -5058,11 +5063,34 @@
                         const payload = await window.DB.getMarketPrice(sym);
                         const price = toFiniteNumber(payload?.price);
                         if (payload && payload.status !== 'error' && price !== null && price > 0) {
-                            return { price, symbol: payload.symbol || sym };
+                            return {
+                                price,
+                                symbol: payload.symbol || sym,
+                                previousClose: toFiniteNumber(payload?.previousClose ?? payload?.prevClose),
+                                name: payload?.name || ''
+                            };
                         }
                     } catch (_) { }
                 }
                 return null;
+            };
+
+            const applyQuoteMetaToSnapshot = (chartResult, quoteMeta) => {
+                if (!chartResult || !quoteMeta) return chartResult;
+                const quotePrice = toFiniteNumber(quoteMeta?.price);
+                const prevClose = toFiniteNumber(quoteMeta?.previousClose);
+                if (quotePrice !== null && quotePrice > 0) {
+                    chartResult.meta.regularMarketPrice = quotePrice;
+                    const closes = chartResult?.indicators?.quote?.[0]?.close;
+                    if (Array.isArray(closes) && closes.length > 0) {
+                        closes[closes.length - 1] = quotePrice;
+                    }
+                }
+                if (prevClose !== null && prevClose > 0) {
+                    chartResult.meta.previousClose = prevClose;
+                    chartResult.meta.chartPreviousClose = prevClose;
+                }
+                return chartResult;
             };
 
             const buildSyntheticRowsFromPrice = (seedPrice) => {
@@ -5109,6 +5137,10 @@
                             if (!payload?.success || !Array.isArray(payload.data) || payload.data.length === 0) continue;
                             const chartResult = buildChartSnapshotFromRows(payload.data, payload.symbol || sym);
                             if (chartResult) {
+                                if ((chartResult.timestamp || []).length <= 1) {
+                                    const quoteMeta = await fetchQuoteOnly(payload.symbol || sym);
+                                    applyQuoteMetaToSnapshot(chartResult, quoteMeta);
+                                }
                                 return { chartResult, yahooSymbol: payload.symbol || sym, candidates };
                             }
                         } catch (_) { }
@@ -5123,6 +5155,7 @@
                 const syntheticRows = buildSyntheticRowsFromPrice(seedPrice);
                 const chartResult = buildChartSnapshotFromRows(syntheticRows, quote?.symbol || sym);
                 if (chartResult) {
+                    applyQuoteMetaToSnapshot(chartResult, quote);
                     return { chartResult, yahooSymbol: quote?.symbol || sym, candidates };
                 }
             }
@@ -5458,12 +5491,20 @@
                             ? fallbackSubPrice
                             : ((snapshotPrice !== null && snapshotPrice > 0) ? snapshotPrice : 0));
 
-                    if (effectiveFallbackPrice > 0) {
-                        const formattedFallback = `₹${effectiveFallbackPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                        el.innerText = formattedFallback;
+                if (effectiveFallbackPrice > 0) {
+                    const fallbackPrevClose = toFiniteNumber(liveQuote?.previousClose ?? liveQuote?.prevClose ?? detailStatsSnapshot?.prevClose);
+                    const formattedFallback = `₹${effectiveFallbackPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    el.innerText = formattedFallback;
                         if (!syncStaticDetailBuyPrice()) {
                             const detBuyPriceEl = document.getElementById("detBuyPrice");
                             if (detBuyPriceEl) detBuyPriceEl.innerText = formattedFallback;
+                        }
+                        const detChangeEl = document.getElementById('detChange');
+                        if (detChangeEl && fallbackPrevClose !== null && fallbackPrevClose > 0) {
+                            const absChange = effectiveFallbackPrice - fallbackPrevClose;
+                            const pctChange = (absChange / fallbackPrevClose) * 100;
+                            detChangeEl.innerText = `${absChange >= 0 ? '+' : ''}${absChange.toFixed(2)} (${formatPercentValue(pctChange, 2, true)})`;
+                            detChangeEl.className = `index-chg ${pctChange >= 0 ? 'green' : 'red'}`;
                         }
                         if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
                         if (timestampEl) timestampEl.innerHTML = `<span style="color:#f59e0b;">Using fallback price</span>`;
