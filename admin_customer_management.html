@@ -2768,6 +2768,20 @@
                         <span style="color:#64748b;" data-i18n="lbl_requested">Requested Amount</span>
                         <span id="otm_req_amt" style="font-weight:700; color:#d4af37;">₹0.00</span>
                     </div>
+                    <div id="otm_fee_group" style="display:none; justify-content:space-between;">
+                        <span style="color:#64748b;">Fees</span>
+                        <span id="otm_fee_total" style="font-weight:700; color:#f59e0b;">₹0.00</span>
+                    </div>
+                    <div id="otm_fee_breakdown_group"
+                        style="display:none; justify-content:space-between; align-items:flex-start; gap:12px;">
+                        <span style="color:#94a3b8; font-size:0.72rem;">Breakdown</span>
+                        <span id="otm_fee_breakdown"
+                            style="font-size:0.72rem; color:#64748b; text-align:right;">Tax ₹0.00 + Txn ₹0.00</span>
+                    </div>
+                    <div id="otm_total_group" style="display:none; justify-content:space-between;">
+                        <span style="color:#64748b;">Total Debit</span>
+                        <span id="otm_total_debit" style="font-weight:800; color:#1e293b;">₹0.00</span>
+                    </div>
                     <div
                         style="display:flex; justify-content:space-between; border-top:1px solid #e2e8f0; padding-top:8px;">
                         <span style="color:#64748b;" data-i18n="lbl_balance">Wallet Balance</span>
@@ -3592,6 +3606,133 @@
             });
         }
 
+        function normalizeTradeStatus(status) {
+            return String(status || 'Pending').trim().replace(/\s+/g, '_').toUpperCase();
+        }
+
+        function isPendingTradeStatus(status) {
+            return ['PENDING', 'AWAITING', 'AWAITING_APPROVAL'].includes(normalizeTradeStatus(status));
+        }
+
+        function isManagedTradeStatus(status) {
+            return ['HOLDING', 'SETTLED', 'APPROVED', 'CONFIRMED', 'SOLD', 'LOCKED_UNPAID'].includes(normalizeTradeStatus(status));
+        }
+
+        function getTradeStatusMeta(status) {
+            const normalized = normalizeTradeStatus(status);
+            if (['PENDING', 'AWAITING', 'AWAITING_APPROVAL'].includes(normalized)) {
+                const label = normalized === 'AWAITING_APPROVAL' ? 'Awaiting Approval' : (normalized === 'AWAITING' ? 'Awaiting' : 'Pending');
+                return {
+                    style: 'background:#fef3c7; color:#92400e;',
+                    key: `status_${normalized.toLowerCase()}`,
+                    label
+                };
+            }
+            if (normalized === 'LOCKED_UNPAID') {
+                return {
+                    style: 'background:#ffedd5; color:#c2410c;',
+                    key: 'status_locked_unpaid',
+                    label: 'Locked (Unpaid)'
+                };
+            }
+            if (['SETTLED', 'HOLDING', 'APPROVED', 'CONFIRMED'].includes(normalized)) {
+                return {
+                    style: 'background:#dcfce7; color:#166534;',
+                    key: `status_${normalized.toLowerCase()}`,
+                    label: normalized.charAt(0) + normalized.slice(1).toLowerCase()
+                };
+            }
+            if (normalized === 'SOLD') {
+                return {
+                    style: 'background:#e0f2fe; color:#0369a1;',
+                    key: 'status_sold',
+                    label: 'Sold'
+                };
+            }
+            if (normalized === 'REJECTED') {
+                return {
+                    style: 'background:#fee2e2; color:#991b1b;',
+                    key: 'status_rejected',
+                    label: 'Rejected'
+                };
+            }
+            return {
+                style: 'background:#f1f5f9; color:#64748b;',
+                key: `status_${normalized.toLowerCase()}`,
+                label: String(status || 'Pending')
+            };
+        }
+
+        function formatTradeCurrency(value) {
+            return `₹${(parseFloat(value) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        function computeTradeFeeSummary(baseAmount) {
+            const base = Math.max(0, parseFloat(baseAmount) || 0);
+            const taxAmount = Math.round(base * 0.0012 * 100) / 100;
+            const txnCharge = Math.round(base * 0.0003 * 100) / 100;
+            const totalFees = Math.round((taxAmount + txnCharge) * 100) / 100;
+            return {
+                baseAmount: Math.round(base * 100) / 100,
+                taxAmount,
+                txnCharge,
+                totalFees,
+                totalDebit: Math.round((base + totalFees) * 100) / 100
+            };
+        }
+
+        function getTradeFinancials(trade, options = {}) {
+            const useApproved = options.useApproved === true;
+            const price = Math.max(0, parseFloat(trade?.price) || 0);
+            const requestedQty = Math.max(0, parseFloat(trade?.requested_quantity ?? trade?.quantity) || 0);
+            const approvedQty = Math.max(0, parseFloat(trade?.approved_quantity ?? trade?.quantity) || 0);
+            const quantity = useApproved ? (approvedQty || requestedQty) : (requestedQty || approvedQty);
+            const explicitBase = parseFloat(
+                useApproved
+                    ? (trade?.final_total_amount ?? trade?.total_amount)
+                    : (trade?.total_amount ?? trade?.final_total_amount)
+            );
+            const fallbackBase = quantity * price;
+            const computed = computeTradeFeeSummary(Number.isFinite(explicitBase) && explicitBase > 0 ? explicitBase : fallbackBase);
+            const storedTax = parseFloat(trade?.tax_amount);
+            const storedTxn = parseFloat(trade?.txn_charge);
+            const taxAmount = Number.isFinite(storedTax) && storedTax > 0 ? storedTax : computed.taxAmount;
+            const txnCharge = Number.isFinite(storedTxn) && storedTxn > 0 ? storedTxn : computed.txnCharge;
+            const totalFees = Math.round((taxAmount + txnCharge) * 100) / 100;
+            return {
+                requestedQty,
+                approvedQty,
+                baseAmount: computed.baseAmount,
+                taxAmount,
+                txnCharge,
+                totalFees,
+                totalDebit: Math.round((computed.baseAmount + totalFees) * 100) / 100
+            };
+        }
+
+        function renderTradeRequestedCell(trade) {
+            const metrics = getTradeFinancials(trade);
+            return `
+                <div style="font-weight:700;">${metrics.requestedQty || 0}</div>
+                <div style="font-size:0.65rem; color:#64748b;">Value: ${formatTradeCurrency(metrics.baseAmount)}</div>
+                <div style="font-size:0.65rem; color:#94a3b8;">Fees: ${formatTradeCurrency(metrics.totalFees)}</div>
+            `;
+        }
+
+        function renderTradeApprovedCell(trade) {
+            const metrics = getTradeFinancials(trade, { useApproved: true });
+            if (!(metrics.approvedQty > 0)) return '-';
+            return `
+                <div style="font-weight:700; color:#10b981;">${metrics.approvedQty}</div>
+                <div style="font-size:0.65rem; color:#64748b;">Value: ${formatTradeCurrency(metrics.baseAmount)}</div>
+            `;
+        }
+
+        function renderTradeStatusBadge(status) {
+            const meta = getTradeStatusMeta(status);
+            return `<span style="padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.7rem; ${meta.style}" data-i18n="${meta.key}">${window.i18n(meta.key, meta.label)}</span>`;
+        }
+
         async function openTradeOperateModal(tradeId) {
             showLoader(true);
             const client = DB.getClient();
@@ -3611,23 +3752,34 @@
                 document.getElementById('otm_prod_info').innerText = `${trade.name} (${trade.symbol})`;
                 document.getElementById('otm_req_qty').innerText = trade.requested_quantity || trade.quantity || 0;
 
-                // IPO Refactor: View Requested Amount
                 const isIPO = trade.type?.toLowerCase() === 'ipo';
+                const shouldShowFinancials = ['ipo', 'otc'].includes((trade.type || '').toLowerCase());
+                const financials = getTradeFinancials(trade);
                 const reqAmtGroup = document.getElementById('otm_req_amt_group');
                 const reqQtyGroup = document.getElementById('otm_req_group');
+                const feeGroup = document.getElementById('otm_fee_group');
+                const feeBreakdownGroup = document.getElementById('otm_fee_breakdown_group');
+                const totalGroup = document.getElementById('otm_total_group');
 
-                if (isIPO) {
-                    if (reqAmtGroup) {
-                        reqAmtGroup.style.display = 'flex';
-                        document.getElementById('otm_req_amt').innerText = '₹' + parseFloat(trade.total_amount || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
-                    }
-                    if (reqQtyGroup) reqQtyGroup.style.display = 'none';
-                } else {
-                    if (reqAmtGroup) reqAmtGroup.style.display = 'none';
-                    if (reqQtyGroup) reqQtyGroup.style.display = 'flex';
+                if (reqQtyGroup) reqQtyGroup.style.display = 'flex';
+                if (reqAmtGroup) {
+                    reqAmtGroup.style.display = shouldShowFinancials ? 'flex' : 'none';
+                    document.getElementById('otm_req_amt').innerText = formatTradeCurrency(financials.baseAmount);
+                }
+                if (feeGroup) {
+                    feeGroup.style.display = shouldShowFinancials ? 'flex' : 'none';
+                    document.getElementById('otm_fee_total').innerText = formatTradeCurrency(financials.totalFees);
+                }
+                if (feeBreakdownGroup) {
+                    feeBreakdownGroup.style.display = shouldShowFinancials ? 'flex' : 'none';
+                    document.getElementById('otm_fee_breakdown').innerText = `Tax ${formatTradeCurrency(financials.taxAmount)} + Txn ${formatTradeCurrency(financials.txnCharge)}`;
+                }
+                if (totalGroup) {
+                    totalGroup.style.display = shouldShowFinancials ? 'flex' : 'none';
+                    document.getElementById('otm_total_debit').innerText = formatTradeCurrency(financials.totalDebit);
                 }
 
-                document.getElementById('otm_user_balance').innerText = `₹${parseFloat(trade.users.balance || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                document.getElementById('otm_user_balance').innerText = formatTradeCurrency(trade.users.balance || 0);
                 document.getElementById('otm_approved_qty').value = trade.requested_quantity || trade.quantity || 1;
 
                 // Fetch Available Shares
@@ -3649,18 +3801,18 @@
                 const lockupSection = document.getElementById('otm_lockup_section');
                 const lockupControls = document.getElementById('otm_lockup_controls');
                 const approvedGroup = document.getElementById('otm_approved_group');
-                const footer = document.querySelector('.kyc-modal-footer');
+                const footer = document.querySelector('#operateTradeModal .kyc-modal-footer');
+                const approveBtn = document.querySelector('#operateTradeModal [onclick="handleTradeFromOperateModal(\'Settled\')"]');
+                const rejectBtn = document.querySelector('#operateTradeModal [onclick="handleTradeFromOperateModal(\'Rejected\')"]');
 
-                if (trade.type?.toLowerCase() === 'ipo') {
+                if (isIPO) {
                     if (lockupSection) lockupSection.style.display = 'block';
 
-                    if (trade.status === 'Holding' || trade.status === 'Settled' || trade.status === 'Sold') {
-                        // Already approved/processed
+                    if (isManagedTradeStatus(trade.status)) {
                         document.getElementById('otm_title').innerText = window.i18n('lbl_lockup_mgmt', 'IPO Lock-up Management');
                         if (approvedGroup) approvedGroup.style.display = 'none';
                         if (footer) footer.style.display = 'none';
                     } else {
-                        // Pending/Awaiting
                         document.getElementById('otm_title').innerText = window.i18n('lbl_ipo_approval', 'IPO Order Approval');
                         if (approvedGroup) approvedGroup.style.display = 'block';
                         if (footer) footer.style.display = 'flex';
@@ -3686,18 +3838,15 @@
                         lockupControls.style.display = (auth.role === 'super_admin' || auth.role === 'csr') ? 'flex' : 'none';
                     }
 
-                    // IPO Refactor: CSR can approve (User Request)
-                    const approveBtn = document.querySelector('[onclick="handleTradeFromOperateModal(\'Settled\')"]');
                     if (approveBtn) approveBtn.style.display = 'block';
                 } else {
                     if (lockupSection) lockupSection.style.display = 'none';
                     if (approvedGroup) approvedGroup.style.display = 'block';
                     if (footer) footer.style.display = 'flex';
 
-                    // Restore approve button for non-IPO
-                    const approveBtn = document.querySelector('[onclick="handleTradeFromOperateModal(\'Settled\')"]');
                     if (approveBtn) approveBtn.style.display = 'block';
                 }
+                if (rejectBtn) rejectBtn.style.display = normalizeTradeStatus(trade.status) === 'REJECTED' ? 'none' : 'block';
 
                 lucide.createIcons();
             } catch (err) {
@@ -3970,7 +4119,7 @@
 
             // Render Dashboard Stats
             const pendingKycCount = allUsers.filter(x => x.kyc === 'Pending').length;
-            const pendingTradesCount = tradesData.filter(t => t.status === 'Pending' || t.status === 'Awaiting').length;
+            const pendingTradesCount = tradesData.filter(t => isPendingTradeStatus(t.status)).length;
 
             const s = stats; // Short alias
 
@@ -4266,14 +4415,14 @@
                                     <div style="font-size:0.65rem; color:#64748b;">${t.name}</div>
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${user.mobile || 'Unknown'}</td>
-                                <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${t.requested_quantity || t.quantity || 0}</td>
-                                <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-weight:700; color:#10b981;">${t.approved_quantity || '-'}</td>
+                                <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${renderTradeRequestedCell(t)}</td>
+                                <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${renderTradeApprovedCell(t)}</td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-                                    <span style="padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.7rem; background:${t.status === 'Pending' ? '#fef3c7' : t.status === 'Settled' ? '#dcfce7' : '#fee2e2'}; color:${t.status === 'Pending' ? '#92400e' : t.status === 'Settled' ? '#166534' : '#991b1b'};" data-i18n="status_${(t.status || 'pending').toLowerCase()}">${window.i18n('status_' + (t.status || 'pending').toLowerCase(), t.status)}</span>
+                                    ${renderTradeStatusBadge(t.status)}
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
                                     <div class="row-actions">
-                                        ${(t.status === 'Pending' || t.status === 'Awaiting') ? `
+                                        ${isPendingTradeStatus(t.status) ? `
                                             <button class="vsl-btn-primary" onclick="openTradeOperateModal(${t.id})" style="padding:4px 10px; font-size:0.7rem;" data-i18n="lbl_operate">${window.i18n('lbl_operate', 'Operate')}</button>
                                         ` : `
                                             <span style="font-size:0.7rem; color:#94a3b8;" data-i18n="lbl_processed">${window.i18n('lbl_processed', 'Processed')}</span>
@@ -4304,13 +4453,10 @@
                                     <div style="font-size:0.65rem; color:#64748b;">${t.symbol}</div>
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${user.mobile || 'Unknown'}</td>
-                                <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${t.requested_quantity || 0}</td>
-                                <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-weight:700; color:#10b981;">${t.approved_quantity || '-'}</td>
+                                <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${renderTradeRequestedCell(t)}</td>
+                                <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${renderTradeApprovedCell(t)}</td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-                                    <span style="padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.7rem; 
-                                        background:${(t.status === 'Pending' || t.status === 'Awaiting' || t.status === 'AWAITING_APPROVAL') ? '#fef3c7' : (t.status === 'Settled' || t.status === 'Holding') ? '#dcfce7' : t.status === 'LOCKED_UNPAID' ? '#ffedd5' : '#fee2e2'}; 
-                                        color:${(t.status === 'Pending' || t.status === 'Awaiting' || t.status === 'AWAITING_APPROVAL') ? '#92400e' : (t.status === 'Settled' || t.status === 'Holding') ? '#166534' : t.status === 'LOCKED_UNPAID' ? '#c2410c' : '#991b1b'};" 
-                                        data-i18n="status_${(t.status || 'pending').toLowerCase()}">${window.i18n('status_' + (t.status || 'pending').toLowerCase(), t.status)}</span>
+                                    ${renderTradeStatusBadge(t.status)}
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.65rem;">
                                     ${t.lockup_until ? (() => {
@@ -4329,17 +4475,17 @@
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${new Date(t.created_at).toLocaleDateString()}</td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
                                     <div class="row-actions">
-                                        ${(t.status === 'Pending' || t.status === 'Awaiting' || t.status === 'AWAITING_APPROVAL') ? `
+                                        ${isPendingTradeStatus(t.status) ? `
                                             <button class="vsl-btn-primary" onclick="openTradeOperateModal(${t.id})" style="padding:4px 10px; font-size:0.75rem;" data-i18n="lbl_approve">${window.i18n('lbl_approve', 'Approve')}</button>
                                         ` : ''}
 
-                                        ${(t.type?.toLowerCase() === 'ipo' && (t.status === 'Holding' || t.status === 'Settled' || t.status === 'LOCKED_UNPAID')) ? `
+                                        ${(t.type?.toLowerCase() === 'ipo' && isManagedTradeStatus(t.status) && !isPendingTradeStatus(t.status) && normalizeTradeStatus(t.status) !== 'REJECTED') ? `
                                             <button class="vsl-btn-secondary" onclick="openTradeOperateModal(${t.id})" style="padding:4px 10px; font-size:0.75rem; background:#fff7ed; color:#f97316; border:1px solid #fed7aa; display:flex; align-items:center; gap:4px;" data-i18n="lbl_lockup">
                                                 <i data-lucide="lock" size="14"></i> ${window.i18n('lbl_lockup', 'Lock-up')}
                                             </button>
                                         ` : ''}
 
-                                        ${!(t.status === 'Pending' || t.status === 'Awaiting' || t.status === 'AWAITING_APPROVAL' || (t.type?.toLowerCase() === 'ipo' && (t.status === 'Holding' || t.status === 'Settled' || t.status === 'LOCKED_UNPAID'))) ? `
+                                        ${!(isPendingTradeStatus(t.status) || (t.type?.toLowerCase() === 'ipo' && isManagedTradeStatus(t.status) && !isPendingTradeStatus(t.status) && normalizeTradeStatus(t.status) !== 'REJECTED')) ? `
                                             <span style="font-size:0.7rem; color:#94a3b8;" data-i18n="lbl_processed">${window.i18n('lbl_processed', 'Processed')}</span>
                                         ` : ''}
 
@@ -4353,7 +4499,7 @@
                                 </td>
                             </tr>
                     `;
-                    }).join('') : `<tr><td colspan="5" style="padding:20px; text-align:center; color:#94a3b8;" data-i18n="no_data">${window.i18n('no_data', 'No IPO requests found')}</td></tr>`;
+                    }).join('') : `<tr><td colspan="8" style="padding:20px; text-align:center; color:#94a3b8;" data-i18n="no_data">${window.i18n('no_data', 'No IPO requests found')}</td></tr>`;
                 }
             }
 
