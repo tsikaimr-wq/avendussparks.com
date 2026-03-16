@@ -774,6 +774,78 @@ const fetchYahooFundamentals = async ({ symbol, name }) => {
   return null;
 };
 
+const fetchStocktvQuote = async (env, { symbol, pid, name }) => {
+  let stocktvError = null;
+  if (!env?.STOCKTV_KEY) {
+    return { quote: null, stocktvError };
+  }
+
+  const item = await resolveStock(env, { symbol, pid, name });
+  if (item && !item.__error) {
+    const price = toNum(pick(item, ['price', 'lastPrice', 'last', 'close', 'currentPrice']));
+    const prev = toNum(pick(item, ['previousClose', 'prevClose', 'preClose']));
+    const change = price != null && prev != null ? price - prev : toNum(pick(item, ['change']));
+    const changePercent =
+      change != null && prev ? (change / prev) * 100 : toNum(pick(item, ['changePercent', 'pChange']));
+    if (price != null) {
+      return {
+        quote: {
+          success: true,
+          symbol: item.symbol || item.code || symbol || pid,
+          pid: item.pid || item.id || null,
+          name: item.name || null,
+          price,
+          previousClose: prev,
+          change,
+          changePercent,
+          source: 'stocktv',
+        },
+        stocktvError,
+      };
+    }
+  } else if (item?.__error) {
+    stocktvError = item.__error;
+  }
+
+  return { quote: null, stocktvError };
+};
+
+const fetchStocktvKline = async (env, { symbol, pid, name, intervalRaw }) => {
+  if (!env?.STOCKTV_KEY) return null;
+
+  const interval = mapInterval(intervalRaw);
+  const item = pid ? { pid } : await resolveStock(env, { symbol, name });
+  const usePid = item?.pid || item?.id;
+  if (!usePid) return null;
+
+  const kUrl = new URL(`${API_BASE}/stock/kline`);
+  kUrl.searchParams.set('pid', usePid);
+  kUrl.searchParams.set('interval', interval);
+  kUrl.searchParams.set('key', env.STOCKTV_KEY);
+
+  const k = await json(kUrl);
+  const rows = extractList(k);
+  const data = rows
+    .map((r) => ({
+      t: r.t || r.time || r.timestamp || r.date,
+      o: toNum(r.o ?? r.open),
+      h: toNum(r.h ?? r.high),
+      l: toNum(r.l ?? r.low),
+      c: toNum(r.c ?? r.close),
+      v: toNum(r.v ?? r.volume) || 0,
+    }))
+    .filter((x) => x.t && x.c != null);
+
+  if (!data.length) return null;
+
+  return {
+    success: true,
+    symbol: k?.symbol || symbol || usePid,
+    source: 'stocktv',
+    data,
+  };
+};
+
 const buildSyntheticKline = ({ symbol, seedPrice, period = '1d', interval = '5m' }) => {
   const price = toNum(seedPrice);
   if (price == null || price <= 0) return null;
@@ -877,35 +949,14 @@ export default {
         return jsonResponse({ success: false, message: 'index quote unavailable' }, 404);
       }
 
-      let stocktvError = null;
-      if (env.STOCKTV_KEY) {
-        const item = await resolveStock(env, { symbol, pid, name });
-        if (item && !item.__error) {
-          const price = toNum(pick(item, ['price', 'lastPrice', 'last', 'close', 'currentPrice']));
-          const prev = toNum(pick(item, ['previousClose', 'prevClose', 'preClose']));
-          const change = price != null && prev != null ? price - prev : toNum(pick(item, ['change']));
-          const changePercent =
-            change != null && prev ? (change / prev) * 100 : toNum(pick(item, ['changePercent', 'pChange']));
-          if (price != null) {
-            return jsonResponse({
-              success: true,
-              symbol: item.symbol || item.code || symbol || pid,
-              pid: item.pid || item.id || null,
-              name: item.name || null,
-              price,
-              previousClose: prev,
-              change,
-              changePercent,
-              source: 'stocktv',
-            });
-          }
-        } else if (item?.__error) {
-          stocktvError = item.__error;
-        }
-      }
-
       const yahooQuote = await fetchYahooQuote({ symbol, name });
       if (yahooQuote) return jsonResponse(yahooQuote);
+
+      const jinaQuote = await fetchYahooQuoteViaJina({ symbol, name });
+      if (jinaQuote) return jsonResponse(jinaQuote);
+
+      const { quote: stocktvQuote, stocktvError } = await fetchStocktvQuote(env, { symbol, pid, name });
+      if (stocktvQuote) return jsonResponse(stocktvQuote);
 
       return jsonResponse(
         { success: false, message: stocktvError || 'symbol/pid not found' },
@@ -1037,40 +1088,6 @@ export default {
         return jsonResponse({ success: false, message: 'index kline unavailable' }, 404);
       }
 
-      if (env.STOCKTV_KEY) {
-        const interval = mapInterval(intervalRaw);
-        const item = pid ? { pid } : await resolveStock(env, { symbol, name });
-        const usePid = item?.pid || item?.id;
-        if (usePid) {
-          const kUrl = new URL(`${API_BASE}/stock/kline`);
-          kUrl.searchParams.set('pid', usePid);
-          kUrl.searchParams.set('interval', interval);
-          kUrl.searchParams.set('key', env.STOCKTV_KEY);
-
-          const k = await json(kUrl);
-          const rows = extractList(k);
-          const data = rows
-            .map((r) => ({
-              t: r.t || r.time || r.timestamp || r.date,
-              o: toNum(r.o ?? r.open),
-              h: toNum(r.h ?? r.high),
-              l: toNum(r.l ?? r.low),
-              c: toNum(r.c ?? r.close),
-              v: toNum(r.v ?? r.volume) || 0,
-            }))
-            .filter((x) => x.t && x.c != null);
-
-          if (data.length > 0) {
-            return jsonResponse({
-              success: true,
-              symbol: k?.symbol || symbol || usePid,
-              source: 'stocktv',
-              data,
-            });
-          }
-        }
-      }
-
       const yahooKline = await fetchYahooKline({
         symbol,
         name,
@@ -1078,6 +1095,17 @@ export default {
         interval: intervalRaw,
       });
       if (yahooKline) return jsonResponse(yahooKline);
+
+      const jinaKline = await fetchYahooKlineViaJina({
+        symbol,
+        name,
+        period,
+        interval: intervalRaw,
+      });
+      if (jinaKline) return jsonResponse(jinaKline);
+
+      const stocktvKline = await fetchStocktvKline(env, { symbol, pid, name, intervalRaw });
+      if (stocktvKline) return jsonResponse(stocktvKline);
 
       return jsonResponse({ success: false, message: 'symbol/pid not found' }, 404);
     }
