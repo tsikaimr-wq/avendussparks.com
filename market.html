@@ -5355,6 +5355,14 @@
             const manager = (officers.find(o => /MANAGING DIRECTOR|CHIEF EXECUTIVE|CEO/i.test(String(o?.title || ''))) || officers[0])?.name || '-';
             const headquarters = [profile.city, profile.state, profile.country].filter(Boolean).join(', ') || '-';
             const established = profile.founded ? String(profile.founded) : '-';
+            const resolvedName = [
+                meta.longName,
+                meta.shortName,
+                priceData.longName,
+                priceData.shortName,
+                profile.longName,
+                profile.shortName
+            ].find(v => typeof v === 'string' && v.trim());
 
             setDetailCompanyInfo({
                 summary: profile.longBusinessSummary || '-',
@@ -5363,6 +5371,13 @@
                 established,
                 headquarters
             });
+
+            if (resolvedName) {
+                const detailTitleEl = document.getElementById('detailStockTitle');
+                const detailNameEl = document.getElementById('detName');
+                if (detailTitleEl) detailTitleEl.innerText = resolvedName;
+                if (detailNameEl) detailNameEl.innerText = resolvedName;
+            }
 
             detailStatsSnapshot = { dayHigh, dayLow, dayOpen, prevClose, currentPrice };
 
