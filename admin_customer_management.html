@@ -6276,8 +6276,8 @@
             // Store data globally for manual type-switch re-trigger
             window._lastSelectedYahooData = data;
             if (document.getElementById('p_data_source')) {
-                document.getElementById('p_data_source').value = 'yahoo';
-                applyProductDataSourceUI('yahoo');
+                document.getElementById('p_data_source').value = 'turbo';
+                applyProductDataSourceUI('turbo');
             }
 
             // 1. SMART PRODUCT TYPE DETECTION
@@ -6523,26 +6523,257 @@
         }
 
         function getDefaultProductDataSource(type) {
-            if (type === 'Ins.stocks') return 'yahoo';
-            if (type === 'IPO' || type === 'OTC') return 'turbo';
+            if (type === 'IPO' || type === 'OTC' || type === 'Ins.stocks') return 'turbo';
             return 'manual';
         }
 
+        function normalizeProductDataSource(source) {
+            const normalized = String(source || '').trim().toLowerCase();
+            if (normalized === 'manual') return 'manual';
+            return 'turbo';
+        }
+
+        function getProductFormType() {
+            return document.getElementById('p_product_type')?.value || currentProductFilter || 'IPO';
+        }
+
+        function getTurboCategoryForType(type) {
+            const normalized = String(type || getProductFormType()).trim();
+            if (normalized === 'OTC') return 'OTC';
+            if (normalized === 'Ins.stocks') return 'Ins.stocks';
+            return 'IPO';
+        }
+
+        function escapeAdminHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function resolveTurboExchange(exchange) {
+            const upper = String(exchange || '').toUpperCase();
+            return upper.includes('BSE') ? 'BSE' : 'NSE';
+        }
+
+        function formatTurboSymbol(item) {
+            const rawSymbol = String(item?.symbol || '').trim().toUpperCase();
+            const upperExchange = String(item?.exchange || '').toUpperCase();
+            if (!rawSymbol) return '--';
+            if (rawSymbol.endsWith('.NS') || rawSymbol.endsWith('.BO')) return rawSymbol;
+            if (upperExchange === 'NSE') return `${rawSymbol}.NS`;
+            if (upperExchange === 'BSE') return `${rawSymbol}.BO`;
+            return rawSymbol;
+        }
+
+        function getTurboItemKey(item) {
+            return `${String(item?.symbol || '').trim().toUpperCase()}|${String(item?.exchange || '').trim().toUpperCase()}`;
+        }
+
+        function getCurrentProductAutofillData() {
+            const source = normalizeProductDataSource(document.getElementById('p_data_source')?.value || getDefaultProductDataSource(getProductFormType()));
+            return source === 'turbo'
+                ? (window._lastSelectedTurboData || null)
+                : (window._lastSelectedYahooData || null);
+        }
+
+        function renderTurboSelectionHint(item, message = '') {
+            const hint = document.getElementById('p_turbo_selected_hint');
+            if (!hint) return;
+            if (!item) {
+                hint.innerHTML = `<span style="color:#64748b;">${message || 'Choose a Turbo product to auto-fill the form.'}</span>`;
+                return;
+            }
+
+            const price = Number(item.price);
+            const profitRaw = item.est_profit_percent ?? item.est_profit ?? item.profit;
+            const profit = Number(String(profitRaw ?? '').replace(/,/g, '').replace('%', '').trim());
+            hint.innerHTML = `
+                <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center;">
+                    <span style="font-weight:700; color:#166534;">${escapeAdminHtml(item.name || '--')}</span>
+                    <span style="font-size:0.75rem; color:#047857; background:#d1fae5; border-radius:999px; padding:2px 8px;">${escapeAdminHtml(formatTurboSymbol(item))}</span>
+                    <span style="font-size:0.75rem; color:#047857;">${escapeAdminHtml(item.exchange || '--')}</span>
+                    <span style="font-size:0.75rem; color:#047857;">Buy-in: ${Number.isFinite(price) ? `₹${price.toLocaleString('en-IN')}` : '--'}</span>
+                    <span style="font-size:0.75rem; color:#047857;">Est. Profit: ${Number.isFinite(profit) ? `${profit.toFixed(2)}%` : '--'}</span>
+                </div>
+            `;
+        }
+
+        function populateTurboPicker(items, selectedKey = '') {
+            const picker = document.getElementById('p_turbo_picker');
+            if (!picker) return;
+            const options = ['<option value="">Select Turbo product...</option>'];
+            (items || []).forEach(item => {
+                const key = getTurboItemKey(item);
+                const label = `${item.name} · ${formatTurboSymbol(item)} · ${item.exchange || '--'}`;
+                options.push(`<option value="${escapeAdminHtml(key)}">${escapeAdminHtml(label)}</option>`);
+            });
+            picker.innerHTML = options.join('');
+            picker.disabled = !(items && items.length);
+            if (selectedKey && (items || []).some(item => getTurboItemKey(item) === selectedKey)) {
+                picker.value = selectedKey;
+            }
+        }
+
+        window.filterTurboPickerOptions = function(query = '') {
+            const allItems = Array.isArray(window._lastTurboResults) ? window._lastTurboResults : [];
+            const normalizedQuery = String(query || '').trim().toUpperCase();
+            const currentSelectionKey = document.getElementById('p_turbo_picker')?.value
+                || (window._lastSelectedTurboData ? getTurboItemKey(window._lastSelectedTurboData) : '');
+            const filteredItems = !normalizedQuery
+                ? allItems
+                : allItems.filter(item => {
+                    const haystack = [
+                        item.name,
+                        item.symbol,
+                        item.exchange,
+                        formatTurboSymbol(item),
+                        item.description
+                    ].map(value => String(value || '').toUpperCase()).join(' ');
+                    return haystack.includes(normalizedQuery);
+                });
+
+            window._filteredTurboResults = filteredItems;
+            populateTurboPicker(filteredItems, currentSelectionKey);
+            if (!filteredItems.length) {
+                renderTurboSelectionHint(window._lastSelectedTurboData, 'No matching Turbo products found.');
+            } else if (window._lastSelectedTurboData) {
+                renderTurboSelectionHint(window._lastSelectedTurboData);
+            } else {
+                renderTurboSelectionHint(null);
+            }
+        };
+
+        async function refreshTurboPicker(force = false) {
+            const picker = document.getElementById('p_turbo_picker');
+            if (!picker) return;
+
+            const source = normalizeProductDataSource(document.getElementById('p_data_source')?.value || getDefaultProductDataSource(getProductFormType()));
+            if (source !== 'turbo') return;
+
+            const category = getTurboCategoryForType(getProductFormType());
+            const searchInput = document.getElementById('p_turbo_search');
+
+            if (!force && window._turboPickerCategory === category && Array.isArray(window._lastTurboResults) && window._lastTurboResults.length) {
+                window.filterTurboPickerOptions(searchInput?.value || '');
+                return;
+            }
+
+            picker.disabled = true;
+            picker.innerHTML = '<option value="">Loading Turbo products...</option>';
+            renderTurboSelectionHint(null, 'Loading Turbo products...');
+
+            try {
+                const results = await window.DB.getTurboMarketData(category);
+                window._turboPickerCategory = category;
+                window._lastTurboResults = Array.isArray(results) ? results : [];
+                const currentSelected = window._lastSelectedTurboData;
+                if (currentSelected) {
+                    const stillExists = window._lastTurboResults.some(item => getTurboItemKey(item) === getTurboItemKey(currentSelected));
+                    if (!stillExists) window._lastSelectedTurboData = null;
+                }
+                window.filterTurboPickerOptions(searchInput?.value || '');
+            } catch (error) {
+                console.error("Turbo picker load error:", error);
+                picker.disabled = true;
+                picker.innerHTML = '<option value="">Failed to load Turbo products</option>';
+                renderTurboSelectionHint(null, 'Failed to load Turbo products.');
+            }
+        }
+
+        function fillProductFormFromTurbo(data, options = {}) {
+            if (!data) return;
+            const { reopenModal = false, showFeedback = false, closeFinder = false } = options;
+
+            if (closeFinder) {
+                const finderModal = document.getElementById('ipoFetchModal');
+                if (finderModal) finderModal.style.display = 'none';
+            }
+
+            if (reopenModal) {
+                openAddProductModal();
+            }
+
+            window._lastSelectedTurboData = data;
+            const activeType = getTurboCategoryForType(document.getElementById('p_product_type')?.value || currentProductFilter);
+
+            if (document.getElementById('p_data_source')) {
+                document.getElementById('p_data_source').value = 'turbo';
+            }
+            if (document.getElementById('p_product_type')) {
+                document.getElementById('p_product_type').value = activeType;
+            }
+            applyProductDataSourceUI('turbo');
+
+            let fullSymbol = String(data.symbol || '').trim().toUpperCase();
+            if (data.exchange === 'BSE' && fullSymbol && !fullSymbol.endsWith('.BO')) fullSymbol += '.BO';
+            if (data.exchange === 'NSE' && fullSymbol && !fullSymbol.endsWith('.NS')) fullSymbol += '.NS';
+
+            document.getElementById('p_name').value = data.name || '';
+            document.getElementById('p_market_symbol').value = fullSymbol;
+            document.getElementById('p_price').value = data.price ?? '';
+            document.getElementById('p_sub_price').value = data.price ?? '';
+            document.getElementById('p_exchange').value = resolveTurboExchange(data.exchange);
+            document.getElementById('p_listing').value = data.listing_date || '';
+            document.getElementById('p_start').value = data.start_date || '';
+            document.getElementById('p_end').value = data.end_date || '';
+            document.getElementById('p_allotment').value = (data.allotment_date || data.end_date || '').toString().substring(0, 10);
+            document.getElementById('p_profit').value = data.est_profit_percent ?? data.est_profit ?? data.profit ?? '';
+            document.getElementById('p_desc').value = data.description || '';
+            if (document.getElementById('p_min') && data.min_invest) {
+                document.getElementById('p_min').value = data.min_invest;
+            }
+
+            applyProductTypeFillRules(activeType, data);
+            const picker = document.getElementById('p_turbo_picker');
+            if (picker) picker.value = getTurboItemKey(data);
+            renderTurboSelectionHint(data);
+
+            if (showFeedback) {
+                const successTitle = window.i18n('lbl_turbo_autofill', 'Turbo Auto-Fill');
+                showAlert('success', `${data.name} details have been auto-filled!`, successTitle);
+            }
+        }
+
+        window.selectTurboProductFromPicker = function(selectionKey) {
+            if (!selectionKey) {
+                window._lastSelectedTurboData = null;
+                renderTurboSelectionHint(null);
+                return;
+            }
+            const item = (window._lastTurboResults || []).find(row => getTurboItemKey(row) === selectionKey);
+            if (!item) {
+                renderTurboSelectionHint(null, 'Selected Turbo product could not be found.');
+                return;
+            }
+            fillProductFormFromTurbo(item, { reopenModal: false, showFeedback: false, closeFinder: false });
+        };
+
+        window.handleProductTypeChange = function(type) {
+            applyProductTypeFillRules(type, getCurrentProductAutofillData());
+        };
+
         function applyProductDataSourceUI(source) {
-            const resolvedSource = source || document.getElementById('p_data_source')?.value || getDefaultProductDataSource(currentProductFilter);
+            const resolvedSource = normalizeProductDataSource(source || document.getElementById('p_data_source')?.value || getDefaultProductDataSource(currentProductFilter));
             const yahooBlock = document.getElementById('p_yahoo_search_block');
             const turboBlock = document.getElementById('p_turbo_source_block');
             const helpBlock = document.getElementById('p_source_help');
             const searchResults = document.getElementById('admin_search_results');
-            const productType = document.getElementById('p_product_type')?.value || currentProductFilter || 'IPO';
+            const productType = getProductFormType();
 
             if (document.getElementById('p_data_source')) {
                 document.getElementById('p_data_source').value = resolvedSource;
             }
 
-            if (yahooBlock) yahooBlock.style.display = resolvedSource === 'yahoo' ? 'block' : 'none';
+            if (yahooBlock) yahooBlock.style.display = 'none';
             if (turboBlock) turboBlock.style.display = resolvedSource === 'turbo' ? 'block' : 'none';
-            if (searchResults && resolvedSource !== 'yahoo') searchResults.style.display = 'none';
+            if (searchResults) searchResults.style.display = 'none';
+            if (turboBlock) {
+                const legacyNote = turboBlock.querySelector('div[style*="justify-content:space-between"] > div');
+                if (legacyNote) legacyNote.innerText = 'Use the Turbo database to quickly pick a real or preset product.';
+            }
 
             if (helpBlock) {
                 const label = productType === 'Ins.stocks' ? 'Ins.Stock' : productType;
@@ -6556,13 +6787,47 @@
             }
         }
 
+        function applyProductDataSourceUI(source) {
+            const resolvedSource = normalizeProductDataSource(source || document.getElementById('p_data_source')?.value || getDefaultProductDataSource(currentProductFilter));
+            const yahooBlock = document.getElementById('p_yahoo_search_block');
+            const turboBlock = document.getElementById('p_turbo_source_block');
+            const helpBlock = document.getElementById('p_source_help');
+            const searchResults = document.getElementById('admin_search_results');
+            const productType = getProductFormType();
+
+            if (document.getElementById('p_data_source')) {
+                document.getElementById('p_data_source').value = resolvedSource;
+            }
+
+            if (yahooBlock) yahooBlock.style.display = 'none';
+            if (turboBlock) turboBlock.style.display = resolvedSource === 'turbo' ? 'block' : 'none';
+            if (searchResults) searchResults.style.display = 'none';
+            if (turboBlock) {
+                const legacyNote = turboBlock.querySelector('div[style*="justify-content:space-between"] > div');
+                if (legacyNote) legacyNote.innerText = 'Use the Turbo database to quickly pick a real or preset product.';
+            }
+
+            if (helpBlock) {
+                const label = productType === 'Ins.stocks' ? 'Ins.Stock' : productType;
+                helpBlock.innerText = resolvedSource === 'turbo'
+                    ? `Current source: Turbo Database. Select a ${label} template to auto-fill the product form.`
+                    : `Current source: Manual Entry. Fill in the ${label} product fields manually.`;
+            }
+
+            if (resolvedSource === 'turbo') {
+                refreshTurboPicker();
+            } else {
+                renderTurboSelectionHint(null, 'Manual entry mode is active.');
+            }
+        }
+
         async function openIpoFetchModal() {
             const modal = document.getElementById('ipoFetchModal');
             const list = document.getElementById('ipoFetchList');
             const title = modal?.querySelector('.kyc-modal-header span');
             if (!modal || !list) return;
 
-            const category = currentProductFilter || 'IPO';
+            const category = getTurboCategoryForType(document.getElementById('p_product_type')?.value || currentProductFilter || 'IPO');
             const displayCategory = category === 'Ins.stocks' ? 'Institutional' : category;
             
             const titleKey = window.i18n('title_turbo_finder', 'Turbo Finder');
@@ -6619,42 +6884,7 @@
 
         window.autoFillIPO = function(data) {
             console.log("Auto-filling Product data:", data);
-            
-            // Close selection modal
-            document.getElementById('ipoFetchModal').style.display = 'none';
-            
-            // Open Add Product modal
-            openAddProductModal();
-            if (document.getElementById('p_data_source')) {
-                document.getElementById('p_data_source').value = 'turbo';
-                applyProductDataSourceUI('turbo');
-            }
-            
-            // Standardize Symbol
-            let fullSymbol = data.symbol;
-            if (data.exchange === 'BSE' && !fullSymbol.endsWith('.BO')) fullSymbol += '.BO';
-            if (data.exchange === 'NSE' && !fullSymbol.endsWith('.NS')) fullSymbol += '.NS';
-            
-            // Fill Fields
-            document.getElementById('p_name').value = data.name;
-            document.getElementById('p_market_symbol').value = fullSymbol;
-            document.getElementById('p_price').value = data.price;
-            document.getElementById('p_sub_price').value = data.price;
-            document.getElementById('p_product_type').value = currentProductFilter;
-            document.getElementById('p_exchange').value = data.exchange || 'NSE';
-            document.getElementById('p_listing').value = data.listing_date || '';
-            document.getElementById('p_start').value = data.start_date || '';
-            document.getElementById('p_end').value = data.end_date || '';
-            document.getElementById('p_allotment').value = (data.allotment_date || data.end_date || '').toString().substring(0, 10);
-            document.getElementById('p_profit').value = data.est_profit_percent ?? data.est_profit ?? data.profit ?? '';
-            document.getElementById('p_desc').value = data.description || '';
-            
-            // Trigger UI logic for product type
-            applyProductTypeFillRules(currentProductFilter, data);
-
-            // Visual feedback
-            const successTitle = window.i18n('lbl_turbo_autofill', 'Turbo Auto-Fill');
-            showAlert('success', `${data.name} details have been auto-filled!`, successTitle);
+            fillProductFormFromTurbo(data, { reopenModal: true, showFeedback: true, closeFinder: true });
         };
 
         function openAddProductModal() {
@@ -6702,6 +6932,14 @@
             if (document.getElementById('p_sell_locked')) {
                 document.getElementById('p_sell_locked').checked = false;
             }
+            if (document.getElementById('p_turbo_search')) {
+                document.getElementById('p_turbo_search').value = '';
+            }
+            if (document.getElementById('p_turbo_picker')) {
+                document.getElementById('p_turbo_picker').innerHTML = '<option value="">Select Turbo product...</option>';
+            }
+            window._lastSelectedTurboData = null;
+            window._turboPickerCategory = null;
             applyProductTypeFillRules(currentProductFilter);
 
             modal.style.display = 'flex';
@@ -6743,12 +6981,16 @@
                 document.getElementById('p_exchange').value = p.exchange || 'NSE';
             }
             if (document.getElementById('p_data_source')) {
-                document.getElementById('p_data_source').value = p.product_type === 'Ins.stocks' ? 'yahoo' : 'manual';
+                document.getElementById('p_data_source').value = p.product_type === 'Ins.stocks' ? 'turbo' : 'manual';
             }
             if (document.getElementById('p_sell_locked')) {
                 const sellLockMap = await loadProductSellLockMap();
                 document.getElementById('p_sell_locked').checked = !!getProductSellLockEntry(p, sellLockMap)?.locked;
             }
+            if (document.getElementById('p_turbo_search')) {
+                document.getElementById('p_turbo_search').value = '';
+            }
+            window._lastSelectedTurboData = null;
 
             document.getElementById('addProductModal').style.display = 'flex';
             
@@ -6761,13 +7003,20 @@
             // Reset Search
             document.getElementById('admin_product_search').value = '';
             document.getElementById('admin_search_results').style.display = 'none';
+            if (document.getElementById('p_turbo_search')) {
+                document.getElementById('p_turbo_search').value = '';
+            }
+            if (document.getElementById('p_turbo_picker')) {
+                document.getElementById('p_turbo_picker').value = '';
+            }
+            renderTurboSelectionHint(null);
         }
 
         async function saveProduct() {
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
             let rawSymbol = document.getElementById('p_market_symbol').value || '';
             let processedSymbol = rawSymbol.trim().toUpperCase();
-            const productSource = document.getElementById('p_data_source')?.value || getDefaultProductDataSource(document.getElementById('p_product_type')?.value);
+            const productSource = normalizeProductDataSource(document.getElementById('p_data_source')?.value || getDefaultProductDataSource(document.getElementById('p_product_type')?.value));
 
             const p = {
                 name: document.getElementById('p_name').value,
@@ -7574,7 +7823,6 @@
                 <div class="fm-group">
                     <label>Data Source</label>
                     <select id="p_data_source" class="vsl-input" onchange="applyProductDataSourceUI(this.value)">
-                        <option value="yahoo">Real Stock (Yahoo)</option>
                         <option value="turbo">Turbo Database</option>
                         <option value="manual">Manual Entry</option>
                     </select>
@@ -7582,7 +7830,7 @@
                 <div class="fm-group" id="p_source_help" style="grid-column: span 2; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; color:#475569; font-size:0.78rem;">
                 </div>
                 <!-- Yahoo Search Integration -->
-                <div class="fm-group" id="p_yahoo_search_block" style="grid-column: span 2; position: relative;">
+                <div class="fm-group" id="p_yahoo_search_block" style="grid-column: span 2; position: relative; display:none;">
                     <label style="color:#d4af37; font-weight:700;" data-i18n="lbl_yahoo_search">Yahoo Finance Search
                         (Assistant)</label>
                     <div style="display:flex; gap:0.5rem;">
@@ -7603,12 +7851,25 @@
                         <div style="font-size:0.78rem; color:#166534;">使用后台 Turbo 数据库快速选择真实/预设产品。</div>
                         <button type="button" class="vsl-btn-small" style="background:#10b981; color:white; border:none;" onclick="openIpoFetchModal()">Open Turbo</button>
                     </div>
+                    <div style="display:grid; gap:12px; margin-top:12px; background:#f0fdf4; border:1px dashed #86efac; border-radius:10px; padding:12px;">
+                        <div style="font-size:0.78rem; color:#166534;">Choose a Turbo product here to auto-fill the form directly.</div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                            <input type="text" id="p_turbo_search" class="vsl-input" style="flex:1; min-width:220px;" placeholder="Search Turbo products..." oninput="filterTurboPickerOptions(this.value)">
+                            <button type="button" class="vsl-btn-small" style="background:#10b981; color:white; border:none;" onclick="refreshTurboPicker(true)">Refresh</button>
+                        </div>
+                        <select id="p_turbo_picker" class="vsl-input" onchange="selectTurboProductFromPicker(this.value)">
+                            <option value="">Select Turbo product...</option>
+                        </select>
+                        <div id="p_turbo_selected_hint" style="font-size:0.78rem; color:#166534; background:#ffffff; border:1px dashed #bbf7d0; border-radius:8px; padding:10px 12px;">
+                            Choose a Turbo product to auto-fill the form.
+                        </div>
+                    </div>
                 </div>
 
                 <div class="fm-group" style="grid-column: span 2;">
                     <label data-i18n="product_type">Product Type</label>
                     <select id="p_product_type" class="vsl-input" required
-                        onchange="applyProductTypeFillRules(this.value, window._lastSelectedYahooData)">
+                        onchange="handleProductTypeChange(this.value)">
                         <option value="IPO" selected>IPO</option>
                         <option value="OTC">OTC</option>
                         <option value="Ins.stocks">Ins.stocks</option>
