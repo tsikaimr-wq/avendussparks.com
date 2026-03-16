@@ -21,6 +21,30 @@ const STOCK_SYMBOL_ALIAS = {
   KCEILBO: 'KAYR',
 };
 
+const YAHOO_SYMBOL_ALIAS = {
+  KCEIL: ['KCEIL-SM.NS', 'KCEIL-SM'],
+  KCEILNS: ['KCEIL-SM.NS', 'KCEIL-SM'],
+  KCEILBO: ['KCEIL-SM.NS', 'KCEIL-SM'],
+  KAYCEEENERGYINFRAL: ['KCEIL-SM.NS', 'KCEIL-SM'],
+  KAYCEEENERGYINFRALIMITED: ['KCEIL-SM.NS', 'KCEIL-SM'],
+  ZOMATO: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+  ZOMATONS: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+  ZOMATOBO: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+  ZOMATOLIMITED: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+  ETERNAL: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+  ETERNALNS: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+  ETERNALBO: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+  ETERNALLIMITED: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+};
+
+const YAHOO_SEARCH_ALIAS_QUOTES = {
+  KCEIL: [{ symbol: 'KCEIL-SM.NS', longname: 'KAY CEE ENERGY & INFRA L', exchDisp: 'NSE', quoteType: 'EQUITY', score: 250000 }],
+  KCEILNS: [{ symbol: 'KCEIL-SM.NS', longname: 'KAY CEE ENERGY & INFRA L', exchDisp: 'NSE', quoteType: 'EQUITY', score: 250000 }],
+  ZOMATO: [{ symbol: 'ETERNAL.NS', longname: 'Eternal Limited', exchDisp: 'NSE', quoteType: 'EQUITY', score: 250000 }],
+  ZOMATONS: [{ symbol: 'ETERNAL.NS', longname: 'Eternal Limited', exchDisp: 'NSE', quoteType: 'EQUITY', score: 250000 }],
+  ZOMATOLIMITED: [{ symbol: 'ETERNAL.NS', longname: 'Eternal Limited', exchDisp: 'NSE', quoteType: 'EQUITY', score: 250000 }],
+};
+
 const INDEX_ALIAS_GROUPS = {
   '^BSESN': ['^BSESN', 'BSESN', 'SENSEX', 'BSE:SENSEX', 'BSE SENSEX'],
   '^NSEI': ['^NSEI', 'NSEI', 'NIFTY', 'NIFTY50', 'NIFTY 50', 'NSE:NIFTY'],
@@ -60,20 +84,29 @@ const buildIndexLookup = () => {
 
 const INDEX_ALIAS_LOOKUP = buildIndexLookup();
 
-const json = async (url, init = undefined) => {
-  const res = await fetch(url, init);
-  const text = await res.text();
-  try {
-    return JSON.parse(text);
-  } catch (_) {
-    return null;
+const json = async (url, init = undefined, retries = 1) => {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(url, init);
+      const payloadText = await res.text();
+      try {
+        return JSON.parse(payloadText);
+      } catch (_) {}
+    } catch (_) {}
   }
+  return null;
 };
 
-const textResponse = async (url, init = undefined) => {
-  const res = await fetch(url, init);
-  if (!res.ok) return null;
-  return res.text();
+const textResponse = async (url, init = undefined, retries = 1) => {
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      const res = await fetch(url, init);
+      if (!res.ok) continue;
+      const payloadText = await res.text();
+      if (payloadText) return payloadText;
+    } catch (_) {}
+  }
+  return null;
 };
 
 const pick = (obj, keys) => {
@@ -401,6 +434,18 @@ const resolveStock = async (env, { symbol, pid, name }) => {
   return lastError ? { __error: lastError } : null;
 };
 
+const parseEmbeddedJson = (payloadText) => {
+  if (!payloadText) return null;
+  const start = payloadText.indexOf('{');
+  const end = payloadText.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(payloadText.slice(start, end + 1));
+  } catch (_) {
+    return null;
+  }
+};
+
 const resolveIndexYahooSymbol = ({ symbol, name }) => {
   const probes = [symbol, name, normalizeSymbol(symbol), normalizeSymbol(name)];
   for (const probe of probes) {
@@ -466,6 +511,14 @@ const addYahooCandidates = (set, raw) => {
   }
 };
 
+const addYahooAliasCandidates = (set, raw) => {
+  const key = normalizeMatch(raw);
+  if (!key) return;
+  const aliases = YAHOO_SYMBOL_ALIAS[key];
+  if (!Array.isArray(aliases) || !aliases.length) return;
+  for (const alias of aliases) addYahooCandidates(set, alias);
+};
+
 const getYahooCandidates = ({ symbol, name, indexOnly = false }) => {
   const set = new Set();
   const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
@@ -473,9 +526,134 @@ const getYahooCandidates = ({ symbol, name, indexOnly = false }) => {
     set.add(indexSymbol);
     if (indexOnly) return [...set];
   }
+  addYahooAliasCandidates(set, symbol);
+  addYahooAliasCandidates(set, name);
   addYahooCandidates(set, symbol);
   addYahooCandidates(set, name);
   return [...set];
+};
+
+const buildYahooSearchQueries = (raw) => {
+  const queries = new Set();
+  const add = (value) => {
+    const input = String(value || '').trim().toUpperCase();
+    if (!input) return;
+    queries.add(input);
+    const normalized = normalizeSymbol(input);
+    if (normalized && normalized !== input) queries.add(normalized);
+    if (input.endsWith('.NS') || input.endsWith('.BO')) {
+      queries.add(input.slice(0, -3));
+    }
+  };
+
+  add(raw);
+  const aliases = YAHOO_SYMBOL_ALIAS[normalizeMatch(raw)] || [];
+  for (const alias of aliases) add(alias);
+
+  return [...queries].map((value) => value.replace(/\.(NS|BO)$/i, ''));
+};
+
+const normalizeYahooExchange = (quote) => {
+  const raw = String(quote?.exchDisp || quote?.exchange || '').trim();
+  const upper = raw.toUpperCase();
+  if (upper === 'NSI' || upper.includes('NSE')) return 'NSE';
+  if (upper === 'BSE' || upper === 'BOM' || upper.includes('BOMBAY') || upper.includes('BSE')) return 'BSE';
+  return raw;
+};
+
+const appendYahooSearchRows = (rows, seen, quotes, limit) => {
+  for (const quote of quotes) {
+    const symbol = String(quote?.symbol || '').trim().toUpperCase();
+    if (!symbol) continue;
+    const quoteType = String(quote?.quoteType || quote?.typeDisp || '').trim().toUpperCase();
+    if (quoteType && !['EQUITY', 'ETF', 'INDEX', 'MUTUALFUND'].includes(quoteType)) continue;
+    const key = `${symbol}|${quoteType}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({
+      symbol,
+      name: quote?.longname || quote?.shortname || symbol,
+      exch: normalizeYahooExchange(quote),
+      type: quoteType === 'INDEX' ? 'index' : 'stock',
+      score: Number(quote?.score) || 0,
+    });
+    if (rows.length >= limit) return true;
+  }
+  return false;
+};
+
+const searchYahooViaJina = async (query, { limit = 20 } = {}) => {
+  const target = new URL('http://query1.finance.yahoo.com/v1/finance/search');
+  target.searchParams.set('q', query);
+  target.searchParams.set('quotesCount', String(Math.max(limit * 2, 10)));
+  target.searchParams.set('newsCount', '0');
+  target.searchParams.set('listsCount', '0');
+  target.searchParams.set('enableFuzzyQuery', 'false');
+  const payloadText = await textResponse(`https://r.jina.ai/${target.toString()}`, {
+    headers: {
+      Accept: 'text/plain, text/markdown, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      Referer: 'https://r.jina.ai/',
+    },
+  });
+  const payload = parseEmbeddedJson(payloadText);
+  return Array.isArray(payload?.quotes) ? payload.quotes : [];
+};
+
+const searchYahoo = async (query, { limit = 20 } = {}) => {
+  const seen = new Set();
+  const rows = [];
+  const queries = buildYahooSearchQueries(query);
+  const aliasQuotes = YAHOO_SEARCH_ALIAS_QUOTES[normalizeMatch(query)] || [];
+  if (appendYahooSearchRows(rows, seen, aliasQuotes, limit)) return rows;
+
+  for (const currentQuery of queries) {
+    const beforeCount = rows.length;
+    const url = new URL('https://query1.finance.yahoo.com/v1/finance/search');
+    url.searchParams.set('q', currentQuery);
+    url.searchParams.set('quotesCount', String(Math.max(limit * 2, 10)));
+    url.searchParams.set('newsCount', '0');
+    url.searchParams.set('listsCount', '0');
+    url.searchParams.set('enableFuzzyQuery', 'false');
+
+    const payload = await json(url, { headers: BROWSER_LIKE_HEADERS });
+    const quotes = Array.isArray(payload?.quotes) ? payload.quotes : [];
+    if (appendYahooSearchRows(rows, seen, quotes, limit)) return rows;
+
+    if (rows.length === beforeCount) {
+      const jinaQuotes = await searchYahooViaJina(currentQuery, { limit });
+      if (appendYahooSearchRows(rows, seen, jinaQuotes, limit)) return rows;
+    }
+  }
+
+  return rows;
+};
+
+const searchYahooSymbols = async ({ symbol, name, limit = 6 } = {}) => {
+  const seen = new Set();
+  const matches = [];
+  const probes = [symbol, name].filter(Boolean);
+
+  for (const probe of probes) {
+    const rows = await searchYahoo(probe, { limit });
+    for (const row of rows) {
+      const candidate = String(row?.symbol || '').trim().toUpperCase();
+      if (!candidate || seen.has(candidate)) continue;
+      seen.add(candidate);
+      matches.push(candidate);
+      if (matches.length >= limit) return matches;
+    }
+  }
+
+  return matches;
+};
+
+const resolvePreferredYahooSymbol = ({ symbol, name } = {}) => {
+  const symbolAliases = YAHOO_SYMBOL_ALIAS[normalizeMatch(symbol)];
+  if (Array.isArray(symbolAliases) && symbolAliases.length) return symbolAliases[0];
+  const nameAliases = YAHOO_SYMBOL_ALIAS[normalizeMatch(name)];
+  if (Array.isArray(nameAliases) && nameAliases.length) return nameAliases[0];
+  return symbol || name || null;
 };
 
 const fetchYahooChart = async (symbol, { interval, range }) => {
@@ -509,20 +687,13 @@ const fetchYahooChartViaJina = async (symbol, { interval, range }) => {
     },
   });
   if (!payloadText) return null;
-  const start = payloadText.indexOf('{');
-  const end = payloadText.lastIndexOf('}');
-  if (start < 0 || end <= start) return null;
-  try {
-    const payload = JSON.parse(payloadText.slice(start, end + 1));
-    const result = payload?.chart?.result?.[0];
-    if (!result) return null;
-    return {
-      symbol: result?.meta?.symbol || symbol,
-      result,
-    };
-  } catch (_) {
-    return null;
-  }
+  const payload = parseEmbeddedJson(payloadText);
+  const result = payload?.chart?.result?.[0];
+  if (!result) return null;
+  return {
+    symbol: result?.meta?.symbol || symbol,
+    result,
+  };
 };
 
 const extractLastFinite = (arr) => {
@@ -592,10 +763,15 @@ const buildKlineFromYahooResult = ({ symbol, result }) => {
 const fetchYahooQuote = async ({ symbol, name, indexOnly = false }) => {
   const candidates = getYahooCandidates({ symbol, name, indexOnly });
   if (!candidates.length) return null;
-  const intervals = ['1m', '5m', '15m'];
+  const plans = [
+    { interval: '1m', range: '1d' },
+    { interval: '5m', range: '1d' },
+    { interval: '15m', range: '1d' },
+    { interval: '1d', range: '5d' },
+  ];
   for (const candidate of candidates) {
-    for (const interval of intervals) {
-      const chart = await fetchYahooChart(candidate, { interval, range: '1d' });
+    for (const plan of plans) {
+      const chart = await fetchYahooChart(candidate, plan);
       if (!chart) continue;
       const quote = buildQuoteFromYahooResult(chart);
       if (quote) return quote;
@@ -607,10 +783,15 @@ const fetchYahooQuote = async ({ symbol, name, indexOnly = false }) => {
 const fetchYahooQuoteViaJina = async ({ symbol, name, indexOnly = false }) => {
   const candidates = getYahooCandidates({ symbol, name, indexOnly });
   if (!candidates.length) return null;
-  const intervals = ['1m', '5m', '15m'];
+  const plans = [
+    { interval: '1m', range: '1d' },
+    { interval: '5m', range: '1d' },
+    { interval: '15m', range: '1d' },
+    { interval: '1d', range: '5d' },
+  ];
   for (const candidate of candidates) {
-    for (const interval of intervals) {
-      const chart = await fetchYahooChartViaJina(candidate, { interval, range: '1d' });
+    for (const plan of plans) {
+      const chart = await fetchYahooChartViaJina(candidate, plan);
       if (!chart) continue;
       const quote = buildQuoteFromYahooResult(chart);
       if (quote) {
@@ -713,6 +894,75 @@ const fetchIndexQuote = async ({ symbol, name }) => {
   if (jinaQuote) return jinaQuote;
 
   return getIndexFallbackQuote(indexSymbol);
+};
+
+const resolveNseEquitySymbol = ({ symbol, name } = {}) => {
+  const preferred = resolvePreferredYahooSymbol({ symbol, name }) || symbol || name || '';
+  let normalized = normalizeSymbol(preferred);
+  if (!normalized) return null;
+  normalized = normalized.replace(/-SM$/i, '');
+  normalized = normalized.replace(/[^A-Z0-9]/g, '');
+  return normalized || null;
+};
+
+const fetchNseEquityQuote = async ({ symbol, name }) => {
+  const nseSymbol = resolveNseEquitySymbol({ symbol, name });
+  if (!nseSymbol) return null;
+
+  const url = new URL('https://www.nseindia.com/api/quote-equity');
+  url.searchParams.set('symbol', nseSymbol);
+  const payload = await json(url, {
+    headers: {
+      ...BROWSER_LIKE_HEADERS,
+      Referer: 'https://www.nseindia.com/',
+    },
+  });
+  const info = payload?.info || {};
+  const priceInfo = payload?.priceInfo || {};
+  const price = toNum(priceInfo.lastPrice ?? priceInfo.close);
+  if (price == null) return null;
+  const previousClose = toNum(priceInfo.previousClose ?? priceInfo.basePrice);
+  let change = toNum(priceInfo.change);
+  let changePercent = toNum(priceInfo.pChange);
+  if (change == null && previousClose != null) change = price - previousClose;
+  if (changePercent == null && previousClose && change != null) {
+    changePercent = (change / previousClose) * 100;
+  }
+  return {
+    success: true,
+    symbol: `${info.symbol || nseSymbol}.NS`,
+    pid: null,
+    name: info.companyName || info.symbol || nseSymbol,
+    price,
+    previousClose,
+    change,
+    changePercent,
+    open: toNum(priceInfo.open),
+    high: toNum(priceInfo.intraDayHighLow?.max),
+    low: toNum(priceInfo.intraDayHighLow?.min),
+    source: 'nse_equity',
+  };
+};
+
+const buildSingleCandleKline = ({ symbol, open, high, low, close }) => {
+  const c = toNum(close);
+  if (c == null) return null;
+  const o = toNum(open) ?? c;
+  const h = toNum(high) ?? Math.max(o, c);
+  const l = toNum(low) ?? Math.min(o, c);
+  return {
+    success: true,
+    symbol,
+    source: 'nse_equity_snapshot',
+    data: [{
+      t: new Date().toISOString(),
+      o,
+      h,
+      l,
+      c,
+      v: 0,
+    }],
+  };
 };
 
 const fetchIndexKline = async ({ symbol, name, period, interval }) => {
@@ -940,6 +1190,7 @@ export default {
     const symbol = url.searchParams.get('symbol');
     const pid = url.searchParams.get('pid');
     const name = url.searchParams.get('name');
+    const preferredYahooSymbol = resolvePreferredYahooSymbol({ symbol, name });
 
     if (path === '/quote') {
       const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
@@ -949,11 +1200,35 @@ export default {
         return jsonResponse({ success: false, message: 'index quote unavailable' }, 404);
       }
 
-      const yahooQuote = await fetchYahooQuote({ symbol, name });
+      const yahooQuote = await fetchYahooQuote({ symbol: preferredYahooSymbol || symbol, name });
       if (yahooQuote) return jsonResponse(yahooQuote);
 
-      const jinaQuote = await fetchYahooQuoteViaJina({ symbol, name });
+      const jinaQuote = await fetchYahooQuoteViaJina({ symbol: preferredYahooSymbol || symbol, name });
       if (jinaQuote) return jsonResponse(jinaQuote);
+
+      const directNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+      if (directNseQuote) return jsonResponse(directNseQuote);
+
+      const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
+      for (const discoveredSymbol of discoveredSymbols) {
+        const discoveredYahooQuote = await fetchYahooQuote({ symbol: discoveredSymbol });
+        if (discoveredYahooQuote) {
+          return jsonResponse({
+            ...discoveredYahooQuote,
+            source: `${discoveredYahooQuote.source}_search`,
+          });
+        }
+        const discoveredJinaQuote = await fetchYahooQuoteViaJina({ symbol: discoveredSymbol });
+        if (discoveredJinaQuote) {
+          return jsonResponse({
+            ...discoveredJinaQuote,
+            source: `${discoveredJinaQuote.source}_search`,
+          });
+        }
+      }
+
+      const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+      if (nseQuote) return jsonResponse(nseQuote);
 
       const { quote: stocktvQuote, stocktvError } = await fetchStocktvQuote(env, { symbol, pid, name });
       if (stocktvQuote) return jsonResponse(stocktvQuote);
@@ -969,7 +1244,7 @@ export default {
       if (indexSymbol) {
         return jsonResponse({ success: false, message: 'fundamentals unavailable for index' }, 404);
       }
-      const fundamentals = await fetchYahooFundamentals({ symbol, name });
+      const fundamentals = await fetchYahooFundamentals({ symbol: preferredYahooSymbol || symbol, name });
       if (!fundamentals) {
         return jsonResponse({ success: false, message: 'fundamentals not found' }, 404);
       }
@@ -1072,6 +1347,21 @@ export default {
       });
     }
 
+    if (path === '/search') {
+      const query = (url.searchParams.get('query') || '').trim();
+      const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || '20') || 20, 1), 50);
+      if (!query) {
+        return jsonResponse({ success: false, message: 'query required' }, 400);
+      }
+      const results = await searchYahoo(query, { limit });
+      return jsonResponse({
+        success: true,
+        query,
+        count: results.length,
+        results,
+      });
+    }
+
     if (path === '/kline') {
       const period = url.searchParams.get('period') || '1d';
       const intervalRaw = url.searchParams.get('interval') || '5m';
@@ -1089,7 +1379,7 @@ export default {
       }
 
       const yahooKline = await fetchYahooKline({
-        symbol,
+        symbol: preferredYahooSymbol || symbol,
         name,
         period,
         interval: intervalRaw,
@@ -1097,12 +1387,49 @@ export default {
       if (yahooKline) return jsonResponse(yahooKline);
 
       const jinaKline = await fetchYahooKlineViaJina({
-        symbol,
+        symbol: preferredYahooSymbol || symbol,
         name,
         period,
         interval: intervalRaw,
       });
       if (jinaKline) return jsonResponse(jinaKline);
+
+      const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
+      for (const discoveredSymbol of discoveredSymbols) {
+        const discoveredYahooKline = await fetchYahooKline({
+          symbol: discoveredSymbol,
+          period,
+          interval: intervalRaw,
+        });
+        if (discoveredYahooKline) {
+          return jsonResponse({
+            ...discoveredYahooKline,
+            source: `${discoveredYahooKline.source}_search`,
+          });
+        }
+
+        const discoveredJinaKline = await fetchYahooKlineViaJina({
+          symbol: discoveredSymbol,
+          period,
+          interval: intervalRaw,
+        });
+        if (discoveredJinaKline) {
+          return jsonResponse({
+            ...discoveredJinaKline,
+            source: `${discoveredJinaKline.source}_search`,
+          });
+        }
+      }
+
+      const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+      const nseKline = buildSingleCandleKline({
+        symbol: nseQuote?.symbol || (preferredYahooSymbol || symbol),
+        open: nseQuote?.open,
+        high: nseQuote?.high,
+        low: nseQuote?.low,
+        close: nseQuote?.price,
+      });
+      if (nseKline) return jsonResponse(nseKline);
 
       const stocktvKline = await fetchStocktvKline(env, { symbol, pid, name, intervalRaw });
       if (stocktvKline) return jsonResponse(stocktvKline);

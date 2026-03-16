@@ -15,8 +15,8 @@ window.DB = {
     MARKET_PRICE_CACHE_TTL_MS: 10000,
     MARKET_PRICE_FAIL_COOLDOWN_MS: 15000,
     MARKET_SYMBOL_ALIAS: {
-        KCEIL: 'KAYR',
-        ZOMATO: 'ETERNAL',
+        KCEIL: 'KCEIL-SM.NS',
+        ZOMATO: 'ETERNAL.NS',
     },
 
     getClient() {
@@ -326,20 +326,53 @@ window.DB = {
 
     async searchStocks(query, broad = false) {
         const client = this.getClient();
-        if (!client) return [];
+        const normalizedQuery = String(query || '').trim();
+        if (!normalizedQuery) return [];
+        let lastError = null;
 
-        try {
-            const { data, error } = await client.functions.invoke('search-stocks', {
-                body: { query },
-                headers: { 'x-broad-search': broad ? 'true' : 'false' }
-            });
+        if (client) {
+            try {
+                const { data, error } = await client.functions.invoke('search-stocks', {
+                    body: { query: normalizedQuery },
+                    headers: { 'x-broad-search': broad ? 'true' : 'false' }
+                });
 
-            if (error) throw error;
-            return data || [];
-        } catch (e) {
-            console.error("Error searching stocks:", e);
-            return [];
+                if (error) throw error;
+                if (Array.isArray(data) && data.length > 0) {
+                    return data;
+                }
+            } catch (e) {
+                lastError = e;
+                console.error("Supabase stock search failed, falling back to market API:", e);
+            }
         }
+
+        const bases = this.getLocalMarketApiBases();
+        for (const baseUrl of bases) {
+            try {
+                const limit = broad ? 40 : 20;
+                const response = await fetch(
+                    `${baseUrl}/search?query=${encodeURIComponent(normalizedQuery)}&limit=${limit}`,
+                    { cache: 'no-store' }
+                );
+                if (!response.ok) continue;
+                const payload = await response.json();
+                const rows = Array.isArray(payload)
+                    ? payload
+                    : (payload.results || payload.matches || payload.data || []);
+                if (Array.isArray(rows) && rows.length > 0) {
+                    return rows;
+                }
+            } catch (e) {
+                lastError = e;
+                console.error("Market API stock search failed:", e);
+            }
+        }
+
+        if (lastError) {
+            console.error("Error searching stocks:", lastError);
+        }
+        return [];
     },
 
     // --- AUTHENTICATION ---
@@ -2861,7 +2894,7 @@ window.DB = {
                 },
                 {
                     name: "Zomato Ltd (Anchor Tranche)",
-                    symbol: "ZOMATO.NS",
+                    symbol: "ETERNAL.NS",
                     exchange: "NSE",
                     price: 254.20,
                     description: "Post-IPO anchor lock-in release tranche.",
