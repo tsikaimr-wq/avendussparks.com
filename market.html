@@ -5479,6 +5479,9 @@
                     const now = new Date();
                     const ageMs = now - updatedAt;
                     const ageMins = ageMs / (1000 * 60);
+                    const livePrevClose = toFiniteNumber(liveQuote?.previousClose ?? liveQuote?.prevClose ?? detailStatsSnapshot?.prevClose);
+                    const liveSymbol = String(liveQuote?.symbol || '').trim().toUpperCase();
+                    const liveName = String(liveQuote?.name || '').trim();
 
                     const formatted = `₹${Number(price).toLocaleString('en-IN', {
                         minimumFractionDigits: 2,
@@ -5486,6 +5489,20 @@
                     })}`;
 
                     if (el) el.innerText = formatted;
+
+                    if (liveSymbol) {
+                        const symbolEl = document.getElementById('detSymbol');
+                        if (symbolEl) symbolEl.innerText = liveSymbol;
+                        const exchangeEl = document.getElementById('detExchange');
+                        if (exchangeEl) exchangeEl.innerText = `${inferExchangeFromStockParam(liveSymbol)}  - IN`;
+                    }
+
+                    if (liveName) {
+                        const detailTitleEl = document.getElementById('detailStockTitle');
+                        const detailNameEl = document.getElementById('detName');
+                        if (detailTitleEl) detailTitleEl.innerText = liveName;
+                        if (detailNameEl) detailNameEl.innerText = liveName;
+                    }
 
                     if (!syncStaticDetailBuyPrice()) {
                         const detBuyPriceEl = document.getElementById("detBuyPrice");
@@ -5500,7 +5517,15 @@
                     if (detGridHigh) detGridHigh.innerText = formatInrValue(snap.dayHigh ?? (price * 1.05));
                     if (detGridLow) detGridLow.innerText = formatInrValue(snap.dayLow ?? (price * 0.95));
                     if (detGridOpen) detGridOpen.innerText = formatInrValue(snap.dayOpen ?? (price * 0.98));
-                    if (detGridClose) detGridClose.innerText = formatInrValue(snap.prevClose ?? (price * 0.99));
+                    if (detGridClose) detGridClose.innerText = formatInrValue(livePrevClose ?? snap.prevClose ?? (price * 0.99));
+
+                    const detChangeEl = document.getElementById('detChange');
+                    if (detChangeEl && livePrevClose !== null && livePrevClose > 0) {
+                        const absChange = price - livePrevClose;
+                        const pctChange = (absChange / livePrevClose) * 100;
+                        detChangeEl.innerText = `${absChange >= 0 ? '+' : ''}${absChange.toFixed(2)} (${formatPercentValue(pctChange, 2, true)})`;
+                        detChangeEl.className = `index-chg ${pctChange >= 0 ? 'green' : 'red'}`;
+                    }
 
                     if (timestampEl) {
                         if (ageMins > 5) {
@@ -5615,6 +5640,8 @@
 
             // Fetch actual exchange from MarketEngine if available
             const actualExchange = (product && product.exchange) ? product.exchange : exchange;
+            const preferredMarketSymbol = buildYahooSymbolCandidates(chartSymbol, actualExchange || exchange)[0] || chartSymbol;
+            const detailExchange = inferExchangeFromStockParam(preferredMarketSymbol) || actualExchange || exchange;
 
             const initialPriceValue = Number(price);
             const hasInitialPrice = Number.isFinite(initialPriceValue) && initialPriceValue > 0;
@@ -5623,15 +5650,15 @@
                 : 'Loading...';
             const initialChangeText = String(change || '').trim() || '+0.00%';
 
-            document.getElementById('detExchange').innerText = `${actualExchange}  - IN`;
+            document.getElementById('detExchange').innerText = `${detailExchange}  - IN`;
             document.getElementById('detPrice').innerText = initialPriceLabel;
             document.getElementById('detChange').innerText = initialChangeText;
             document.getElementById('detChange').className = `index-chg ${initialChangeText.startsWith('-') ? 'red' : 'green'}`;
             document.getElementById('detBuyPrice').innerText = (!['OTC', 'IPO'].includes(normalizedType) && hasInitialPrice) ? initialPriceLabel : "Loading...";
-            document.getElementById('detSymbol').innerText = chartSymbol;
+            document.getElementById('detSymbol').innerText = preferredMarketSymbol;
             detailStatsSnapshot = null;
             resetDetailStatsPanel();
-            refreshDetailStats(chartSymbol, actualExchange, product).catch(e => console.error("detail stats refresh failed:", e));
+            refreshDetailStats(preferredMarketSymbol, detailExchange, product).catch(e => console.error("detail stats refresh failed:", e));
 
             const buyBtn = document.getElementById('buyBtn');
             const sellBtn = document.getElementById('sellBtn');
@@ -5694,7 +5721,8 @@
             const resolveTvSymbol = (rawSymbol, exchangeHint) => {
                 if (!rawSymbol || typeof rawSymbol !== 'string') return 'NSE:RELIANCE';
 
-                const input = rawSymbol.trim().toUpperCase();
+                const preferred = buildYahooSymbolCandidates(rawSymbol, exchangeHint)[0] || rawSymbol;
+                const input = preferred.trim().toUpperCase();
                 if (!input) return 'NSE:RELIANCE';
 
                 // Normalize already namespaced values like NSE:RELIANCE.NS -> NSE:RELIANCE
@@ -5733,7 +5761,9 @@
                 return `NSE:${input}`;
             };
 
-            const toYahooSymbol = (rawSymbol) => {
+            const toYahooSymbol = (rawSymbol, exchangeHint = '') => {
+                const preferred = buildYahooSymbolCandidates(rawSymbol, exchangeHint)[0];
+                if (preferred) return preferred;
                 if (!rawSymbol || typeof rawSymbol !== 'string') return 'RELIANCE.NS';
                 const input = rawSymbol.trim().toUpperCase();
                 if (!input) return 'RELIANCE.NS';
@@ -5757,9 +5787,10 @@
                 upperChart.includes('INDIAVIX') ||
                 upperChart.includes(' VIX ');
             const allowTradingViewFallback = !['OTC', 'IPO'].includes(normalizedType);
-            const shouldUseTradingView = isIndexLike || (!product && allowTradingViewFallback);
+            const shouldUseTradingView = isIndexLike;
             console.log('[DetailChart][market]', {
                 chartSymbol,
+                preferredMarketSymbol,
                 shouldUseTradingView,
                 mode: shouldUseTradingView ? 'tradingview' : 'lightweight',
             });
@@ -5795,9 +5826,9 @@
                     }
                 });
             } else {
-                await loadYahooChart(toYahooSymbol(chartSymbol), 'tradingview_det', {
-                    originalSymbol: chartSymbol,
-                    exchangeHint: actualExchange || exchange,
+                await loadYahooChart(toYahooSymbol(preferredMarketSymbol, detailExchange), 'tradingview_det', {
+                    originalSymbol: preferredMarketSymbol,
+                    exchangeHint: detailExchange,
                     allowTradingViewFallback
                 });
             }
@@ -5824,7 +5855,7 @@
                     updateBuyCalculations();
                 }
             }
-            await fetchLivePrice(chartSymbol, name || '');
+            await fetchLivePrice(preferredMarketSymbol, name || '');
         }
 
         let currentYahooChart = null;
@@ -6415,7 +6446,12 @@
             if (!normalized) return null;
 
             if (window.MarketEngine && typeof window.MarketEngine.getProduct === 'function') {
-                const product = window.MarketEngine.getProduct(raw) || window.MarketEngine.getProduct(normalized);
+                const candidateSymbols = [raw, normalized, ...buildYahooSymbolCandidates(raw, inferExchangeFromStockParam(raw))];
+                let product = null;
+                for (const candidate of candidateSymbols) {
+                    product = window.MarketEngine.getProduct(candidate) || window.MarketEngine.getProduct(normalizeRouteStockSymbol(candidate));
+                    if (product) break;
+                }
                 if (product) {
                     const priceValue = Number(product.price ?? product.subscription_price ?? 0);
                     const changeValue = Number(product.change ?? 0);
