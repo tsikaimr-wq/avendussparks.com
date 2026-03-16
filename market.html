@@ -5079,6 +5079,7 @@
                 if (!chartResult || !quoteMeta) return chartResult;
                 const quotePrice = toFiniteNumber(quoteMeta?.price);
                 const prevClose = toFiniteNumber(quoteMeta?.previousClose);
+                const quoteName = String(quoteMeta?.name || '').trim();
                 if (quotePrice !== null && quotePrice > 0) {
                     chartResult.meta.regularMarketPrice = quotePrice;
                     const closes = chartResult?.indicators?.quote?.[0]?.close;
@@ -5089,6 +5090,10 @@
                 if (prevClose !== null && prevClose > 0) {
                     chartResult.meta.previousClose = prevClose;
                     chartResult.meta.chartPreviousClose = prevClose;
+                }
+                if (quoteName) {
+                    chartResult.meta.longName = quoteName;
+                    chartResult.meta.shortName = quoteName;
                 }
                 return chartResult;
             };
@@ -5420,6 +5425,8 @@
             const { chartResult, yahooSymbol, candidates } = await fetchYahooChartSnapshot(rawSymbol, exchangeHint, product);
             if (requestId !== detailStatsRequestSeq) return;
             if (!chartResult) return;
+
+            applyDetailStatsFromYahoo(chartResult, null, product);
 
             const fundamentals = await fetchYahooFundamentals([yahooSymbol, ...candidates]);
             if (requestId !== detailStatsRequestSeq) return;
