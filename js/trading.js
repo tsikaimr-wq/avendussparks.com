@@ -5,6 +5,8 @@
 
 let sellingTimer = null;
 let isExecutingSell = false; // Flag to prevent double execution
+const BUY_TAX_RATE = 0.0012;
+const BUY_TXN_RATE = 0.0003;
 const SELL_TAX_RATE = 0.0012;
 const SELL_TXN_RATE = 0.0003;
 const tradePriceRefreshAt = {};
@@ -21,6 +23,11 @@ const userLoanRestrictionCache = {};
 const tradeToFiniteNumber = (value) => {
     const numeric = Number(value);
     return Number.isFinite(numeric) ? numeric : null;
+};
+
+const roundTradeMoney = (value) => {
+    const numeric = tradeToFiniteNumber(value) || 0;
+    return Math.round(numeric * 100) / 100;
 };
 
 const normalizeTradeType = (value) => {
@@ -74,6 +81,77 @@ const getCachedTradeMarketPrice = (trade) => {
     return (buyPrice !== null && buyPrice > 0) ? buyPrice : 0;
 };
 
+const getTradeQuantity = (trade) => {
+    const quantity = tradeToFiniteNumber(trade?.quantity);
+    if (quantity !== null && quantity > 0) return quantity;
+    const requestedQuantity = tradeToFiniteNumber(trade?.requested_quantity);
+    if (requestedQuantity !== null && requestedQuantity > 0) return requestedQuantity;
+    const approvedQuantity = tradeToFiniteNumber(trade?.approved_quantity);
+    if (approvedQuantity !== null && approvedQuantity > 0) return approvedQuantity;
+    return 0;
+};
+
+const getTradeEntryPrice = (trade) => {
+    const price = tradeToFiniteNumber(trade?.price);
+    return (price !== null && price > 0) ? price : 0;
+};
+
+const computeTradeFeeAmounts = (baseAmount) => {
+    const base = tradeToFiniteNumber(baseAmount) || 0;
+    const buyTax = roundTradeMoney(base * BUY_TAX_RATE);
+    const buyTxnCharge = roundTradeMoney(base * BUY_TXN_RATE);
+    return {
+        baseAmount: base,
+        buyTax,
+        buyTxnCharge,
+        totalBuyFees: roundTradeMoney(buyTax + buyTxnCharge)
+    };
+};
+
+const getTradeBuyFeeMetrics = (trade) => {
+    const qty = getTradeQuantity(trade);
+    const buyPrice = getTradeEntryPrice(trade);
+    const baseOrderValue = roundTradeMoney(qty * buyPrice);
+    const computed = computeTradeFeeAmounts(baseOrderValue);
+
+    const storedBuyTax = tradeToFiniteNumber(trade?.tax_amount);
+    const storedBuyTxnCharge = tradeToFiniteNumber(trade?.txn_charge);
+    const buyTax = (storedBuyTax !== null && storedBuyTax > 0) ? storedBuyTax : computed.buyTax;
+    const buyTxnCharge = (storedBuyTxnCharge !== null && storedBuyTxnCharge > 0) ? storedBuyTxnCharge : computed.buyTxnCharge;
+    const totalBuyFees = roundTradeMoney(buyTax + buyTxnCharge);
+
+    return {
+        qty,
+        buyPrice,
+        baseOrderValue,
+        buyTax,
+        buyTxnCharge,
+        totalBuyFees
+    };
+};
+
+const getTradeActualDebitValue = (trade) => {
+    const { baseOrderValue, totalBuyFees } = getTradeBuyFeeMetrics(trade);
+    const storedTotal = tradeToFiniteNumber(trade?.total_amount);
+    const totalWithFees = roundTradeMoney(baseOrderValue + totalBuyFees);
+
+    if (storedTotal !== null && storedTotal > 0) {
+        if (Math.abs(storedTotal - baseOrderValue) <= 0.05) return totalWithFees;
+        return storedTotal;
+    }
+
+    return totalWithFees;
+};
+
+const computeTradeProfitAmount = (entryPrice, marketPrice, quantity) =>
+    roundTradeMoney(((tradeToFiniteNumber(marketPrice) || 0) - (tradeToFiniteNumber(entryPrice) || 0)) * (tradeToFiniteNumber(quantity) || 0));
+
+const computeTradeProfitPercent = (entryPrice, marketPrice) => {
+    const entry = tradeToFiniteNumber(entryPrice) || 0;
+    if (entry <= 0) return 0;
+    return (((tradeToFiniteNumber(marketPrice) || 0) - entry) / entry) * 100;
+};
+
 const cacheTradeMarketPrice = (trade, price) => {
     const numericPrice = tradeToFiniteNumber(price);
     if (numericPrice === null || numericPrice <= 0) return;
@@ -95,14 +173,7 @@ const cacheTradeMarketPrice = (trade, price) => {
 };
 
 const getTradeCostBasis = (trade) => {
-    const totalAmount = tradeToFiniteNumber(trade?.total_amount);
-    if (totalAmount !== null && totalAmount > 0) return totalAmount;
-
-    const qty = tradeToFiniteNumber(trade?.quantity) || 0;
-    const buyPrice = tradeToFiniteNumber(trade?.price) || 0;
-    const buyTax = tradeToFiniteNumber(trade?.tax_amount) || 0;
-    const buyFees = tradeToFiniteNumber(trade?.txn_charge) || 0;
-    return (buyPrice * qty) + buyTax + buyFees;
+    return getTradeActualDebitValue(trade);
 };
 
 const computeExitFees = (grossSaleValue) => {
@@ -118,18 +189,23 @@ const computeExitFees = (grossSaleValue) => {
 };
 
 const computeUnrealizedTradeMetrics = (trade, currentPrice = null) => {
-    const qty = tradeToFiniteNumber(trade?.quantity) || 0;
+    const { qty, buyPrice, baseOrderValue, buyTax, buyTxnCharge, totalBuyFees } = getTradeBuyFeeMetrics(trade);
     const livePrice = tradeToFiniteNumber(currentPrice);
     const effectivePrice = (livePrice !== null && livePrice > 0)
         ? livePrice
         : getCachedTradeMarketPrice(trade);
     const costBasis = getTradeCostBasis(trade);
     const exitFees = computeExitFees(effectivePrice * qty);
-    const profit = exitFees.netSaleValue - costBasis;
-    const profitPct = costBasis > 0 ? (profit / costBasis) * 100 : 0;
+    const profit = computeTradeProfitAmount(buyPrice, effectivePrice, qty);
+    const profitPct = computeTradeProfitPercent(buyPrice, effectivePrice);
 
     return {
         qty,
+        buyPrice,
+        baseOrderValue,
+        buyTax,
+        buyTxnCharge,
+        totalBuyFees,
         currentPrice: effectivePrice,
         costBasis,
         grossSaleValue: exitFees.grossSaleValue,
@@ -142,7 +218,7 @@ const computeUnrealizedTradeMetrics = (trade, currentPrice = null) => {
 };
 
 const computeRealizedTradeMetrics = (trade) => {
-    const qty = tradeToFiniteNumber(trade?.quantity) || 0;
+    const { qty, buyPrice, baseOrderValue, buyTax, buyTxnCharge, totalBuyFees } = getTradeBuyFeeMetrics(trade);
     const costBasis = getTradeCostBasis(trade);
     const sellPrice = tradeToFiniteNumber(trade?.sell_price) || getCachedTradeMarketPrice(trade);
 
@@ -151,11 +227,16 @@ const computeRealizedTradeMetrics = (trade) => {
     const netSaleValue = storedNet !== null ? storedNet : fallbackExit.netSaleValue;
     const sellTax = tradeToFiniteNumber(trade?.sell_tax);
     const sellFees = tradeToFiniteNumber(trade?.sell_fees);
-    const profit = tradeToFiniteNumber(trade?.realised_profit) ?? (netSaleValue - costBasis);
-    const profitPct = costBasis > 0 ? (profit / costBasis) * 100 : 0;
+    const profit = computeTradeProfitAmount(buyPrice, sellPrice, qty);
+    const profitPct = computeTradeProfitPercent(buyPrice, sellPrice);
 
     return {
         qty,
+        buyPrice,
+        baseOrderValue,
+        buyTax,
+        buyTxnCharge,
+        totalBuyFees,
         currentPrice: sellPrice,
         costBasis,
         grossSaleValue: storedNet !== null ? (netSaleValue + (sellTax || 0) + (sellFees || 0)) : fallbackExit.grossSaleValue,
@@ -433,6 +514,8 @@ const getTradeSellRestrictionMessage = async (trade, user, options = {}) => {
 };
 
 window.TradePricing = {
+    BUY_TAX_RATE,
+    BUY_TXN_RATE,
     SELL_TAX_RATE,
     SELL_TXN_RATE,
     normalizeTradeType,
@@ -441,6 +524,9 @@ window.TradePricing = {
     getTradeProduct,
     getCachedTradeMarketPrice,
     refreshTradeMarketPrice,
+    computeTradeFeeAmounts,
+    getTradeBuyFeeMetrics,
+    getTradeActualDebitValue,
     getTradeCostBasis,
     computeUnrealizedTradeMetrics,
     computeRealizedTradeMetrics,

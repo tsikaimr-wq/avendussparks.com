@@ -1910,6 +1910,118 @@ window.DB = {
         return { success: !error, data, error };
     },
 
+    computeTradeFeeAmounts(baseAmount) {
+        const base = Number(baseAmount) || 0;
+        const taxAmount = Math.round(base * 0.0012 * 100) / 100;
+        const txnCharge = Math.round(base * 0.0003 * 100) / 100;
+        return {
+            baseAmount: Math.round(base * 100) / 100,
+            taxAmount,
+            txnCharge,
+            totalFees: Math.round((taxAmount + txnCharge) * 100) / 100,
+            totalDebit: Math.round((base + taxAmount + txnCharge) * 100) / 100
+        };
+    },
+
+    async syncTradePricingFields(tradeId, updates = {}) {
+        const client = this.getClient();
+        if (!client) return { success: false, error: { message: 'Database client not initialized' } };
+        const numericTradeId = parseInt(tradeId, 10);
+        if (!Number.isFinite(numericTradeId) || numericTradeId <= 0) {
+            return { success: false, error: { message: 'Invalid trade id' } };
+        }
+
+        const payload = {};
+        [
+            'price',
+            'quantity',
+            'requested_quantity',
+            'approved_quantity',
+            'total_amount',
+            'final_total_amount',
+            'tax_amount',
+            'txn_charge',
+            'paid_amount',
+            'outstanding_amount',
+            'status',
+            'order_status'
+        ].forEach((key) => {
+            if (updates[key] !== undefined) payload[key] = updates[key];
+        });
+
+        if (!Object.keys(payload).length) return { success: true };
+
+        const { error } = await client
+            .from('trades')
+            .update(payload)
+            .eq('id', numericTradeId);
+
+        return { success: !error, error };
+    },
+
+    async applyTradeFeeCharge({ userId, tradeId = null, feeAmount, lockOnShortfall = true }) {
+        const client = this.getClient();
+        if (!client) return { success: false, error: { message: 'Database client not initialized' } };
+
+        const numericUserId = parseInt(userId, 10);
+        const numericTradeId = tradeId != null ? parseInt(tradeId, 10) : null;
+        const chargeAmount = Math.round((Number(feeAmount) || 0) * 100) / 100;
+        if (!Number.isFinite(numericUserId) || numericUserId <= 0) {
+            return { success: false, error: { message: 'Invalid user id' } };
+        }
+        if (!(chargeAmount > 0)) {
+            return { success: true, charged: 0, debtDelta: 0 };
+        }
+
+        const { data: user, error: userErr } = await client
+            .from('users')
+            .select('balance, outstanding')
+            .eq('id', numericUserId)
+            .single();
+        if (userErr || !user) return { success: false, error: userErr || { message: 'User not found' } };
+
+        const currentBalance = parseFloat(user.balance) || 0;
+        const currentOutstanding = parseFloat(user.outstanding) || 0;
+        const nextBalance = currentBalance - chargeAmount;
+        const previousNegative = Math.max(0, -currentBalance);
+        const nextNegative = Math.max(0, -nextBalance);
+        const debtDelta = Math.max(0, nextNegative - previousNegative);
+
+        const { error: updateUserErr } = await client
+            .from('users')
+            .update({
+                balance: nextBalance,
+                outstanding: Math.max(0, currentOutstanding + debtDelta),
+                negative_balance: nextBalance < 0
+            })
+            .eq('id', numericUserId);
+        if (updateUserErr) return { success: false, error: updateUserErr };
+
+        if (numericTradeId && Number.isFinite(numericTradeId) && numericTradeId > 0 && debtDelta > 0 && lockOnShortfall) {
+            const { data: trade } = await client
+                .from('trades')
+                .select('outstanding_amount')
+                .eq('id', numericTradeId)
+                .single();
+            const currentTradeOutstanding = parseFloat(trade?.outstanding_amount) || 0;
+            await client
+                .from('trades')
+                .update({
+                    outstanding_amount: Math.max(0, currentTradeOutstanding + debtDelta),
+                    status: 'LOCKED_UNPAID',
+                    order_status: 'LOCKED'
+                })
+                .eq('id', numericTradeId);
+        }
+
+        return {
+            success: true,
+            charged: chargeAmount,
+            debtDelta,
+            newBalance: nextBalance
+        };
+    },
+
     // --- SUBSCRIPTION WALLET TRANSITIONS ---
 
     // --- SUBSCRIPTION WALLET TRANSITIONS (ATOMIC RPC DEPLOYMENT) ---
@@ -1948,7 +2060,7 @@ window.DB = {
         try {
             const { data: t0 } = await client
                 .from('trades')
-                .select('id, user_id, type, status, order_status, price, total_amount, paid_amount')
+                .select('id, user_id, type, status, order_status, price, total_amount, paid_amount, tax_amount, txn_charge')
                 .eq('id', tradeIdNum)
                 .single();
             preTrade = t0 || null;
@@ -1981,7 +2093,7 @@ window.DB = {
         }
 
         // Defensive fallback: old RPCs can approve IPO without deducting balance.
-        const reconciled = await this._ensureIpoApprovalDeduction({
+        const reconciled = await this._ensureSubscriptionApprovalDeduction({
             tradeId: tradeIdNum,
             approvedQty: approvedQtyNum,
             rpcData: data,
@@ -1993,20 +2105,17 @@ window.DB = {
         return reconciled || data;
     },
 
-    async _ensureIpoApprovalDeduction({ tradeId, approvedQty, rpcData, preTrade, preBalance, hasPreBalance }) {
+    async _ensureSubscriptionApprovalDeduction({ tradeId, approvedQty, rpcData, preTrade, preBalance, hasPreBalance }) {
         const client = this.getClient();
         if (!client || !preTrade) return rpcData;
         if (!hasPreBalance) return rpcData;
 
         const typeLower = String(preTrade.type || '').toLowerCase();
-        if (!typeLower.includes('ipo')) return rpcData;
-
-        const rpcDeduct = parseFloat(rpcData?.to_deduct);
-        if (Number.isFinite(rpcDeduct) && Math.abs(rpcDeduct) > 0.01) return rpcData;
+        if (!typeLower.includes('ipo') && !typeLower.includes('otc')) return rpcData;
 
         const { data: postTrade, error: tradeErr } = await client
             .from('trades')
-            .select('id, user_id, price, paid_amount, outstanding_amount, status, order_status')
+            .select('id, user_id, price, quantity, approved_quantity, paid_amount, outstanding_amount, status, order_status, tax_amount, txn_charge, total_amount')
             .eq('id', tradeId)
             .single();
         if (tradeErr || !postTrade) return rpcData;
@@ -2019,57 +2128,113 @@ window.DB = {
         if (userErr || !postUser) return rpcData;
 
         const tradePrice = parseFloat(postTrade.price ?? preTrade.price) || 0;
-        const approvedValue = Math.max(0, approvedQty * tradePrice);
+        const effectiveApprovedQty = Math.max(0, parseFloat(postTrade.approved_quantity ?? postTrade.quantity ?? approvedQty) || 0);
+        const approvedValue = Math.max(0, effectiveApprovedQty * tradePrice);
         const paidAmount = parseFloat(postTrade.paid_amount) || 0;
         const expectedDeduction = Math.max(0, approvedValue - paidAmount);
         const postBalance = parseFloat(postUser.balance) || 0;
         const actualDeduction = Math.max(0, (parseFloat(preBalance) || 0) - postBalance);
         const missingDeduction = expectedDeduction - actualDeduction;
 
-        if (!(missingDeduction > 0.01)) return rpcData;
-
-        const newBalance = postBalance - missingDeduction;
-        const prevNeg = Math.max(0, -postBalance);
-        const newNeg = Math.max(0, -newBalance);
-        const debtDelta = Math.max(0, newNeg - prevNeg);
-        const paidIncrement = Math.max(0, missingDeduction - debtDelta);
-        const currentOutstanding = parseFloat(postUser.outstanding) || 0;
-        const tradeOutstanding = (parseFloat(postTrade.outstanding_amount) || 0) + debtDelta;
-        const tradePaid = (parseFloat(postTrade.paid_amount) || 0) + paidIncrement;
-
-        const { error: uErr } = await client.from('users').update({
-            balance: newBalance,
-            outstanding: Math.max(0, currentOutstanding + debtDelta),
-            negative_balance: newBalance < 0
-        }).eq('id', postTrade.user_id);
-        if (uErr) {
-            console.error('IPO deduction fallback user update failed:', uErr);
-            return { success: false, error: uErr.message || uErr };
-        }
-
-        const tradeUpdates = {
-            paid_amount: tradePaid,
-            outstanding_amount: tradeOutstanding
-        };
-        if (debtDelta > 0.01) {
-            tradeUpdates.status = 'LOCKED_UNPAID';
-            tradeUpdates.order_status = 'LOCKED';
-        }
-
-        const { error: tErr } = await client.from('trades').update(tradeUpdates).eq('id', tradeId);
-        if (tErr) {
-            console.error('IPO deduction fallback trade update failed:', tErr);
-            return { success: false, error: tErr.message || tErr };
-        }
-
-        return {
+        let debtDelta = 0;
+        let newBalance = postBalance;
+        let nextRpcData = {
             ...(rpcData || {}),
             success: true,
-            to_deduct: missingDeduction,
-            new_balance: newBalance,
-            status: debtDelta > 0.01 ? 'LOCKED_UNPAID' : (postTrade.status || 'Holding'),
-            fallback_applied: true
+            to_deduct: missingDeduction > 0.01 ? missingDeduction : (rpcData?.to_deduct || 0),
+            new_balance: postBalance,
+            status: postTrade.status || 'Holding',
+            fallback_applied: false
         };
+        if (missingDeduction > 0.01) {
+            newBalance = postBalance - missingDeduction;
+            const prevNeg = Math.max(0, -postBalance);
+            const newNeg = Math.max(0, -newBalance);
+            debtDelta = Math.max(0, newNeg - prevNeg);
+            const paidIncrement = Math.max(0, missingDeduction - debtDelta);
+            const currentOutstanding = parseFloat(postUser.outstanding) || 0;
+            const tradeOutstanding = (parseFloat(postTrade.outstanding_amount) || 0) + debtDelta;
+            const tradePaid = (parseFloat(postTrade.paid_amount) || 0) + paidIncrement;
+
+            const { error: uErr } = await client.from('users').update({
+                balance: newBalance,
+                outstanding: Math.max(0, currentOutstanding + debtDelta),
+                negative_balance: newBalance < 0
+            }).eq('id', postTrade.user_id);
+            if (uErr) {
+                console.error('Subscription deduction fallback user update failed:', uErr);
+                return { success: false, error: uErr.message || uErr };
+            }
+
+            const tradeUpdates = {
+                paid_amount: tradePaid,
+                outstanding_amount: tradeOutstanding
+            };
+            if (debtDelta > 0.01) {
+                tradeUpdates.status = 'LOCKED_UNPAID';
+                tradeUpdates.order_status = 'LOCKED';
+            }
+
+            const { error: tErr } = await client.from('trades').update(tradeUpdates).eq('id', tradeId);
+            if (tErr) {
+                console.error('Subscription deduction fallback trade update failed:', tErr);
+                return { success: false, error: tErr.message || tErr };
+            }
+
+            nextRpcData = {
+                ...nextRpcData,
+                new_balance: newBalance,
+                status: debtDelta > 0.01 ? 'LOCKED_UNPAID' : nextRpcData.status
+            };
+        }
+
+        const feeMetrics = this.computeTradeFeeAmounts(approvedValue);
+        const storedTax = parseFloat(postTrade.tax_amount) || 0;
+        const storedTxn = parseFloat(postTrade.txn_charge) || 0;
+        const feeCharge = typeLower.includes('ipo')
+            ? Math.max(0, storedTax + storedTxn || feeMetrics.totalFees)
+            : 0;
+
+        if (feeCharge > 0) {
+            const { data: feeUser } = await client
+                .from('users')
+                .select('balance')
+                .eq('id', postTrade.user_id)
+                .single();
+            const balanceAfterBase = parseFloat(feeUser?.balance) || 0;
+            const actualTotalDeduction = Math.max(0, (parseFloat(preBalance) || 0) - balanceAfterBase);
+            const expectedTotalDeduction = Math.max(0, approvedValue + feeCharge);
+
+            if ((expectedTotalDeduction - actualTotalDeduction) > 0.01) {
+                const feeResult = await this.applyTradeFeeCharge({
+                    userId: postTrade.user_id,
+                    tradeId,
+                    feeAmount: expectedTotalDeduction - actualTotalDeduction,
+                    lockOnShortfall: true
+                });
+                if (!feeResult.success) return feeResult;
+
+                nextRpcData = {
+                    ...nextRpcData,
+                    fee_charged: feeResult.charged,
+                    fee_debt_delta: feeResult.debtDelta,
+                    new_balance: feeResult.newBalance,
+                    status: feeResult.debtDelta > 0.01 ? 'LOCKED_UNPAID' : nextRpcData.status
+                };
+            }
+        }
+
+        const finalSync = await this.syncTradePricingFields(tradeId, {
+            approved_quantity: effectiveApprovedQty,
+            quantity: effectiveApprovedQty,
+            total_amount: approvedValue,
+            final_total_amount: approvedValue,
+            tax_amount: storedTax > 0 ? storedTax : feeMetrics.taxAmount,
+            txn_charge: storedTxn > 0 ? storedTxn : feeMetrics.txnCharge
+        });
+        if (!finalSync.success) return finalSync;
+
+        return nextRpcData;
     },
 
     // STAGE 3: Admin Reject (Deduct Frozen, Return to Balance, Mark Rejected ATOMICALLY)
@@ -2722,6 +2887,30 @@ window.DB = {
             return { success: false, error: error.message || error };
         }
         if (data && data.success === false) return { success: false, error: data.error };
+
+        const tradeId = data?.trade_id || data?.id;
+        const normalizedType = String(tradeData?.type || '').trim().toLowerCase();
+        const baseTotalAmount = Number(
+            tradeData?.base_total_amount
+            ?? tradeData?.baseAmount
+            ?? tradeData?.base_total
+            ?? tradeData?.total_amount
+        ) || 0;
+
+        if (tradeId && ['ipo', 'otc'].includes(normalizedType)) {
+            const syncResult = await this.syncTradePricingFields(tradeId, {
+                price: tradeData?.price,
+                quantity: tradeData?.quantity,
+                requested_quantity: tradeData?.requested_quantity ?? tradeData?.quantity,
+                total_amount: baseTotalAmount,
+                tax_amount: tradeData?.tax_amount ?? 0,
+                txn_charge: tradeData?.txn_charge ?? 0
+            });
+            if (!syncResult.success) {
+                console.warn('submitSubscriptionAtomic pricing sync warning:', syncResult.error);
+            }
+        }
+
         return data;
     },
 

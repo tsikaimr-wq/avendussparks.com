@@ -6947,27 +6947,26 @@
             const priceText = priceEl.innerText.replace(/[^\d.]/g, '');
             const price = parseFloat(priceText) || 0;
 
+            const BUY_TAX_RATE = window.TradePricing?.BUY_TAX_RATE ?? 0.0012;
+            const BUY_TXN_RATE = window.TradePricing?.BUY_TXN_RATE ?? 0.0003;
             let baseTotal, tax, txnCharge, finalTotal;
 
             if (isIPO) {
-                // IPO: Fixed Investment Amount
                 const currentMinInvest = parseFloat(buyBtn.dataset.minInvest) || 15000;
                 baseTotal = currentMinInvest;
                 qty = baseTotal / (price || 1);
-                tax = 0;
-                txnCharge = 0;
-                finalTotal = baseTotal;
+                tax = baseTotal * BUY_TAX_RATE;
+                txnCharge = baseTotal * BUY_TXN_RATE;
+                finalTotal = baseTotal + tax + txnCharge;
             } else if (isOTC) {
-                // OTC: Qty based, but uses allocation price and usually no fees/different fees
                 baseTotal = qty * price;
-                tax = 0; // OTC often has simplified fee structure
-                txnCharge = 0;
-                finalTotal = baseTotal;
+                tax = baseTotal * BUY_TAX_RATE;
+                txnCharge = baseTotal * BUY_TXN_RATE;
+                finalTotal = baseTotal + tax + txnCharge;
             } else {
-                // INS.STOCKS / Standard
                 baseTotal = qty * price;
-                tax = baseTotal * 0.0012;
-                txnCharge = baseTotal * 0.0003;
+                tax = baseTotal * BUY_TAX_RATE;
+                txnCharge = baseTotal * BUY_TXN_RATE;
                 finalTotal = baseTotal + tax + txnCharge;
             }
 
@@ -7171,6 +7170,8 @@
             const normalizedType = String(type || '').toLowerCase();
             const quantity = Math.max(0, parseFloat(calc?.qty) || 0);
             const product = resolveDetailTradeProduct(symbol);
+            const BUY_TAX_RATE = window.TradePricing?.BUY_TAX_RATE ?? 0.0012;
+            const BUY_TXN_RATE = window.TradePricing?.BUY_TXN_RATE ?? 0.0003;
             const buildCalc = (price, taxRate, feeRate) => {
                 const numericPrice = toFiniteNumber(price) ?? 0;
                 const baseTotal = quantity * numericPrice;
@@ -7191,7 +7192,7 @@
                 const backendPrice = toFiniteNumber(product?.subscription_price)
                     ?? toFiniteNumber(product?.price)
                     ?? toFiniteNumber(calc?.price);
-                return buildCalc(backendPrice, 0, 0);
+                return buildCalc(backendPrice, BUY_TAX_RATE, BUY_TXN_RATE);
             }
 
             let livePrice = null;
@@ -7222,7 +7223,7 @@
                     ?? 0;
             }
 
-            return buildCalc(livePrice, 0.0012, 0.0003);
+            return buildCalc(livePrice, BUY_TAX_RATE, BUY_TXN_RATE);
         }
 
         async function executeConfirmedTrade(event, type, symbol, stockName, calc) {
@@ -7280,9 +7281,10 @@
                         requested_quantity: executionCalc.qty,
                         approved_quantity: null,
                         price: executionCalc.price,
-                        total_amount: executionCalc.total,
-                        tax_amount: 0,
-                        txn_charge: 0,
+                        total_amount: executionCalc.baseTotal,
+                        base_total_amount: executionCalc.baseTotal,
+                        tax_amount: executionCalc.tax,
+                        txn_charge: executionCalc.txnCharge,
                         status: 'AWAITING_APPROVAL',
                         order_status: 'PENDING'
                     };
@@ -7290,6 +7292,17 @@
                     const result = await window.DB.submitSubscriptionAtomic(tradeData);
 
                     if (result.success) {
+                        const tradeId = result.trade_id || result.id;
+                        if (tradeId && window.DB?.syncTradePricingFields) {
+                            await window.DB.syncTradePricingFields(tradeId, {
+                                price: executionCalc.price,
+                                quantity: executionCalc.qty,
+                                requested_quantity: executionCalc.qty,
+                                total_amount: executionCalc.baseTotal,
+                                tax_amount: executionCalc.tax,
+                                txn_charge: executionCalc.txnCharge
+                            });
+                        }
                         closeOrderConfirm();
                         showModal('success', 'Subscription Received', `Your allocation request for ${stockName} has been received and is awaiting approval.`);
                         if (typeof syncUserData === 'function') syncUserData();
@@ -7317,7 +7330,8 @@
                     quantity: executionCalc.qty,
                     requested_quantity: executionCalc.qty,
                     price: executionCalc.price,
-                    total_amount: executionCalc.total,
+                    total_amount: ['otc', 'ipo'].includes(type.toLowerCase()) ? executionCalc.baseTotal : executionCalc.total,
+                    base_total_amount: executionCalc.baseTotal,
                     tax_amount: executionCalc.tax,
                     txn_charge: executionCalc.txnCharge,
                     admin_note: isInsufficient ? 'OUTSTANDING:' + currentBalance : '',
@@ -7345,8 +7359,9 @@
                 if (result.success) {
                     // OTC must debit immediately on subscription click.
                     if (type.toLowerCase() === 'otc') {
-                        const expectedDebit = parseFloat(executionCalc.total || 0);
+                        const expectedDebit = parseFloat(executionCalc.baseTotal || 0);
                         const expectedFrozen = expectedDebit;
+                        const expectedFeeCharge = parseFloat((executionCalc.tax || 0) + (executionCalc.txnCharge || 0));
                         let syncedUser = await window.DB.refreshCurrentUser();
 
                         if (syncedUser && expectedDebit > 0) {
@@ -7392,30 +7407,58 @@
 
                         // Best-effort payment fields sync for RPC variants that use paid/outstanding.
                         const tradeId = result.trade_id || result.id;
-                        if (tradeId && expectedDebit > 0 && window.DB && typeof window.DB.getClient === 'function') {
+                        if (tradeId && window.DB?.syncTradePricingFields) {
+                            await window.DB.syncTradePricingFields(tradeId, {
+                                price: executionCalc.price,
+                                quantity: executionCalc.qty,
+                                requested_quantity: executionCalc.qty,
+                                total_amount: executionCalc.baseTotal,
+                                tax_amount: executionCalc.tax,
+                                txn_charge: executionCalc.txnCharge,
+                                paid_amount: expectedDebit,
+                                outstanding_amount: 0
+                            });
+                        } else if (tradeId && expectedDebit > 0 && window.DB && typeof window.DB.getClient === 'function') {
                             try {
                                 const client = window.DB.getClient();
                                 if (client) {
                                     await client.from('trades').update({
                                         paid_amount: expectedDebit,
-                                        outstanding_amount: 0
+                                        outstanding_amount: 0,
+                                        tax_amount: executionCalc.tax,
+                                        txn_charge: executionCalc.txnCharge,
+                                        total_amount: executionCalc.baseTotal
                                     }).eq('id', tradeId);
                                 }
                             } catch (tradeSyncErr) {
                                 console.warn("OTC trade paid/outstanding sync skipped:", tradeSyncErr);
                             }
                         }
+
+                        if (expectedFeeCharge > 0 && window.DB?.applyTradeFeeCharge) {
+                            const tradeId = result.trade_id || result.id;
+                            const feeResult = await window.DB.applyTradeFeeCharge({
+                                userId: freshUser.id,
+                                tradeId,
+                                feeAmount: expectedFeeCharge,
+                                lockOnShortfall: true
+                            });
+                            if (!feeResult?.success) {
+                                throw new Error(feeResult?.error?.message || feeResult?.error || "OTC fee deduction failed.");
+                            }
+                            syncedUser = await window.DB.refreshCurrentUser();
+                        }
                     }
 
                     // --- WALLET STATE TRANSITION (NON-SUBSCRIPTION) ---
                     if (!['otc', 'ipo'].includes(type.toLowerCase()) && (tradeStatus === 'Holding' || isInsufficient)) {
-                        const deduction = isInsufficient ? currentBalance : calc.total;
+                        const deduction = isInsufficient ? currentBalance : executionCalc.total;
                         const newBalance = currentBalance - deduction;
                         const currentInvested = parseFloat(freshUser.invested) || 0;
                         const newInvested = currentInvested + deduction;
 
                         const currentOutstanding = parseFloat(freshUser.outstanding) || 0;
-                        const addedOutstanding = isInsufficient ? (calc.total - currentBalance) : 0;
+                        const addedOutstanding = isInsufficient ? (executionCalc.total - currentBalance) : 0;
                         const newOutstanding = currentOutstanding + addedOutstanding;
 
                         await window.DB.updateUserFinancials(freshUser.id, newBalance, newInvested, newOutstanding);
@@ -7424,7 +7467,7 @@
                     closeOrderConfirm();
 
                     if (tradeStatus === 'Holding') {
-                        showModal('success', 'Order Successful', `Successfully purchased ${calc.qty} shares of ${stockName}.`, () => {
+                        showModal('success', 'Order Successful', `Successfully purchased ${executionCalc.qty} shares of ${stockName}.`, () => {
                             window.DB.refreshCurrentUser().then(() => {
                                 if (typeof syncUserData === 'function') syncUserData();
                                 if (typeof renderDetailHoldings === 'function') renderDetailHoldings();
@@ -7483,7 +7526,15 @@
             const minInvest = toNum(product.min_invest || product.minInvest) || 15000;
             const qty = subscriptionPrice > 0 ? Math.max(1, Math.floor(minInvest / subscriptionPrice)) : 1;
             const baseAmount = subscriptionPrice > 0 ? (qty * subscriptionPrice) : minInvest;
-            const total = baseAmount;
+            const feeMetrics = window.DB?.computeTradeFeeAmounts
+                ? window.DB.computeTradeFeeAmounts(baseAmount)
+                : {
+                    taxAmount: baseAmount * 0.0012,
+                    txnCharge: baseAmount * 0.0003,
+                    totalFees: baseAmount * 0.0015,
+                    totalDebit: baseAmount * 1.0015
+                };
+            const total = feeMetrics.totalDebit;
 
             const yieldInfo = getConfiguredProfitInfo(product);
             const yieldText = yieldInfo.text;
@@ -7502,6 +7553,8 @@
                 yield: yieldText,
                 price: subscriptionPrice > 0 ? subscriptionPrice : toNum(product.price),
                 subscriptionPrice: subscriptionPrice > 0 ? subscriptionPrice : toNum(product.price),
+                taxAmount: feeMetrics.taxAmount,
+                txnCharge: feeMetrics.txnCharge,
                 startDateRaw,
                 endDateRaw,
                 listingDateRaw,
@@ -7562,7 +7615,15 @@
                     ?? 0;
                 const baseAmount = toFiniteNumber(currentIpoData.baseAmount) ?? toFiniteNumber(currentIpoData.total) ?? 0;
                 const qty = tradePrice > 0 ? Math.max(1, Math.floor(baseAmount / tradePrice)) : 1;
-                const totalAmount = tradePrice > 0 ? (qty * tradePrice) : baseAmount;
+                const orderBaseAmount = tradePrice > 0 ? (qty * tradePrice) : baseAmount;
+                const feeMetrics = window.DB?.computeTradeFeeAmounts
+                    ? window.DB.computeTradeFeeAmounts(orderBaseAmount)
+                    : {
+                        taxAmount: orderBaseAmount * 0.0012,
+                        txnCharge: orderBaseAmount * 0.0003,
+                        totalFees: orderBaseAmount * 0.0015,
+                        totalDebit: orderBaseAmount * 1.0015
+                    };
 
                 const tradeData = {
                     user_id: freshUser.id,
@@ -7573,7 +7634,10 @@
                     quantity: qty,
                     requested_quantity: qty,
                     price: tradePrice,
-                    total_amount: totalAmount,
+                    total_amount: orderBaseAmount,
+                    base_total_amount: orderBaseAmount,
+                    tax_amount: currentIpoData.taxAmount ?? feeMetrics.taxAmount,
+                    txn_charge: currentIpoData.txnCharge ?? feeMetrics.txnCharge,
                     status: 'AWAITING_APPROVAL',
                     order_status: 'PENDING',
                     allotment_date: currentIpoData.allotmentDateRaw || null,
@@ -7582,6 +7646,17 @@
 
                 const result = await window.DB.submitSubscriptionAtomic(tradeData);
                 if (result.success) {
+                    const tradeId = result.trade_id || result.id;
+                    if (tradeId && window.DB?.syncTradePricingFields) {
+                        await window.DB.syncTradePricingFields(tradeId, {
+                            price: tradePrice,
+                            quantity: qty,
+                            requested_quantity: qty,
+                            total_amount: orderBaseAmount,
+                            tax_amount: tradeData.tax_amount,
+                            txn_charge: tradeData.txn_charge
+                        });
+                    }
                     showModal('success', 'Subscription Received', `Your application for ${currentIpoData.name} has been received.`);
                     closeIpoConfirm();
                     if (typeof syncUserData === 'function') syncUserData();
@@ -7805,15 +7880,18 @@
             }
 
             const qty = parseFloat(trade?.quantity || 0) || 0;
+            const buyPrice = parseFloat(trade?.price || 0) || 0;
             const price = Number.isFinite(Number(currentPrice)) ? Number(currentPrice) : getTradeDisplayPrice(trade);
-            const totalAmount = parseFloat(trade?.total_amount || 0) || 0;
             const gross = price * qty;
             const sellTax = gross * 0.0012;
             const sellFees = gross * 0.0003;
             const netSaleValue = gross - sellTax - sellFees;
-            const profit = netSaleValue - totalAmount;
-            const profitPct = totalAmount > 0 ? (profit / totalAmount) * 100 : 0;
-            return { currentPrice: price, grossSaleValue: gross, netSaleValue, sellTax, sellFees, profit, profitPct };
+            const buyTax = ((buyPrice * qty) * 0.0012);
+            const buyTxnCharge = ((buyPrice * qty) * 0.0003);
+            const totalBuyFees = buyTax + buyTxnCharge;
+            const profit = (price - buyPrice) * qty;
+            const profitPct = buyPrice > 0 ? (((price - buyPrice) / buyPrice) * 100) : 0;
+            return { currentPrice: price, grossSaleValue: gross, netSaleValue, sellTax, sellFees, profit, profitPct, baseOrderValue: buyPrice * qty, buyTax, buyTxnCharge, totalBuyFees, costBasis: (buyPrice * qty) + totalBuyFees };
         }
 
         function getTradeRealizedMetrics(trade) {
@@ -7823,12 +7901,18 @@
             }
 
             const qty = parseFloat(trade?.quantity || 0) || 0;
+            const buyPrice = parseFloat(trade?.price || 0) || 0;
             const sellPrice = parseFloat(trade?.sell_price || trade?.price || 0) || 0;
-            const totalAmount = parseFloat(trade?.total_amount || 0) || 0;
             const storedNet = parseFloat(trade?.total_sale_value || 0) || (sellPrice * qty);
-            const profit = parseFloat(trade?.realised_profit || 0) || (storedNet - totalAmount);
-            const profitPct = totalAmount > 0 ? (profit / totalAmount) * 100 : 0;
-            return { currentPrice: sellPrice, grossSaleValue: sellPrice * qty, netSaleValue: storedNet, profit, profitPct };
+            const grossSaleValue = (parseFloat(trade?.sell_tax || 0) + parseFloat(trade?.sell_fees || 0)) > 0
+                ? storedNet + (parseFloat(trade?.sell_tax || 0) + parseFloat(trade?.sell_fees || 0))
+                : sellPrice * qty;
+            const buyTax = ((buyPrice * qty) * 0.0012);
+            const buyTxnCharge = ((buyPrice * qty) * 0.0003);
+            const totalBuyFees = buyTax + buyTxnCharge;
+            const profit = (sellPrice - buyPrice) * qty;
+            const profitPct = buyPrice > 0 ? (((sellPrice - buyPrice) / buyPrice) * 100) : 0;
+            return { currentPrice: sellPrice, grossSaleValue, netSaleValue: storedNet, profit, profitPct, baseOrderValue: buyPrice * qty, buyTax, buyTxnCharge, totalBuyFees, costBasis: (buyPrice * qty) + totalBuyFees };
         }
 
         async function renderDetailHoldings() {
@@ -8984,32 +9068,35 @@
             if (hdLogoWrap) {
                 hdLogoWrap.innerHTML = '';
             }
-            document.getElementById('hdTotalVal').innerText = '₹' + parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            document.getElementById('hdTotalVal').innerText = '₹' + parseFloat((window.TradePricing?.getTradeActualDebitValue?.(trade) ?? trade.total_amount) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 });
             document.getElementById('hdTradeId').innerText = trade.id;
             document.getElementById('hdAssetName').innerText = trade.name;
             document.getElementById('hdAssetType').innerText = trade.type === 'stock' ? 'Standard Stock' : trade.type.toUpperCase();
             document.getElementById('hdSymbol').innerText = trade.symbol;
             document.getElementById('hdQty').innerText = trade.quantity;
             document.getElementById('hdBuyPrice').innerText = '₹' + parseFloat(trade.price).toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            document.getElementById('hdOrderVal').innerText = '₹' + parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
             const isClosed = trade.order_status === 'CLOSED' || trade.status === 'Sold';
             const tradeMetrics = isClosed
                 ? getTradeRealizedMetrics(trade)
                 : getTradeUnrealizedMetrics(trade, currentPrice);
             const mockCurrPrice = tradeMetrics.currentPrice;
-            const mockSaleVal = tradeMetrics.netSaleValue;
+            const mockSaleVal = tradeMetrics.grossSaleValue;
             const profitValue = tradeMetrics.profit;
             const profitPct = tradeMetrics.profitPct;
+            const orderValue = tradeMetrics.baseOrderValue ?? ((parseFloat(trade.price) || 0) * (parseFloat(trade.quantity) || 0));
+            const debitValue = tradeMetrics.costBasis ?? parseFloat(trade.total_amount || 0);
+
+            document.getElementById('hdOrderVal').innerText = '₹' + orderValue.toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
             const bDate = new Date(trade.created_at);
             const dateStr = bDate.toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
             // FEES BREAKDOWN
-            const buyTax = parseFloat(trade.tax_amount || 0);
-            const buyTxn = parseFloat(trade.txn_charge || 0);
-            const sellTax = parseFloat(trade.sell_tax || 0);
-            const sellFees = parseFloat(trade.sell_fees || 0);
+            const buyTax = parseFloat((tradeMetrics.buyTax ?? trade.tax_amount) || 0);
+            const buyTxn = parseFloat((tradeMetrics.buyTxnCharge ?? trade.txn_charge) || 0);
+            const sellTax = parseFloat(trade.sell_tax || tradeMetrics.sellTax || 0);
+            const sellFees = parseFloat(trade.sell_fees || tradeMetrics.sellFees || 0);
 
             let feesHtml = `
                 <div class="breakdown-row">
@@ -9055,7 +9142,7 @@
                 <div class="txn-history-item">
                     <div class="txn-h-top">
                         <span class="txn-h-type" style="color: #ef4444;">Order Payment (Debit)</span>
-                        <span class="txn-h-amt" style="color: #ef4444;">-₹${parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                        <span class="txn-h-amt" style="color: #ef4444;">-₹${debitValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                     </div>
                     <div class="txn-h-meta">
                         <span>${bDate.toLocaleDateString('en-IN')}</span>
@@ -9070,7 +9157,7 @@
                     <div class="txn-history-item">
                         <div class="txn-h-top">
                             <span class="txn-h-type" style="color: #10b981;">Order Proceeds (Credit)</span>
-                            <span class="txn-h-amt" style="color: #10b981;">+₹${mockSaleVal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                            <span class="txn-h-amt" style="color: #10b981;">+₹${tradeMetrics.netSaleValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                         </div>
                         <div class="txn-h-meta">
                             <span>${sDate.toLocaleDateString('en-IN')}</span>
@@ -9503,7 +9590,7 @@
                     const cp = getTradeDisplayPrice(trade);
                     if (!Number.isFinite(cp) || cp <= 0) return;
                     const metrics = getTradeUnrealizedMetrics(trade, cp);
-                    const sv = metrics.netSaleValue;
+                    const sv = metrics.grossSaleValue;
                     const pv = metrics.profit;
                     const pp = metrics.profitPct;
 
