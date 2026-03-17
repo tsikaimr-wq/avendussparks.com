@@ -3143,14 +3143,46 @@
                 if (!container) return;
                 container.innerHTML = '';
 
-                // No more Investing.com Fallback - use TradingView for everything
-
                 const raw = String(symbol || '').toUpperCase();
-                const isIndiaVix = raw === 'NSE:INDIAVIX' || raw === 'INDIAVIX' || raw.includes('INDIAVIX');
-                if (isIndiaVix && typeof window.loadYahooChart === 'function') {
-                    // TradingView often restricts INDIAVIX in embedded widgets.
-                    console.log('[MajorChart][discover] fallback to lightweight for INDIAVIX');
-                    window.loadYahooChart('^INDIAVIX', 'tradingview_widget', { seriesType: 'line' });
+                const majorChartIntervalMap = {
+                    D: { period: '1d', interval: '5m' },
+                    W: { period: '5d', interval: '30m' },
+                    M: { period: '1mo', interval: '1d' }
+                };
+                const indexYahooMap = {
+                    'NIFTY1!': '^NSEI',
+                    'NSE:NIFTY': '^NSEI',
+                    'NIFTY 50': '^NSEI',
+                    'NIFTYBANK': '^NSEBANK',
+                    'NSE:NIFTYBANK': '^NSEBANK',
+                    'NSE:BANKNIFTY': '^NSEBANK',
+                    'NIFTY BANK': '^NSEBANK',
+                    'BSE:SENSEX': '^BSESN',
+                    'SENSEX': '^BSESN',
+                    'NSE:INDIAVIX': '^INDIAVIX',
+                    'INDIAVIX': '^INDIAVIX',
+                    'VIX': '^INDIAVIX',
+                    'NSE:MIDCPNIFTY': '^NSEMDCP100',
+                    'NIFMDCP100': '^NSEMDCP100',
+                    'NSE:NIFMDCP100': '^NSEMDCP100',
+                    'NSE:SMLCAP100': '^NSESMCP100',
+                    'NIFSMCP100': '^NSESMCP100',
+                    'NSE:NIFSMCP100': '^NSESMCP100'
+                };
+                const intervalOptions = majorChartIntervalMap[currentInterval] || majorChartIntervalMap.D;
+                const yahooSymbol = indexYahooMap[raw] || symbol;
+                const isIndexLike = !!indexYahooMap[raw];
+                const exchangeHint = raw.startsWith('BSE:') ? 'BSE' : (raw.startsWith('KRX:') ? 'KRX' : 'NSE');
+
+                if (typeof window.loadYahooChart === 'function') {
+                    window.loadYahooChart(yahooSymbol, 'tradingview_widget', {
+                        originalSymbol: symbol,
+                        exchangeHint,
+                        seriesType: isIndexLike ? 'line' : 'candlestick',
+                        period: intervalOptions.period,
+                        interval: intervalOptions.interval,
+                        allowTradingViewFallback: false
+                    });
                     return;
                 }
 
