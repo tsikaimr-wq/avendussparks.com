@@ -3080,7 +3080,6 @@
 
 
 
-        <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
             let currentWidget = null;
             let currentActiveSymbol = 'NSE:NIFTY';
@@ -3186,59 +3185,10 @@
                     return;
                 }
 
-                let targetSymbol = symbol;
-
-                // Handle Index Symbol Mapping for TradingView
-                const indexMap = {
-                    'NIFTY1!': 'NSE:NIFTY',
-                    'NSE:NIFTY': 'NSE:NIFTY',
-                    'NIFTYBANK': 'NSE:BANKNIFTY',
-                    'NSE:NIFTYBANK': 'NSE:BANKNIFTY',
-                    'NSE:BANKNIFTY': 'NSE:BANKNIFTY',
-                    'BSE:SENSEX': 'BSE:SENSEX',
-                    'SENSEX': 'BSE:SENSEX',
-                    'NSE:INDIAVIX': 'NSE:INDIAVIX',
-                    'INDIAVIX': 'NSE:INDIAVIX',
-                    'NSE:MIDCPNIFTY': 'BSE:MID150',
-                    'NIFMDCP100': 'BSE:MID150',
-                    'NSE:NIFMDCP100': 'BSE:MID150',
-                    'NSE:SMLCAP100': 'BSE:SML250',
-                    'NIFSMCP100': 'BSE:SML250',
-                    'NSE:NIFSMCP100': 'BSE:SML250'
-                };
-
-                if (indexMap[symbol]) {
-                    targetSymbol = indexMap[symbol];
+                const container = document.getElementById('tradingview_widget');
+                if (container) {
+                    container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#94a3b8;font-family:Outfit,sans-serif;">Chart engine unavailable.</div>';
                 }
-
-                currentWidget = new TradingView.widget({
-                    "autosize": true,
-                    "symbol": targetSymbol,
-                    "interval": currentInterval,
-                    "timezone": "Etc/UTC",
-                    "theme": "dark",
-                    "style": "3",
-                    "locale": "en",
-                    "toolbar_bg": "#111111",
-                    "enable_publishing": false,
-                    "allow_symbol_change": false,
-                    "container_id": "tradingview_widget",
-                    "hide_side_toolbar": true,
-                    "withdateranges": false,
-                    "save_image": false,
-                    "details": false,
-                    "hotlist": false,
-                    "calendar": false,
-                    "overrides": {
-                        "paneProperties.background": "#111111",
-                        "paneProperties.vertGridProperties.color": "#1f1f1f",
-                        "paneProperties.horzGridProperties.color": "#1f1f1f",
-                        "scalesProperties.textColor": "#94a3b8",
-                        "mainSeriesProperties.areaStyle.linecolor": "#d4af37",
-                        "mainSeriesProperties.areaStyle.color1": "rgba(212, 175, 55, 0.2)",
-                        "mainSeriesProperties.areaStyle.color2": "rgba(212, 175, 55, 0.05)"
-                    }
-                });
             }
 
             function updateChartInterval(interval, btn) {
@@ -5873,52 +5823,18 @@
                 upperChart.includes('BANKNIFTY') ||
                 upperChart.includes('INDIAVIX') ||
                 upperChart.includes(' VIX ');
-            const allowTradingViewFallback = !['OTC', 'IPO'].includes(normalizedType);
-            const shouldUseTradingView = isIndexLike;
             console.log('[DetailChart][discover]', {
                 chartSymbol,
                 preferredMarketSymbol,
-                shouldUseTradingView,
-                mode: shouldUseTradingView ? 'tradingview' : 'lightweight',
+                shouldUseTradingView: false,
+                mode: 'lightweight',
             });
 
-            if (shouldUseTradingView && window.TradingView) {
-                const tvResolvedSymbol = resolveTvSymbol(chartSymbol, actualExchange);
-                new TradingView.widget({
-                    "autosize": true,
-                    "symbol": tvResolvedSymbol,
-                    "interval": "D",
-                    "timezone": "Etc/UTC",
-                    "theme": "dark",
-                    "style": "3",
-                    "locale": "en",
-                    "toolbar_bg": "#111111",
-                    "enable_publishing": false,
-                    "allow_symbol_change": false,
-                    "container_id": "tradingview_det",
-                    "hide_side_toolbar": true,
-                    "withdateranges": false,
-                    "save_image": false,
-                    "details": false,
-                    "hotlist": false,
-                    "calendar": false,
-                    "overrides": {
-                        "paneProperties.background": "#111111",
-                        "paneProperties.vertGridProperties.color": "#1f1f1f",
-                        "paneProperties.horzGridProperties.color": "#1f1f1f",
-                        "scalesProperties.textColor": "#94a3b8",
-                        "mainSeriesProperties.areaStyle.linecolor": "#d4af37",
-                        "mainSeriesProperties.areaStyle.color1": "rgba(212, 175, 55, 0.2)",
-                        "mainSeriesProperties.areaStyle.color2": "rgba(212, 175, 55, 0.05)"
-                    }
-                });
-            } else {
-                await loadYahooChart(toYahooSymbol(preferredMarketSymbol, detailExchange), 'tradingview_det', {
-                    originalSymbol: preferredMarketSymbol,
-                    exchangeHint: detailExchange,
-                    allowTradingViewFallback
-                });
-            }
+            await loadYahooChart(toYahooSymbol(preferredMarketSymbol, detailExchange), 'tradingview_det', {
+                originalSymbol: preferredMarketSymbol,
+                exchangeHint: detailExchange,
+                allowTradingViewFallback: false
+            });
 
             window.scrollTo(0, 0);
             renderDetailHoldings();
@@ -5964,75 +5880,7 @@
             currentYahooChart = null;
             container.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-family: Outfit, sans-serif;">Loading realtime chart...</div>';
 
-            const allowTradingViewFallback = options.allowTradingViewFallback !== false;
-            const resolveTradingViewSymbol = (rawSymbol, exchangeHint = '') => {
-                const input = String(rawSymbol || '').trim().toUpperCase();
-                if (!input) return 'NSE:RELIANCE';
-                if (input.startsWith('^')) return input;
-                if (input.includes(':')) {
-                    const parts = input.split(':');
-                    const prefix = (parts[0] || '').trim().toUpperCase();
-                    const code = (parts.slice(1).join(':') || '').trim().toUpperCase().replace(/\.(NS|BO|NSE|BSE|BOM|KS|KRX)$/i, '').replace(/\s+/g, '');
-                    if (!code) return 'NSE:RELIANCE';
-                    if (prefix === 'BSE') return `BSE:${code}`;
-                    if (prefix === 'KRX') return `KRX:${code}`;
-                    return `NSE:${code}`;
-                }
-                if (input.endsWith('.NS')) return `NSE:${input.slice(0, -3)}`;
-                if (input.endsWith('.BO')) return `BSE:${input.slice(0, -3)}`;
-                if (input.endsWith('.KS')) return `KRX:${input.slice(0, -3)}`;
-                if (input.includes('.')) {
-                    const [ticker, suffix] = input.split('.');
-                    if (suffix === 'NSE' || suffix === 'NS') return `NSE:${ticker}`;
-                    if (suffix === 'BSE' || suffix === 'BO' || suffix === 'BOM') return `BSE:${ticker}`;
-                    if (suffix === 'KRX' || suffix === 'KS') return `KRX:${ticker}`;
-                }
-                const hint = String(exchangeHint || '').toUpperCase();
-                if (hint.includes('BSE') || hint.includes('BOM')) return `BSE:${input}`;
-                if (hint.includes('KRX')) return `KRX:${input}`;
-                return `NSE:${input}`;
-            };
-            const renderTradingViewFallback = () => {
-                if (!allowTradingViewFallback || !window.TradingView) return false;
-                try {
-                    container.innerHTML = '';
-                    new TradingView.widget({
-                        "autosize": true,
-                        "symbol": resolveTradingViewSymbol(options.originalSymbol || symbol, options.exchangeHint || ''),
-                        "interval": "D",
-                        "timezone": "Etc/UTC",
-                        "theme": "dark",
-                        "style": "3",
-                        "locale": "en",
-                        "toolbar_bg": "#111111",
-                        "enable_publishing": false,
-                        "allow_symbol_change": false,
-                        "container_id": containerId,
-                        "hide_side_toolbar": true,
-                        "withdateranges": false,
-                        "save_image": false,
-                        "details": false,
-                        "hotlist": false,
-                        "calendar": false,
-                        "overrides": {
-                            "paneProperties.background": "#111111",
-                            "paneProperties.vertGridProperties.color": "#1f1f1f",
-                            "paneProperties.horzGridProperties.color": "#1f1f1f",
-                            "scalesProperties.textColor": "#94a3b8",
-                            "mainSeriesProperties.areaStyle.linecolor": "#d4af37",
-                            "mainSeriesProperties.areaStyle.color1": "rgba(212, 175, 55, 0.2)",
-                            "mainSeriesProperties.areaStyle.color2": "rgba(212, 175, 55, 0.05)"
-                        }
-                    });
-                    return true;
-                } catch (tvError) {
-                    console.error("TradingView fallback failed:", tvError);
-                    return false;
-                }
-            };
-
             if (!window.LightweightCharts) {
-                if (renderTradingViewFallback()) return;
                 container.innerHTML = '<div style="color:#ef4444; text-align:center;">Library Error: Lightweight Charts not loaded.</div>';
                 return;
             }
@@ -6315,7 +6163,6 @@
 
             } catch (error) {
                 console.error("loadYahooChart Error:", error);
-                if (renderTradingViewFallback()) return;
                 container.innerHTML = `<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-size:1.1rem; text-align:center; flex-direction:column; gap:10px; font-family: Outfit, sans-serif;"><i data-lucide="bar-chart-2" style="width:48px;height:48px;opacity:0.5;"></i>Chart data not available for ${symbol}</div>`;
                 if (window.lucide) lucide.createIcons();
             }

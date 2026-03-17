@@ -379,7 +379,6 @@
     </div>
 
     <!-- Scripts -->
-    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <script>
         lucide.createIcons();
 
@@ -982,99 +981,9 @@
                 return;
             }
 
-            let tvSymbol = symbol;
-
-            // Handle Index Symbol Mapping for TradingView
-            const indexMap = {
-                'NIFTY1!': 'NSE:NIFTY',
-                'NSE:NIFTY': 'NSE:NIFTY',
-                'NIFTYBANK': 'NSE:BANKNIFTY',
-                'NSE:NIFTYBANK': 'NSE:BANKNIFTY',
-                'NSE:BANKNIFTY': 'NSE:BANKNIFTY',
-                'BSE:SENSEX': 'BSE:SENSEX',
-                'SENSEX': 'BSE:SENSEX',
-                'NSE:INDIAVIX': 'NSE:INDIAVIX',
-                'INDIAVIX': 'NSE:INDIAVIX',
-                'NSE:MIDCPNIFTY': 'BSE:MID150',
-                'NIFMDCP100': 'BSE:MID150',
-                'NSE:NIFMDCP100': 'BSE:MID150',
-                'NSE:SMLCAP100': 'BSE:SML250',
-                'NIFSMCP100': 'BSE:SML250',
-                'NSE:NIFSMCP100': 'BSE:SML250'
-            };
-
-            if (container) container.innerHTML = ''; // Re-initialize widget correctly
-
-            if (indexMap[symbol]) {
-                tvSymbol = indexMap[symbol];
-            } else {
-                const resolveTvStockSymbol = (rawSymbol) => {
-                    if (!rawSymbol || typeof rawSymbol !== 'string') return 'NSE:RELIANCE';
-
-                    const input = rawSymbol.trim().toUpperCase();
-                    if (!input) return 'NSE:RELIANCE';
-
-                    if (input.includes(':')) {
-                        const parts = input.split(':');
-                        const ex = (parts[0] || '').trim().toUpperCase();
-                        const rhs = (parts.slice(1).join(':') || '').trim().toUpperCase();
-                        if (!rhs) return 'NSE:RELIANCE';
-                        const ticker = rhs
-                            .replace(/\.(NS|BO|NSE|BSE|KS|KRX)$/i, '')
-                            .replace(/\s+/g, '');
-                        if (ex === 'BSE') return `BSE:${ticker}`;
-                        if (ex === 'KRX') return `KRX:${ticker}`;
-                        return `NSE:${ticker}`;
-                    }
-                    if (input.endsWith('.NS')) return `NSE:${input.slice(0, -3)}`;
-                    if (input.endsWith('.BO')) return `BSE:${input.slice(0, -3)}`;
-                    if (input.endsWith('.KS')) return `KRX:${input.slice(0, -3)}`;
-
-                    if (input.includes('.')) {
-                        const parts = input.split('.');
-                        if (parts.length === 2) {
-                            const ticker = parts[0];
-                            const suffix = parts[1];
-                            if (suffix === 'NSE') return `NSE:${ticker}`;
-                            if (suffix === 'BSE') return `BSE:${ticker}`;
-                            if (suffix === 'KRX') return `KRX:${ticker}`;
-                        }
-                    }
-
-                    // Default to NSE for Indian stocks to avoid invalid BSE symbols like CDSL.
-                    return `NSE:${input}`;
-                };
-                tvSymbol = resolveTvStockSymbol(symbol);
+            if (container) {
+                container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#94a3b8;font-family:Outfit,sans-serif;">Chart engine unavailable.</div>';
             }
-
-            new TradingView.widget({
-                "autosize": true,
-                "symbol": tvSymbol,
-                "interval": "D",
-                "timezone": "Etc/UTC",
-                "theme": "dark",
-                "style": "3",
-                "locale": "en",
-                "toolbar_bg": "#111111",
-                "enable_publishing": false,
-                "allow_symbol_change": false,
-                "container_id": "tradingview_widget",
-                "hide_side_toolbar": true,
-                "withdateranges": false,
-                "save_image": false,
-                "details": false,
-                "hotlist": false,
-                "calendar": false,
-                "overrides": {
-                    "paneProperties.background": "#111111",
-                    "paneProperties.vertGridProperties.color": "#1f1f1f",
-                    "paneProperties.horzGridProperties.color": "#1f1f1f",
-                    "scalesProperties.textColor": "#94a3b8",
-                    "mainSeriesProperties.areaStyle.linecolor": "#d4af37",
-                    "mainSeriesProperties.areaStyle.color1": "rgba(212, 175, 55, 0.2)",
-                    "mainSeriesProperties.areaStyle.color2": "rgba(212, 175, 55, 0.05)"
-                }
-            });
         }
 
 

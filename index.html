@@ -16,7 +16,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://s3.tradingview.com/tv.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
     <script src="db.js?v=1.0.6"></script>
     <script src="db_patch.js?v=1.0.4"></script>
     <script src="market_data.js?v=1.0.8"></script>
@@ -1594,6 +1594,8 @@
         let currentWidget = null;
         let currentActiveSymbol = 'NSE:NIFTY';
         let currentInterval = 'D';
+        let homeChartTimer = null;
+        let homeChartResizeObserver = null;
 
         const indexData = {
             'BSE:SENSEX': {
@@ -1637,69 +1639,253 @@
         function loadWidget(symbol) {
             const container = document.getElementById('tradingview_widget');
             if (!container) return;
-            container.innerHTML = '';
 
-            // No more Investing.com Fallback - use TradingView for everything
+            if (homeChartTimer) clearInterval(homeChartTimer);
+            if (homeChartResizeObserver) {
+                try { homeChartResizeObserver.disconnect(); } catch (_) { }
+                homeChartResizeObserver = null;
+            }
+            if (currentWidget && typeof currentWidget.remove === 'function') {
+                try { currentWidget.remove(); } catch (_) { }
+            }
+            currentWidget = null;
 
-            if (typeof TradingView === 'undefined') return;
-
-            let targetSymbol = symbol;
-
-            // Handle Index Symbol Mapping for TradingView
-            const indexMap = {
-                'NIFTY1!': 'NSE:NIFTY',
-                'NSE:NIFTY': 'NSE:NIFTY',
-                'NIFTYBANK': 'NSE:BANKNIFTY',
-                'NSE:NIFTYBANK': 'NSE:BANKNIFTY',
-                'NSE:BANKNIFTY': 'NSE:BANKNIFTY',
-                'BSE:SENSEX': 'BSE:SENSEX',
-                'SENSEX': 'BSE:SENSEX',
-                'NSE:INDIAVIX': 'NSE:INDIAVIX',
-                'INDIAVIX': 'NSE:INDIAVIX',
-                'NSE:MIDCPNIFTY': 'BSE:MID150',
-                'NIFMDCP100': 'BSE:MID150',
-                'NSE:NIFMDCP100': 'BSE:MID150',
-                'NSE:SMLCAP100': 'BSE:SML250',
-                'NIFSMCP100': 'BSE:SML250',
-                'NSE:NIFSMCP100': 'BSE:SML250'
-            };
-
-            if (indexMap[symbol]) {
-                targetSymbol = indexMap[symbol];
-            } else if (symbol.toUpperCase().endsWith('.NS') || symbol.toUpperCase().endsWith('.BO')) {
-                // TradingView BSE Fix for Indian Stocks (NSE -> BSE feed)
-                const ticker = symbol.split('.')[0];
-                targetSymbol = `BSE:${ticker}`;
+            if (!window.LightweightCharts) {
+                container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#94a3b8;font-family:Outfit,sans-serif;">Chart library unavailable.</div>';
+                return;
             }
 
-            currentWidget = new TradingView.widget({
-                "autosize": true,
-                "symbol": targetSymbol,
-                "interval": "D",
-                "timezone": "Etc/UTC",
-                "theme": "dark",
-                "style": "3",
-                "locale": "en",
-                "toolbar_bg": "#111111",
-                "enable_publishing": false,
-                "allow_symbol_change": false,
-                "container_id": "tradingview_widget",
-                "hide_side_toolbar": true,
-                "withdateranges": false,
-                "save_image": false,
-                "details": false,
-                "hotlist": false,
-                "calendar": false,
-                "overrides": {
-                    "paneProperties.background": "#111111",
-                    "paneProperties.vertGridProperties.color": "#1f1f1f",
-                    "paneProperties.horzGridProperties.color": "#1f1f1f",
-                    "scalesProperties.textColor": "#94a3b8",
-                    "mainSeriesProperties.areaStyle.linecolor": "#d4af37",
-                    "mainSeriesProperties.areaStyle.color1": "rgba(212, 175, 55, 0.2)",
-                    "mainSeriesProperties.areaStyle.color2": "rgba(212, 175, 55, 0.05)"
+            const raw = String(symbol || '').toUpperCase();
+            const indexYahooMap = {
+                'NIFTY1!': '^NSEI',
+                'NSE:NIFTY': '^NSEI',
+                'NIFTY 50': '^NSEI',
+                'NIFTYBANK': '^NSEBANK',
+                'NSE:NIFTYBANK': '^NSEBANK',
+                'NSE:BANKNIFTY': '^NSEBANK',
+                'NIFTY BANK': '^NSEBANK',
+                'BSE:SENSEX': '^BSESN',
+                'SENSEX': '^BSESN',
+                'NSE:INDIAVIX': '^INDIAVIX',
+                'INDIAVIX': '^INDIAVIX',
+                'VIX': '^INDIAVIX',
+                'NSE:MIDCPNIFTY': '^NSEMDCP100',
+                'NIFMDCP100': '^NSEMDCP100',
+                'NSE:NIFMDCP100': '^NSEMDCP100',
+                'NSE:SMLCAP100': '^NSESMCP100',
+                'NIFSMCP100': '^NSESMCP100',
+                'NSE:NIFSMCP100': '^NSESMCP100'
+            };
+            const intervalMap = {
+                D: { period: '1d', interval: '5m', step: 300, points: 96 },
+                '1D': { period: '1d', interval: '5m', step: 300, points: 96 },
+                W: { period: '5d', interval: '30m', step: 1800, points: 120 },
+                '1W': { period: '5d', interval: '30m', step: 1800, points: 120 },
+                M: { period: '1mo', interval: '1d', step: 86400, points: 120 },
+                '1M': { period: '1mo', interval: '1d', step: 86400, points: 120 }
+            };
+            const { period, interval, step, points } = intervalMap[currentInterval] || intervalMap.D;
+            const marketSymbol = indexYahooMap[raw] || raw || '^NSEI';
+
+            const apiBases = () => {
+                const supabaseBase = (window.supabaseClient?.supabaseUrl || window.DB?.SUPABASE_URL || window.SUPABASE_URL || '').trim();
+                const functionBase = supabaseBase ? `${supabaseBase.replace(/\/$/, '')}/functions/v1` : '';
+                const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
+                const localBase = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
+                    ? window.INDIA_MARKET_API_BASE.trim()
+                    : '';
+                const preferExternal = window.PREFER_INDIA_MARKET_API_BASE !== false;
+                const useEdgeFallback = window.ENABLE_SUPABASE_EDGE_FALLBACK === true;
+                const ordered = [];
+                if (localBase && preferExternal) ordered.push(localBase);
+                if (functionBase && (!localBase || useEdgeFallback)) ordered.push(functionBase);
+                if (localBase && !preferExternal) ordered.push(localBase);
+                return [...new Set(ordered.filter(Boolean))];
+            };
+
+            const edgeHeaders = () => {
+                const key = window.DB?.SUPABASE_KEY || window.SUPABASE_ANON_KEY || '';
+                const headers = { 'Content-Type': 'application/json' };
+                if (key) {
+                    headers.apikey = key;
+                    headers.Authorization = `Bearer ${key}`;
                 }
-            });
+                return headers;
+            };
+
+            const fetchQuote = async () => {
+                const candidates = [...new Set([marketSymbol, raw].filter(Boolean))];
+                for (const candidate of candidates) {
+                    for (const base of apiBases()) {
+                        try {
+                            const baseUrl = String(base || '').replace(/\/$/, '');
+                            const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                            const response = isFnBase
+                                ? await fetch(`${baseUrl}/get-market-price`, {
+                                    method: 'POST',
+                                    headers: edgeHeaders(),
+                                    body: JSON.stringify({ symbol: candidate }),
+                                    cache: 'no-store'
+                                })
+                                : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(candidate)}`, { cache: 'no-store' });
+                            if (!response.ok) continue;
+                            const payload = await response.json();
+                            const price = Number(payload?.price);
+                            if (payload?.success && Number.isFinite(price)) {
+                                return price;
+                            }
+                        } catch (_) { }
+                    }
+                    if (window.DB && typeof window.DB.getMarketPrice === 'function') {
+                        try {
+                            const payload = await window.DB.getMarketPrice(candidate);
+                            const price = Number(payload?.price);
+                            if (payload && payload.status !== 'error' && Number.isFinite(price)) {
+                                return price;
+                            }
+                        } catch (_) { }
+                    }
+                }
+                return null;
+            };
+
+            const fetchKline = async () => {
+                const candidates = [...new Set([marketSymbol, raw].filter(Boolean))];
+                for (const candidate of candidates) {
+                    for (const base of apiBases()) {
+                        try {
+                            const baseUrl = String(base || '').replace(/\/$/, '');
+                            const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                            const url = isFnBase
+                                ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(candidate)}&period=${encodeURIComponent(period)}&interval=${encodeURIComponent(interval)}`
+                                : `${baseUrl}/kline?symbol=${encodeURIComponent(candidate)}&period=${encodeURIComponent(period)}&interval=${encodeURIComponent(interval)}`;
+                            const response = await fetch(url, {
+                                cache: 'no-store',
+                                headers: isFnBase ? edgeHeaders() : undefined
+                            });
+                            if (!response.ok) continue;
+                            const payload = await response.json();
+                            if (payload?.success && Array.isArray(payload.data) && payload.data.length > 0) {
+                                return payload.data
+                                    .map(row => {
+                                        const time = Math.floor(new Date(row?.t ?? row?.time).getTime() / 1000);
+                                        const close = Number(row?.c ?? row?.close);
+                                        return Number.isFinite(time) && Number.isFinite(close)
+                                            ? { time, value: close }
+                                            : null;
+                                    })
+                                    .filter(Boolean);
+                            }
+                        } catch (_) { }
+                    }
+                }
+                return [];
+            };
+
+            const buildSyntheticSeries = (seedPrice) => {
+                const price = Number.isFinite(seedPrice) ? seedPrice : Number(indexData[symbol]?.price || indexData[raw]?.price || 0);
+                if (!Number.isFinite(price) || price <= 0) return [];
+                const now = Math.floor(Date.now() / 1000);
+                const start = now - ((points - 1) * step);
+                let last = price;
+                const result = [];
+                for (let i = 0; i < points; i++) {
+                    const time = start + (i * step);
+                    const drift = (Math.random() - 0.5) * 0.003;
+                    last = Math.max(0.01, last * (1 + drift));
+                    result.push({ time, value: last });
+                }
+                return result;
+            };
+
+            const applyLivePrice = (price) => {
+                if (!Number.isFinite(price)) return;
+                const item = indexData[symbol] || indexData[raw];
+                if (!item) return;
+                item.price = price;
+                const diff = item.price - item.basePrice;
+                const pct = item.basePrice ? ((diff / item.basePrice) * 100) : 0;
+                const isUp = diff >= 0;
+                if (currentActiveSymbol === symbol || currentActiveSymbol === raw) {
+                    const indexPriceEl = document.getElementById('indexPrice');
+                    if (indexPriceEl) indexPriceEl.innerText = item.price.toLocaleString('en-IN');
+                    const heroChangeEl = document.getElementById('heroChange');
+                    if (heroChangeEl) {
+                        heroChangeEl.innerText = `${isUp ? '+' : ''}${diff.toFixed(2)} (${isUp ? '+' : ''}${pct.toFixed(2)}%)`;
+                        heroChangeEl.className = `index-chg ${isUp ? 'green' : 'red'}`;
+                    }
+                }
+            };
+
+            container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#94a3b8;font-family:Outfit,sans-serif;">Loading realtime chart...</div>';
+
+            Promise.all([fetchKline(), fetchQuote()])
+                .then(([seriesData, livePrice]) => {
+                    const chartData = seriesData.length ? seriesData : buildSyntheticSeries(livePrice);
+                    if (!chartData.length) {
+                        container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#94a3b8;font-family:Outfit,sans-serif;">Chart data not available.</div>';
+                        return;
+                    }
+
+                    container.innerHTML = '';
+                    const chart = LightweightCharts.createChart(container, {
+                        layout: {
+                            background: { color: '#111111' },
+                            textColor: '#94a3b8',
+                            fontFamily: 'Outfit, sans-serif',
+                        },
+                        grid: {
+                            vertLines: { color: '#1f1f1f' },
+                            horzLines: { color: '#1f1f1f' },
+                        },
+                        rightPriceScale: {
+                            borderColor: '#1f1f1f',
+                            visible: true,
+                        },
+                        timeScale: {
+                            borderColor: '#1f1f1f',
+                            timeVisible: true,
+                            secondsVisible: false,
+                        },
+                    });
+                    const series = chart.addAreaSeries({
+                        lineColor: '#d4af37',
+                        topColor: 'rgba(212, 175, 55, 0.22)',
+                        bottomColor: 'rgba(212, 175, 55, 0.02)',
+                        lineWidth: 2
+                    });
+                    series.setData(chartData);
+                    chart.timeScale().fitContent();
+                    currentWidget = chart;
+
+                    if (Number.isFinite(livePrice)) {
+                        applyLivePrice(livePrice);
+                        series.update({ time: Math.floor(Date.now() / 1000), value: livePrice });
+                    }
+
+                    homeChartTimer = setInterval(async () => {
+                        const latestPrice = await fetchQuote();
+                        if (!Number.isFinite(latestPrice)) return;
+                        applyLivePrice(latestPrice);
+                        series.update({ time: Math.floor(Date.now() / 1000), value: latestPrice });
+                    }, 10000);
+
+                    homeChartResizeObserver = new ResizeObserver(entries => {
+                        if (!entries.length || !entries[0].contentRect) return;
+                        const { width, height } = entries[0].contentRect;
+                        try {
+                            chart.applyOptions({ width, height });
+                        } catch (_) {
+                            try { homeChartResizeObserver.disconnect(); } catch (_) { }
+                            homeChartResizeObserver = null;
+                        }
+                    });
+                    homeChartResizeObserver.observe(container);
+                })
+                .catch((error) => {
+                    console.error('loadWidget Error:', error);
+                    container.innerHTML = '<div style="display:flex;height:100%;align-items:center;justify-content:center;color:#94a3b8;font-family:Outfit,sans-serif;">Chart data not available.</div>';
+                });
         }
 
         function updateChart(symbol, title) {
