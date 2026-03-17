@@ -13,7 +13,7 @@
     <script src="js/supabase.js?v=1.0.5"></script>
     <script src="js/db.js?v=1.0.12"></script>
     <script src="js/user.js?v=1.0.4"></script>
-    <script src="js/market_data.js?v=1.0.9"></script>
+    <script src="js/market_data.js?v=1.0.10"></script>
     <script src="js/trading.js?v=1.0.6"></script>
     <script src="script.js?v=20260313a"></script>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
@@ -5735,7 +5735,7 @@
             const preferredMarketSymbol = buildYahooSymbolCandidates(chartSymbol, actualExchange || exchange)[0] || chartSymbol;
             const detailExchange = inferExchangeFromStockParam(preferredMarketSymbol) || actualExchange || exchange;
 
-            const initialPriceValue = Number(price);
+            const initialPriceValue = toFiniteNumber(price);
             const hasInitialPrice = Number.isFinite(initialPriceValue) && initialPriceValue > 0;
             const initialPriceLabel = hasInitialPrice
                 ? `₹${initialPriceValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -5899,14 +5899,14 @@
                     "locale": "en",
                     "toolbar_bg": "#111111",
                     "enable_publishing": false,
-                    "allow_symbol_change": true,
+                    "allow_symbol_change": false,
                     "container_id": "tradingview_det",
-                    "hide_side_toolbar": false,
-                    "withdateranges": true,
-                    "save_image": true,
-                    "details": true,
-                    "hotlist": true,
-                    "calendar": true,
+                    "hide_side_toolbar": true,
+                    "withdateranges": false,
+                    "save_image": false,
+                    "details": false,
+                    "hotlist": false,
+                    "calendar": false,
                     "overrides": {
                         "paneProperties.background": "#111111",
                         "paneProperties.vertGridProperties.color": "#1f1f1f",
@@ -6011,14 +6011,14 @@
                         "locale": "en",
                         "toolbar_bg": "#111111",
                         "enable_publishing": false,
-                        "allow_symbol_change": true,
+                        "allow_symbol_change": false,
                         "container_id": containerId,
-                        "hide_side_toolbar": false,
-                        "withdateranges": true,
-                        "save_image": true,
-                        "details": true,
-                        "hotlist": true,
-                        "calendar": true,
+                        "hide_side_toolbar": true,
+                        "withdateranges": false,
+                        "save_image": false,
+                        "details": false,
+                        "hotlist": false,
+                        "calendar": false,
                         "overrides": {
                             "paneProperties.background": "#111111",
                             "paneProperties.vertGridProperties.color": "#1f1f1f",
@@ -6599,14 +6599,49 @@
             };
         }
 
-        function openStockDetailFromRoute(push = false) {
+        async function waitForMarketEngineReady(timeoutMs = 8000) {
+            const readyPromise = window.MARKET_ENGINE_READY;
+            if (readyPromise && typeof readyPromise.then === 'function') {
+                try {
+                    await Promise.race([
+                        readyPromise.catch(() => { }),
+                        new Promise(resolve => setTimeout(resolve, timeoutMs))
+                    ]);
+                    return;
+                } catch (_) { }
+            }
+
+            const startedAt = Date.now();
+            await new Promise(resolve => {
+                const check = () => {
+                    if (window.MarketEngine && window.MarketEngine.isReady) {
+                        resolve();
+                        return;
+                    }
+                    if ((Date.now() - startedAt) >= timeoutMs) {
+                        resolve();
+                        return;
+                    }
+                    setTimeout(check, 100);
+                };
+                check();
+            });
+        }
+
+        function openStockDetailFromRoute(push = false, options = {}) {
+            const routeOptions = (options && typeof options === 'object') ? options : {};
+            const forceReload = routeOptions.force === true;
+            const requireReady = routeOptions.requireReady === true;
             const params = new URLSearchParams(window.location.search);
             const stock = params.get('stock') || params.get('symbol');
             if (!stock) return false;
+            if (requireReady && (!window.DB_READY || !window.MarketEngine || !window.MarketEngine.isReady)) {
+                return false;
+            }
             const routeKey = normalizeRouteStockSymbol(stock);
             const detailView = document.getElementById('stockDetailView');
             const isDetailVisible = detailView && getComputedStyle(detailView).display !== 'none';
-            if (!push && routeKey && routeKey === activeRouteStockKey && isDetailVisible) {
+            if (!push && !forceReload && routeKey && routeKey === activeRouteStockKey && isDetailVisible) {
                 return true;
             }
 
@@ -6643,7 +6678,7 @@
                 showMarketView(false);
             }
 
-            openStockDetailFromRoute(false);
+            openStockDetailFromRoute(false, { requireReady: true });
         });
 
         window.addEventListener("popstate", function () {
@@ -7863,6 +7898,7 @@
             };
 
             await waitForDB();
+            await waitForMarketEngineReady();
             console.log("DB Ready, initializing UI...");
 
             (async () => {
@@ -7946,7 +7982,7 @@
             } else {
                 showMarketView();
             }
-            openStockDetailFromRoute(false);
+            openStockDetailFromRoute(false, { force: true });
         });
 
         window.transactionData = {
@@ -9060,7 +9096,7 @@
             else if (view === 'portfolio') showPortfolioView();
             else if (view === 'me') showMeView();
             else showMarketView();
-            openStockDetailFromRoute(false);
+            openStockDetailFromRoute(false, { requireReady: true });
         });
 
         // Customer Service Logic handled by script.js
@@ -12220,14 +12256,14 @@
                     "locale": "en",
                     "toolbar_bg": "#111111",
                     "enable_publishing": false,
-                    "allow_symbol_change": true,
+                    "allow_symbol_change": false,
                     "container_id": "tradingview_widget",
-                    "hide_side_toolbar": false,
-                    "withdateranges": true,
-                    "save_image": true,
-                    "details": true,
-                    "hotlist": true,
-                    "calendar": true,
+                    "hide_side_toolbar": true,
+                    "withdateranges": false,
+                    "save_image": false,
+                    "details": false,
+                    "hotlist": false,
+                    "calendar": false,
                     "overrides": {
                         "paneProperties.background": "#111111",
                         "paneProperties.vertGridProperties.color": "#1f1f1f",

@@ -18,7 +18,7 @@
     <script src="js/supabase.js?v=1.0.5"></script>
     <script src="js/db.js?v=1.0.10"></script>
     <script src="js/user.js?v=1.0.4"></script>
-    <script src="js/market_data.js?v=1.0.8"></script>
+    <script src="js/market_data.js?v=1.0.10"></script>
     <script src="js/trading.js?v=1.0.5"></script>
     <script src="script.js?v=1.0.4"></script>
     <script src="js/credit_notifier.js?v=1.0.4"></script>
@@ -1027,14 +1027,14 @@
                 "locale": "en",
                 "toolbar_bg": "#111111",
                 "enable_publishing": false,
-                "allow_symbol_change": true,
+                "allow_symbol_change": false,
                 "container_id": "tradingview_widget",
-                "hide_side_toolbar": false,
-                "withdateranges": true,
-                "save_image": true,
-                "details": true,
-                "hotlist": true,
-                "calendar": true,
+                "hide_side_toolbar": true,
+                "withdateranges": false,
+                "save_image": false,
+                "details": false,
+                "hotlist": false,
+                "calendar": false,
                 "overrides": {
                     "paneProperties.background": "#111111",
                     "paneProperties.vertGridProperties.color": "#1f1f1f",
@@ -1534,7 +1534,12 @@
                     price = await window.DB.getCachedMarketPrice(marketSymbol, productName);
                 }
 
-                if (!Number.isFinite(Number(price)) || Number(price) <= 0) {
+                const parsedPrice = (value) => {
+                    const numeric = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
+                    return Number.isFinite(numeric) ? numeric : NaN;
+                };
+
+                if (!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) {
                     const base = String(marketSymbol || symbol || '').toUpperCase();
                     const compact = base
                         .replace(/^NSE:|^BSE:/, '')
@@ -1554,9 +1559,9 @@
                     }
                 }
 
-                if (!Number.isFinite(Number(price)) || Number(price) <= 0) return;
+                if (!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) return;
 
-                currentMarketPrice = parseFloat(price);
+                currentMarketPrice = parsedPrice(price);
                 if (!(currentProductType === 'OTC' || currentProductType === 'IPO')) {
                     currentPrice = currentMarketPrice;
                 } else if (!Number.isFinite(currentBuyPrice) || currentBuyPrice <= 0) {
@@ -1564,7 +1569,7 @@
                     currentPrice = currentBuyPrice;
                 }
 
-                const formatted = `₹${Number(price).toLocaleString('en-IN', {
+                const formatted = `₹${parsedPrice(price).toLocaleString('en-IN', {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 })}`;

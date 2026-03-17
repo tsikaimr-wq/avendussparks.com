@@ -17,7 +17,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="db.js?v=20260317b"></script>
-    <script src="market_data.js?v=20260317c"></script>
+    <script src="market_data.js?v=20260317d"></script>
     <style>
         /* Using global styles from styles.css */
 
@@ -3189,14 +3189,14 @@
                     "locale": "en",
                     "toolbar_bg": "#111111",
                     "enable_publishing": false,
-                    "allow_symbol_change": true,
+                    "allow_symbol_change": false,
                     "container_id": "tradingview_widget",
-                    "hide_side_toolbar": false,
-                    "withdateranges": true,
-                    "save_image": true,
-                    "details": true,
-                    "hotlist": true,
-                    "calendar": true,
+                    "hide_side_toolbar": true,
+                    "withdateranges": false,
+                    "save_image": false,
+                    "details": false,
+                    "hotlist": false,
+                    "calendar": false,
                     "overrides": {
                         "paneProperties.background": "#111111",
                         "paneProperties.vertGridProperties.color": "#1f1f1f",
@@ -5700,7 +5700,7 @@
             const preferredMarketSymbol = buildYahooSymbolCandidates(chartSymbol, actualExchange || exchange)[0] || chartSymbol;
             const detailExchange = inferExchangeFromStockParam(preferredMarketSymbol) || actualExchange || exchange;
 
-            const initialPriceValue = Number(price);
+            const initialPriceValue = toFiniteNumber(price);
             const hasInitialPrice = Number.isFinite(initialPriceValue) && initialPriceValue > 0;
             const initialPriceLabel = hasInitialPrice
                 ? `₹${initialPriceValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -5862,14 +5862,14 @@
                     "locale": "en",
                     "toolbar_bg": "#111111",
                     "enable_publishing": false,
-                    "allow_symbol_change": true,
+                    "allow_symbol_change": false,
                     "container_id": "tradingview_det",
-                    "hide_side_toolbar": false,
-                    "withdateranges": true,
-                    "save_image": true,
-                    "details": true,
-                    "hotlist": true,
-                    "calendar": true,
+                    "hide_side_toolbar": true,
+                    "withdateranges": false,
+                    "save_image": false,
+                    "details": false,
+                    "hotlist": false,
+                    "calendar": false,
                     "overrides": {
                         "paneProperties.background": "#111111",
                         "paneProperties.vertGridProperties.color": "#1f1f1f",
@@ -5974,14 +5974,14 @@
                         "locale": "en",
                         "toolbar_bg": "#111111",
                         "enable_publishing": false,
-                        "allow_symbol_change": true,
+                        "allow_symbol_change": false,
                         "container_id": containerId,
-                        "hide_side_toolbar": false,
-                        "withdateranges": true,
-                        "save_image": true,
-                        "details": true,
-                        "hotlist": true,
-                        "calendar": true,
+                        "hide_side_toolbar": true,
+                        "withdateranges": false,
+                        "save_image": false,
+                        "details": false,
+                        "hotlist": false,
+                        "calendar": false,
                         "overrides": {
                             "paneProperties.background": "#111111",
                             "paneProperties.vertGridProperties.color": "#1f1f1f",
@@ -6478,14 +6478,49 @@
             };
         }
 
-        function openStockDetailFromRoute(push = false) {
+        async function waitForMarketEngineReady(timeoutMs = 8000) {
+            const readyPromise = window.MARKET_ENGINE_READY;
+            if (readyPromise && typeof readyPromise.then === 'function') {
+                try {
+                    await Promise.race([
+                        readyPromise.catch(() => { }),
+                        new Promise(resolve => setTimeout(resolve, timeoutMs))
+                    ]);
+                    return;
+                } catch (_) { }
+            }
+
+            const startedAt = Date.now();
+            await new Promise(resolve => {
+                const check = () => {
+                    if (window.MarketEngine && window.MarketEngine.isReady) {
+                        resolve();
+                        return;
+                    }
+                    if ((Date.now() - startedAt) >= timeoutMs) {
+                        resolve();
+                        return;
+                    }
+                    setTimeout(check, 100);
+                };
+                check();
+            });
+        }
+
+        function openStockDetailFromRoute(push = false, options = {}) {
+            const routeOptions = (options && typeof options === 'object') ? options : {};
+            const forceReload = routeOptions.force === true;
+            const requireReady = routeOptions.requireReady === true;
             const params = new URLSearchParams(window.location.search);
             const stock = params.get('stock') || params.get('symbol');
             if (!stock) return false;
+            if (requireReady && (!window.DB_READY || !window.MarketEngine || !window.MarketEngine.isReady)) {
+                return false;
+            }
             const routeKey = normalizeRouteStockSymbol(stock);
             const detailView = document.getElementById('stockDetailView');
             const isDetailVisible = detailView && getComputedStyle(detailView).display !== 'none';
-            if (!push && routeKey && routeKey === activeRouteStockKey && isDetailVisible) {
+            if (!push && !forceReload && routeKey && routeKey === activeRouteStockKey && isDetailVisible) {
                 return true;
             }
 
@@ -7633,6 +7668,19 @@
 
         // Initialize Discover Trades and View Routing
         document.addEventListener('DOMContentLoaded', async () => {
+            const waitForDB = () => {
+                return new Promise(resolve => {
+                    const check = () => {
+                        if (window.DB && window.DB_READY) resolve();
+                        else setTimeout(check, 100);
+                    };
+                    check();
+                });
+            };
+
+            await waitForDB();
+            await waitForMarketEngineReady();
+
             // Force refresh user data on load
             if (DB.getCurrentUser()) {
                 await DB.refreshCurrentUser(); // Use refreshCurrentUser instead of refreshUserData for consistency if needed, but DB.refreshUserData was used before. Let's stick to refreshUserData if it exists or refreshCurrentUser. 
@@ -7682,7 +7730,7 @@
             } else {
                 showMarketView();
             }
-            openStockDetailFromRoute(false);
+            openStockDetailFromRoute(false, { requireReady: true });
         });
 
         window.transactionData = {
@@ -8731,7 +8779,7 @@
             else if (view === 'portfolio') showPortfolioView();
             else if (view === 'me') showMeView();
             else showMarketView();
-            openStockDetailFromRoute(false);
+            openStockDetailFromRoute(false, { requireReady: true });
         });
 
         // Customer Service Logic handled by script.js
@@ -10439,7 +10487,7 @@
     <script src="js/trading.js?v=1.0.6"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            if (typeof openStockDetailFromRoute === 'function' && openStockDetailFromRoute(false)) {
+            if (typeof openStockDetailFromRoute === 'function' && openStockDetailFromRoute(false, { requireReady: true })) {
                 return;
             }
             if (typeof showDiscoverView === 'function') {

@@ -113,8 +113,17 @@
                 'INDIA VIX': '^INDIAVIX'
             };
             this.startSimulation();
-            this.syncFromDB();
-            this.syncMarketCache(); // Initial cache sync
+            this.isReady = false;
+            this.ready = this.syncFromDB()
+                .then(() => this.syncMarketCache())
+                .catch((e) => {
+                    console.error("MarketEngine initialization failed:", e);
+                })
+                .finally(() => {
+                    this.isReady = true;
+                    this.notifyListeners();
+                });
+            window.MARKET_ENGINE_READY = this.ready;
 
             // Auto-refresh market cache every 10 seconds
             setInterval(() => this.syncMarketCache(), 10 * 1000);
