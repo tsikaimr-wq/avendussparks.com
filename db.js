@@ -21,8 +21,15 @@ window.DB = {
     MARKET_PRICE_CACHE_TTL_MS: 10000,
     MARKET_PRICE_FAIL_COOLDOWN_MS: 15000,
     MARKET_SYMBOL_ALIAS: {
-        KCEIL: 'KAYR',
-        ZOMATO: 'ETERNAL',
+        KCEIL: 'KCEIL-SM.NS',
+        ZOMATO: 'ETERNAL.NS',
+    },
+    MARKET_SEARCH_ALIAS_RESULTS: {
+        KCEIL: [{ symbol: 'KCEIL-SM.NS', name: 'KAY CEE ENERGY & INFRA L', exch: 'NSE', type: 'stock', score: 250000 }],
+        KCEILNS: [{ symbol: 'KCEIL-SM.NS', name: 'KAY CEE ENERGY & INFRA L', exch: 'NSE', type: 'stock', score: 250000 }],
+        ZOMATO: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
+        ZOMATONS: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
+        ZOMATOLIMITED: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
     },
 
     getClient() {
@@ -196,6 +203,166 @@ window.DB = {
         return this.getMarketApiSymbolCandidates(symbol);
     },
 
+    normalizeSearchLoose(value) {
+        return String(value || '')
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, '');
+    },
+
+    buildMarketSearchQueries(query) {
+        const raw = String(query || '').trim();
+        if (!raw) return [];
+
+        const queries = [];
+        const push = (value) => {
+            const normalized = String(value || '').trim();
+            if (normalized && !queries.includes(normalized)) {
+                queries.push(normalized);
+            }
+        };
+
+        push(raw);
+
+        const upper = raw.toUpperCase();
+        if (upper.startsWith('NSE:') || upper.startsWith('BSE:')) {
+            push(upper.split(':').pop());
+        }
+        if (upper.endsWith('.NS') || upper.endsWith('.BO')) {
+            push(upper.slice(0, -3));
+        }
+
+        const alias = this.MARKET_SYMBOL_ALIAS[this.normalizeMarketSymbolKey(raw)];
+        if (alias) {
+            push(alias);
+            push(alias.replace(/\.(NS|BO)$/i, ''));
+        }
+
+        return queries;
+    },
+
+    parseEmbeddedJson(text) {
+        const payloadText = String(text || '').trim();
+        if (!payloadText) return null;
+
+        const candidates = [payloadText];
+        const firstBrace = payloadText.indexOf('{');
+        const lastBrace = payloadText.lastIndexOf('}');
+        if (firstBrace >= 0 && lastBrace > firstBrace) {
+            candidates.push(payloadText.slice(firstBrace, lastBrace + 1));
+        }
+
+        const markdownMarker = 'Markdown Content:';
+        const markerIndex = payloadText.indexOf(markdownMarker);
+        if (markerIndex >= 0) {
+            const markdownBody = payloadText.slice(markerIndex + markdownMarker.length).trim();
+            candidates.push(markdownBody);
+            const mdFirstBrace = markdownBody.indexOf('{');
+            const mdLastBrace = markdownBody.lastIndexOf('}');
+            if (mdFirstBrace >= 0 && mdLastBrace > mdFirstBrace) {
+                candidates.push(markdownBody.slice(mdFirstBrace, mdLastBrace + 1));
+            }
+        }
+
+        for (const candidate of candidates) {
+            try {
+                return JSON.parse(candidate);
+            } catch (_) { }
+        }
+        return null;
+    },
+
+    normalizeYahooSearchExchange(quote) {
+        const raw = String(quote?.exchDisp || quote?.exchange || '').trim();
+        const upper = raw.toUpperCase();
+        if (upper === 'NSI' || upper.includes('NSE')) return 'NSE';
+        if (upper === 'BSE' || upper === 'BOM' || upper.includes('BOMBAY')) return 'BSE';
+        return raw;
+    },
+
+    normalizeYahooSearchRows(payload, limit = 20) {
+        const quotes = Array.isArray(payload?.quotes) ? payload.quotes : [];
+        const rows = [];
+        const seen = new Set();
+
+        for (const quote of quotes) {
+            const symbol = String(quote?.symbol || '').trim().toUpperCase();
+            if (!symbol) continue;
+
+            const quoteType = String(quote?.quoteType || quote?.typeDisp || '').trim().toUpperCase();
+            if (quoteType && !['EQUITY', 'ETF', 'INDEX', 'MUTUALFUND'].includes(quoteType)) continue;
+
+            const key = `${symbol}|${quoteType || 'UNKNOWN'}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+
+            rows.push({
+                symbol,
+                name: quote?.longname || quote?.shortname || symbol,
+                exch: this.normalizeYahooSearchExchange(quote),
+                type: quoteType === 'INDEX' ? 'index' : (quoteType === 'MUTUALFUND' ? 'fund' : 'stock'),
+                score: Number(quote?.score) || 0,
+            });
+
+            if (rows.length >= limit) break;
+        }
+
+        return rows;
+    },
+
+    async searchStocksViaJina(query, broad = false) {
+        const rawQuery = String(query || '').trim();
+        if (!rawQuery) return [];
+
+        const limit = broad ? 40 : 20;
+        const rows = [];
+        const seen = new Set();
+        const append = (items) => {
+            for (const item of (items || [])) {
+                const symbol = String(item?.symbol || '').trim().toUpperCase();
+                if (!symbol || seen.has(symbol)) continue;
+                seen.add(symbol);
+                rows.push(item);
+                if (rows.length >= limit) return true;
+            }
+            return false;
+        };
+
+        const aliasKey = this.normalizeSearchLoose(rawQuery);
+        if (append(this.MARKET_SEARCH_ALIAS_RESULTS[aliasKey] || [])) {
+            return rows;
+        }
+
+        const queries = this.buildMarketSearchQueries(rawQuery);
+        for (const currentQuery of queries) {
+            try {
+                const url = new URL('https://r.jina.ai/http://query1.finance.yahoo.com/v1/finance/search');
+                url.searchParams.set('q', currentQuery);
+                url.searchParams.set('quotesCount', String(Math.max(limit * 2, 10)));
+                url.searchParams.set('newsCount', '0');
+                url.searchParams.set('listsCount', '0');
+                url.searchParams.set('enableFuzzyQuery', 'false');
+
+                const response = await fetch(url.toString(), {
+                    cache: 'no-store',
+                    headers: {
+                        Accept: 'text/plain, text/markdown, */*'
+                    }
+                });
+                if (!response.ok) continue;
+
+                const payload = this.parseEmbeddedJson(await response.text());
+                if (append(this.normalizeYahooSearchRows(payload, limit))) {
+                    return rows;
+                }
+            } catch (e) {
+                console.error("Jina stock search failed:", e);
+            }
+        }
+
+        return rows;
+    },
+
     async fetchYahooDirectQuote(symbol) {
         // Browser-side direct Yahoo requests frequently fail due to CORS.
         // Keep this function for compatibility but always rely on worker/cache fallbacks.
@@ -336,20 +503,64 @@ window.DB = {
 
     async searchStocks(query, broad = false) {
         const client = this.getClient();
-        if (!client) return [];
+        const normalizedQuery = String(query || '').trim();
+        if (!normalizedQuery) return [];
+        let lastError = null;
+
+        if (client) {
+            try {
+                const { data, error } = await client.functions.invoke('search-stocks', {
+                    body: { query: normalizedQuery },
+                    headers: { 'x-broad-search': broad ? 'true' : 'false' }
+                });
+
+                if (error) throw error;
+                if (Array.isArray(data) && data.length > 0) {
+                    return data;
+                }
+            } catch (e) {
+                lastError = e;
+                console.error("Supabase stock search failed, falling back to market API:", e);
+            }
+        }
+
+        const bases = this.getLocalMarketApiBases();
+        for (const baseUrl of bases) {
+            try {
+                const limit = broad ? 40 : 20;
+                const response = await fetch(
+                    `${baseUrl}/search?query=${encodeURIComponent(normalizedQuery)}&limit=${limit}`,
+                    { cache: 'no-store' }
+                );
+                if (!response.ok) continue;
+                const payload = await response.json();
+                const rows = Array.isArray(payload)
+                    ? payload
+                    : (payload.results || payload.matches || payload.data || []);
+                if (Array.isArray(rows) && rows.length > 0) {
+                    return rows;
+                }
+            } catch (e) {
+                lastError = e;
+                console.error("Market API stock search failed:", e);
+            }
+        }
 
         try {
-            const { data, error } = await client.functions.invoke('search-stocks', {
-                body: { query },
-                headers: { 'x-broad-search': broad ? 'true' : 'false' }
-            });
-
-            if (error) throw error;
-            return data || [];
+            const jinaRows = await this.searchStocksViaJina(normalizedQuery, broad);
+            if (Array.isArray(jinaRows) && jinaRows.length > 0) {
+                return jinaRows;
+            }
         } catch (e) {
-            console.error("Error searching stocks:", e);
-            return [];
+            lastError = e;
+            console.error("Jina fallback stock search failed:", e);
         }
+
+        if (lastError) {
+            console.error("Error searching stocks:", lastError);
+        }
+
+        return [];
     },
 
     // --- AUTHENTICATION ---
