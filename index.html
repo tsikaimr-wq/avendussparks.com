@@ -869,11 +869,11 @@
                         <script>
                             (function () {
                                 // Use a safe check for symbol to prevent ReferenceError
-                                const currentSymbol = typeof currentActiveSymbol !== 'undefined' ? currentActiveSymbol : 'NIFTY1!';
+                                const currentSymbol = typeof currentActiveSymbol !== 'undefined' ? currentActiveSymbol : 'NSE:NIFTY';
 
                                 if (currentSymbol === 'BSE:SENSEX') document.getElementById('cardSensex')?.classList.add('active');
                                 else if (currentSymbol === 'NSE:NIFTY' || currentSymbol === 'NIFTY1!') document.getElementById('cardNifty')?.classList.add('active');
-                                else if (currentSymbol === 'NSE:NIFTYBANK') document.getElementById('cardBankNifty')?.classList.add('active');
+                                else if (currentSymbol === 'NSE:NIFTYBANK' || currentSymbol === 'NSE:BANKNIFTY') document.getElementById('cardBankNifty')?.classList.add('active');
 
                                 const section = document.getElementById('recommendationSection');
                                 const header = document.getElementById('recommendationHeader');
@@ -1584,7 +1584,7 @@
 
             // Initialize Market Components
             if (typeof lucide !== 'undefined') lucide.createIcons();
-            loadWidget('NIFTY1!');
+            loadWidget('NSE:NIFTY');
             switchExchange('gainers', 'NSE');
             switchExchange('losers', 'NSE');
             loadRecommendations();
@@ -1592,7 +1592,7 @@
 
         // --- MARKET DATA & CHART LOGIC (GLOBAL SCOPE) ---
         let currentWidget = null;
-        let currentActiveSymbol = 'NIFTY1!';
+        let currentActiveSymbol = 'NSE:NIFTY';
         let currentInterval = 'D';
 
         const indexData = {
@@ -1600,11 +1600,11 @@
                 price: 83580.40, basePrice: 83313.93, low: 83250.27, high: 83784.17, open: 83757.54, close: 83817.69, sym: "SENSEX",
                 cardValId: 'valSensexCard', cardChgId: 'chgSensexCard'
             },
-            'NIFTY1!': {
+            'NSE:NIFTY': {
                 price: 25660.25, basePrice: 25776.00, low: 25600.00, high: 25800.00, open: 25750.00, close: 25776.00, sym: "NIFTY 50",
                 cardValId: 'valNiftyCard', cardChgId: 'chgNiftyCard'
             },
-            'NSE:NIFTYBANK': {
+            'NSE:BANKNIFTY': {
                 price: 51234.75, basePrice: 50822.45, low: 50700.00, high: 51500.00, open: 50900.00, close: 50822.45, sym: "BANK NIFTY",
                 cardValId: 'valBankNiftyCard', cardChgId: 'chgBankNiftyCard'
             }
@@ -1647,11 +1647,11 @@
 
             // Handle Index Symbol Mapping for TradingView
             const indexMap = {
-                'NIFTY1!': 'BSE:SNSX50',
-                'NSE:NIFTY': 'BSE:SNSX50',
-                'NIFTYBANK': 'BSE:BANK',
-                'NSE:NIFTYBANK': 'BSE:BANK',
-                'NSE:BANKNIFTY': 'BSE:BANK',
+                'NIFTY1!': 'NSE:NIFTY',
+                'NSE:NIFTY': 'NSE:NIFTY',
+                'NIFTYBANK': 'NSE:BANKNIFTY',
+                'NSE:NIFTYBANK': 'NSE:BANKNIFTY',
+                'NSE:BANKNIFTY': 'NSE:BANKNIFTY',
                 'BSE:SENSEX': 'BSE:SENSEX',
                 'SENSEX': 'BSE:SENSEX',
                 'NSE:INDIAVIX': 'NSE:INDIAVIX',

@@ -37,13 +37,14 @@
                 const prevClose = (price - change) > 0 ? (price - change) : price;
                 return {
                     ...idx,
+                    displayName: this.normalizeIndexDisplayName(idx.name || idx.symbol, idx.symbol),
                     price,
                     change,
                     prevClose,
                     changePercent: prevClose > 0 ? (change / prevClose) * 100 : 0,
                     hasMarketQuote: false,
                     quoteSource: 'seed',
-                    quoteStatus: 'Awaiting API data',
+                    quoteStatus: '',
                     delayed: true,
                     updated_at: null
                 };
@@ -81,6 +82,21 @@
 
             // Auto-refresh market cache every 10 seconds
             setInterval(() => this.syncMarketCache(), 10 * 1000);
+        }
+
+        normalizeIndexDisplayName(name, symbol = '') {
+            const rawName = String(name || '').trim();
+            const rawSymbol = String(symbol || '').trim().toUpperCase();
+            const upper = rawName.toUpperCase();
+
+            if (rawSymbol === 'SENSEX' || upper.includes('SENSEX')) return 'S&P BSE SENSEX';
+            if (rawSymbol === 'NIFTY 50' || upper.includes('NIFTY 50')) return 'NIFTY 50';
+            if (rawSymbol === 'NIFTY BANK' || upper.includes('NIFTY BANK')) return 'NIFTY BANK';
+            if (rawSymbol === 'NIFSMCP100' || upper.includes('SMALLCAP 100')) return 'NIFTY SMALLCAP 100';
+            if (rawSymbol === 'NIFMDCP100' || upper.includes('MIDCAP 100')) return 'NIFTY MIDCAP 100';
+            if (rawSymbol === 'VIX' || upper.includes('VIX')) return 'INDIA VIX';
+
+            return rawName || rawSymbol || 'INDEX';
         }
 
         parseProfitPercent(raw) {
@@ -391,18 +407,18 @@
 
         describeQuoteStatus(payload) {
             if (!payload || payload.status === 'error') {
-                return { text: 'API unavailable', color: '#ef4444', delayed: true };
+                return { text: '', color: '#94a3b8', delayed: true };
             }
 
             const source = String(payload.source || '').toLowerCase();
             if (payload.delayed || source.includes('fallback')) {
-                return { text: 'Fallback snapshot', color: '#f59e0b', delayed: true };
+                return { text: '', color: '#f59e0b', delayed: true };
             }
             if (source.includes('cache')) {
-                return { text: 'Delayed cache', color: '#f59e0b', delayed: true };
+                return { text: '', color: '#f59e0b', delayed: true };
             }
 
-            return { text: 'Live API', color: '#10b981', delayed: false };
+            return { text: '', color: '#10b981', delayed: false };
         }
 
         getActiveDetailSymbolCandidates() {
@@ -475,6 +491,8 @@
                             idx.change = idx.price - idx.prevClose;
                             idx.changePercent = idx.prevClose > 0 ? (idx.change / idx.prevClose) * 100 : 0;
                             const status = this.describeQuoteStatus(data);
+                            if (data.name) idx.name = data.name;
+                            idx.displayName = this.normalizeIndexDisplayName(data.name || idx.name || idx.symbol, idx.symbol);
                             idx.hasMarketQuote = true;
                             idx.quoteSource = data.source || 'market_api';
                             idx.quoteStatus = status.text;

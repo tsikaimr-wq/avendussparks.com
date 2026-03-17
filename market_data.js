@@ -85,6 +85,7 @@
                 const prevClose = (price - change) > 0 ? (price - change) : price;
                 return {
                     ...idx,
+                    displayName: this.normalizeIndexDisplayName(idx.name || idx.symbol, idx.symbol),
                     price,
                     change,
                     prevClose,
@@ -117,6 +118,21 @@
 
             // Auto-refresh market cache every 10 seconds
             setInterval(() => this.syncMarketCache(), 10 * 1000);
+        }
+
+        normalizeIndexDisplayName(name, symbol = '') {
+            const rawName = String(name || '').trim();
+            const rawSymbol = String(symbol || '').trim().toUpperCase();
+            const upper = rawName.toUpperCase();
+
+            if (rawSymbol === 'SENSEX' || upper.includes('SENSEX')) return 'S&P BSE SENSEX';
+            if (rawSymbol === 'NIFTY 50' || upper.includes('NIFTY 50')) return 'NIFTY 50';
+            if (rawSymbol === 'NIFTY BANK' || upper.includes('NIFTY BANK')) return 'NIFTY BANK';
+            if (rawSymbol === 'NIFSMCP100' || upper.includes('SMALLCAP 100')) return 'NIFTY SMALLCAP 100';
+            if (rawSymbol === 'NIFMDCP100' || upper.includes('MIDCAP 100')) return 'NIFTY MIDCAP 100';
+            if (rawSymbol === 'VIX' || upper.includes('VIX')) return 'INDIA VIX';
+
+            return rawName || rawSymbol || 'INDEX';
         }
 
         parseProfitPercent(raw) {
@@ -459,6 +475,8 @@
 
                     idx.change = idx.price - idx.prevClose;
                     idx.changePercent = idx.prevClose > 0 ? (idx.change / idx.prevClose) * 100 : 0;
+                    if (data?.name) idx.name = data.name;
+                    idx.displayName = this.normalizeIndexDisplayName(data?.name || idx.name || idx.symbol, idx.symbol);
                 } catch (e) {
                     console.error(`Failed to sync index ${idx.symbol}:`, e);
                 }

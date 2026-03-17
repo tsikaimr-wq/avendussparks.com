@@ -17,7 +17,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="db.js?v=20260317b"></script>
-    <script src="market_data.js?v=20260311f"></script>
+    <script src="market_data.js?v=20260317c"></script>
     <style>
         /* Using global styles from styles.css */
 
@@ -3083,7 +3083,7 @@
         <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
         <script type="text/javascript">
             let currentWidget = null;
-            let currentActiveSymbol = 'NIFTY1!';
+            let currentActiveSymbol = 'NSE:NIFTY';
             let currentInterval = 'D';
 
             function loadWidgetWithInterval(interval, btn) {
@@ -3108,7 +3108,7 @@
                     sparkId: 'sparkSensex',
                     history: [35, 38, 30, 32, 25, 28, 20, 22, 15, 18, 20]
                 },
-                'NIFTY1!': {
+                'NSE:NIFTY': {
                     price: 25660.25,
                     basePrice: 25776.00,
                     low: 25600.00,
@@ -3158,11 +3158,11 @@
 
                 // Handle Index Symbol Mapping for TradingView
                 const indexMap = {
-                    'NIFTY1!': 'BSE:SNSX50',
-                    'NSE:NIFTY': 'BSE:SNSX50',
-                    'NIFTYBANK': 'BSE:BANK',
-                    'NSE:NIFTYBANK': 'BSE:BANK',
-                    'NSE:BANKNIFTY': 'BSE:BANK',
+                    'NIFTY1!': 'NSE:NIFTY',
+                    'NSE:NIFTY': 'NSE:NIFTY',
+                    'NIFTYBANK': 'NSE:BANKNIFTY',
+                    'NSE:NIFTYBANK': 'NSE:BANKNIFTY',
+                    'NSE:BANKNIFTY': 'NSE:BANKNIFTY',
                     'BSE:SENSEX': 'BSE:SENSEX',
                     'SENSEX': 'BSE:SENSEX',
                     'NSE:INDIAVIX': 'NSE:INDIAVIX',
@@ -3543,7 +3543,7 @@
                 }, 1000);
             }
 
-            updateChart("BSE:SENSEX", "SENSEX (BSE Index Live)");
+            updateChart("BSE:SENSEX", "S&P BSE SENSEX");
             startSimulation();
         </script>
 
@@ -7702,7 +7702,7 @@
             const normalized = String(message || '').toLowerCase();
             if (!normalized) return '';
             if (normalized.includes('loan')) return 'Locked: Loan Outstanding';
-            if (normalized.includes('backend')) return 'Locked by Backend';
+            if (normalized.includes('backend')) return 'Locked';
             return 'Selling Restricted';
         }
 
@@ -10259,9 +10259,7 @@
                 if (activeCard) activeCard.classList.add('active');
 
                 // Load Widget
-                let sym = symbol;
-                if (symbol === 'NSE:NIFTY') sym = 'NIFTY1!';
-                if (window.loadWidget) window.loadWidget(sym);
+                if (window.loadWidget) window.loadWidget(symbol);
 
                 // Trigger immediate UI update
                 if (window.syncUI) window.syncUI();
@@ -10278,9 +10276,10 @@
                     const txtEl = document.getElementById('valSymbolText');
                     const chgEl = document.getElementById('heroChange');
 
+                    const displayName = idx.displayName || idx.name || idx.symbol;
                     if (priceEl) priceEl.innerText = idx.price.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-                    if (symEl) symEl.innerText = idx.symbol;
-                    if (txtEl) txtEl.innerText = idx.symbol;
+                    if (symEl) symEl.innerText = displayName;
+                    if (txtEl) txtEl.innerText = displayName;
 
                     if (chgEl) {
                         const isUp = idx.change >= 0;
@@ -10387,7 +10386,7 @@
                             <div class="index-card-left" style="width: 100%; display: flex; justify-content: center; align-items: center;">
                                 <div class="index-head" style="display: flex; justify-content: center; gap: 8px; align-items: center;">
                                     <img src="https://flagcdn.com/w20/in.png" class="index-flag" style="width: 20px; height: 14px;">
-                                    <span class="index-name" style="font-size: 1.4rem; font-weight: 700;">${idx.symbol}</span>
+                                    <span class="index-name" style="font-size: 1.12rem; font-weight: 700; text-align:center;">${idx.displayName || idx.name || idx.symbol}</span>
                                 </div>
                             </div>
                         `;

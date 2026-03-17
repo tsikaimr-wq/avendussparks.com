@@ -495,12 +495,12 @@ const fetchUserLoanRestriction = async (userId, options = {}) => {
 const getTradeSellRestrictionMessage = async (trade, user, options = {}) => {
     const userSellLock = await getUserSellLock(user, options);
     if (userSellLock) {
-        return userSellLock.reason || 'Selling for this customer is locked by the backend.';
+        return userSellLock.reason || 'Selling is locked for this customer.';
     }
 
     const sellLock = await getTradeSellLock(trade, options);
     if (sellLock) {
-        return sellLock.reason || 'Selling for this product has been locked by the backend.';
+        return sellLock.reason || 'Selling is locked for this product.';
     }
 
     if (normalizeTradeType(trade?.type) === 'ipo') {

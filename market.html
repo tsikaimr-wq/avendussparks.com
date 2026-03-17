@@ -13,7 +13,7 @@
     <script src="js/supabase.js?v=1.0.5"></script>
     <script src="js/db.js?v=1.0.12"></script>
     <script src="js/user.js?v=1.0.4"></script>
-    <script src="js/market_data.js?v=1.0.8"></script>
+    <script src="js/market_data.js?v=1.0.9"></script>
     <script src="js/trading.js?v=1.0.6"></script>
     <script src="script.js?v=20260313a"></script>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
@@ -4539,14 +4539,7 @@
             if (!payload || payload.status === 'error') {
                 return getMoverNoQuoteState();
             }
-            const source = String(payload.source || '').toLowerCase();
-            if (payload.delayed || source.includes('fallback')) {
-                return { text: 'Fallback snapshot', color: '#f59e0b' };
-            }
-            if (source.includes('cache')) {
-                return { text: 'Delayed cache', color: '#f59e0b' };
-            }
-            return { text: 'Live API quote', color: '#10b981' };
+            return { text: '', color: '#94a3b8' };
         }
 
         function setMoverTabState(listContainer, exchange) {
@@ -4569,7 +4562,7 @@
                         <div>
                             <div class="stock-ticker">${row.t}</div>
                             <div class="stock-full-name">${row.n} - ${exchange}</div>
-                            <div style="font-size: 0.65rem; color: ${row.metaColor}; margin-top: 0.15rem;">${row.metaText}</div>
+                            ${row.metaText ? `<div style="font-size: 0.65rem; color: ${row.metaColor}; margin-top: 0.15rem;">${row.metaText}</div>` : ''}
                         </div>
                     </div>
                     <div class="stock-price-col">
@@ -4580,7 +4573,7 @@
             `).join('');
 
             listContainer.innerHTML = `
-                <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 0.75rem;">Curated watchlist · values pulled from market API</div>
+                <div style="font-size: 0.7rem; color: #94a3b8; margin-bottom: 0.75rem;">Curated watchlist</div>
                 ${listHtml}
             `;
             lucide.createIcons();
@@ -4597,10 +4590,10 @@
                 t: item.t,
                 n: item.n,
                 p: '--',
-                c: marketClosed ? noQuote.text : 'Checking API...',
+                c: marketClosed ? noQuote.text : '--',
                 changeClass: type === 'gainers' ? 'green' : 'red',
                 changeColor: '#94a3b8',
-                metaText: marketClosed ? noQuote.text : 'Loading live quote',
+                metaText: marketClosed ? noQuote.text : '',
                 metaColor: '#94a3b8',
                 detailColor: type === 'gainers' ? '#10b981' : '#ef4444'
             }));
@@ -4663,7 +4656,7 @@
                     c: item.c,
                     changeClass: String(item.c || '').trim().startsWith('-') ? 'red' : 'green',
                     changeColor: String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981',
-                    metaText: 'Snapshot paused in detail view',
+                    metaText: 'Paused in detail view',
                     metaColor: '#94a3b8',
                     detailColor: String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981'
                 }));
@@ -7973,7 +7966,7 @@
             const normalized = String(message || '').toLowerCase();
             if (!normalized) return '';
             if (normalized.includes('loan')) return 'Locked: Loan Outstanding';
-            if (normalized.includes('backend')) return 'Locked by Backend';
+            if (normalized.includes('backend')) return 'Locked';
             return 'Selling Restricted';
         }
 
@@ -11112,9 +11105,10 @@
                     const txtEl = document.getElementById('valSymbolText');
                     const chgEl = document.getElementById('heroChange');
 
+                    const displayName = idx.displayName || idx.name || idx.symbol;
                     if (priceEl) priceEl.innerText = idx.price.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-                    if (symEl) symEl.innerText = idx.symbol;
-                    if (txtEl) txtEl.innerText = idx.symbol;
+                    if (symEl) symEl.innerText = displayName;
+                    if (txtEl) txtEl.innerText = displayName;
 
                     if (chgEl) {
                         const isUp = idx.change >= 0;
@@ -11219,7 +11213,7 @@
                 const marketOpen = isIndiaRegularMarketOpenNow();
                 return {
                     changeText: marketOpen ? 'Waiting for quote...' : 'Closed',
-                    statusText: marketOpen ? 'Awaiting API data' : 'Closed',
+                    statusText: marketOpen ? '' : 'Closed',
                     color: '#94a3b8'
                 };
             }
@@ -11230,15 +11224,7 @@
                     return { text: noQuote.statusText, color: noQuote.color };
                 }
 
-                const source = String(idx.quoteSource || '').toLowerCase();
-                if (idx.delayed || source.includes('fallback')) {
-                    return { text: idx.quoteStatus || 'Fallback snapshot', color: idx.quoteStatusColor || '#f59e0b' };
-                }
-                if (source.includes('cache')) {
-                    return { text: idx.quoteStatus || 'Delayed cache', color: idx.quoteStatusColor || '#f59e0b' };
-                }
-
-                return { text: idx.quoteStatus || 'Live API', color: idx.quoteStatusColor || '#10b981' };
+                return { text: idx.quoteStatus || '', color: idx.quoteStatusColor || '#94a3b8' };
             }
 
             // Dynamic Rendering Loop
@@ -11265,7 +11251,7 @@
                         // Map symbol logic
                         let tvSymbol = idx.symbol;
                         if (idx.symbol === 'SENSEX') tvSymbol = 'BSE:SENSEX';
-                        else if (idx.symbol === 'NIFTY 50') tvSymbol = 'NIFTY1!';
+                        else if (idx.symbol === 'NIFTY 50') tvSymbol = 'NSE:NIFTY';
                         else if (idx.symbol === 'NIFTY BANK') tvSymbol = 'NSE:BANKNIFTY';
                         else if (idx.symbol === 'VIX') tvSymbol = 'NSE:INDIAVIX';
                         else tvSymbol = 'NSE:' + idx.symbol.replace(/\s+/g, '');
@@ -11280,12 +11266,12 @@
                             <div class="index-card-left" style="width: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 4px;">
                                 <div class="index-head" style="display: flex; justify-content: center; gap: 8px; align-items: center;">
                                     <img src="https://flagcdn.com/w20/in.png" class="index-flag" style="width: 20px; height: 14px;">
-                                    <span class="index-name" style="font-size: 1.1rem; font-weight: 700;">${idx.symbol}</span>
+                                    <span class="index-name" style="font-size: 1.02rem; font-weight: 700; text-align:center;">${idx.displayName || idx.name || idx.symbol}</span>
                                 </div>
                                 <div class="index-body" style="text-align: center;">
                                     <div class="index-val" id="idx-val-${i}" style="font-size: 1.4rem; font-weight: 700; color: #fff;">${formatIndexDisplayValue(idx.hasMarketQuote ? idx.price : null)}</div>
                                     <div class="index-change" id="idx-change-${i}" style="font-size: 0.9rem; font-weight: 600;">${idx.hasMarketQuote ? `${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)` : noQuote.changeText}</div>
-                                    <div id="idx-status-${i}" style="font-size: 0.72rem; margin-top: 0.3rem; color: ${describeIndexCardStatus(idx).color};">${describeIndexCardStatus(idx).text}</div>
+                                    <div id="idx-status-${i}" style="display:${describeIndexCardStatus(idx).text ? 'block' : 'none'}; font-size: 0.72rem; margin-top: 0.3rem; color: ${describeIndexCardStatus(idx).color};">${describeIndexCardStatus(idx).text}</div>
                                 </div>
                             </div>
                         `;
@@ -11320,6 +11306,7 @@
                     if (statusEl) {
                         statusEl.innerText = status.text;
                         statusEl.style.color = status.color;
+                        statusEl.style.display = status.text ? 'block' : 'none';
                     }
                 });
 
@@ -12175,7 +12162,7 @@
     </style>
     <script type="text/javascript">
         let currentWidget = null;
-        let currentActiveSymbol = 'NIFTY1!';
+        let currentActiveSymbol = 'NSE:NIFTY';
         let currentInterval = 'D';
 
 
@@ -12201,11 +12188,11 @@
 
             // Handle Index Symbol Mapping for TradingView
             const indexMap = {
-                'NIFTY1!': 'BSE:SNSX50',
-                'NSE:NIFTY': 'BSE:SNSX50',
-                'NIFTYBANK': 'BSE:BANK',
-                'NSE:NIFTYBANK': 'BSE:BANK',
-                'NSE:BANKNIFTY': 'BSE:BANK',
+                'NIFTY1!': 'NSE:NIFTY',
+                'NSE:NIFTY': 'NSE:NIFTY',
+                'NIFTYBANK': 'NSE:BANKNIFTY',
+                'NSE:NIFTYBANK': 'NSE:BANKNIFTY',
+                'NSE:BANKNIFTY': 'NSE:BANKNIFTY',
                 'BSE:SENSEX': 'BSE:SENSEX',
                 'SENSEX': 'BSE:SENSEX',
                 'NSE:INDIAVIX': 'NSE:INDIAVIX',
