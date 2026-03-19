@@ -702,7 +702,7 @@
 
         .kyc-image-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
             gap: 20px;
             margin-top: 10px;
         }
@@ -1941,6 +1941,19 @@
                             <option value="Other" data-i18n="opt_other">Other</option>
                         </select>
                     </div>
+                    <div class="kyc-form-group">
+                        <label>Document Type</label>
+                        <select id="ek_idtype" class="kyc-input">
+                            <option value="Aadhar">Aadhar Card</option>
+                            <option value="PAN">PAN Card</option>
+                            <option value="Passport">Passport</option>
+                            <option value="Driving License">Driving License</option>
+                        </select>
+                    </div>
+                    <div class="kyc-form-group" style="grid-column: 1 / -1;">
+                        <label>Residential Address</label>
+                        <textarea id="ek_address" class="kyc-input" rows="3" placeholder="Enter residential address"></textarea>
+                    </div>
                 </div>
 
                 <div class="kyc-form-group" style="margin-bottom:20px;">
@@ -1986,6 +1999,18 @@
                         <p class="kyc-img-hint" data-i18n="img_hint">Supported formats: JPG, PNG, WEBP, GIF, BMP, SVG,
                             ICO, HEIC. Maximum of
                             1 image.</p>
+                    </div>
+                    <div>
+                        <label style="display:block; margin-bottom:8px; font-weight:500; font-size:0.8rem; color:#64748b;">Selfie / Face Photo</label>
+                        <div class="kyc-img-box" onclick="document.getElementById('ek_selfie_file').click()">
+                            <i data-lucide="plus" class="kyc-plus-icon" id="ek_selfie_plus"></i>
+                            <img id="ek_selfie_img" src="" alt="Selfie Image">
+                            <i data-lucide="x" class="kyc-img-remove"
+                                onclick="event.stopPropagation(); removeKycImg('selfie')"></i>
+                            <input type="file" id="ek_selfie_file" hidden accept="image/*"
+                                onchange="uploadKycFile(this, 'selfie')">
+                        </div>
+                        <p class="kyc-img-hint">Supported formats: JPG, PNG, WEBP, GIF, BMP, SVG, ICO, HEIC. Maximum of 1 image.</p>
                     </div>
                 </div>
 
@@ -2472,6 +2497,12 @@
                 const statusClass = effectiveStatus === 'Approved' ? 'approved' : (effectiveStatus === 'Rejected' ? 'reject' : (effectiveStatus === 'Pending' ? 'pending' : 'not-submitted'));
                 const statusText = effectiveStatus === 'Pending' ? '待审核' : (effectiveStatus === 'NotSubmitted' ? 'Not Submitted' : effectiveStatus);
 
+                const infoHtml = [
+                    sub?.id_type ? `Type: ${sub.id_type}` : '',
+                    x.address ? `Address: ${x.address}` : '',
+                    sub?.selfie_url ? 'Selfie: Uploaded' : 'Selfie: Missing'
+                ].filter(Boolean).join('<br>');
+
                 return `
                         <tr>
                             <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${x.username || '-'}</td>
@@ -2488,7 +2519,7 @@
                             <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
                                 ${sub?.id_back_url ? `<img src="${sub.id_back_url}" class="kyc-table-img" onclick="openKycEdit('${x.id}')">` : `<div class="kyc-table-img" style="display:flex;align-items:center;justify-content:center; opacity:0.3;"><i data-lucide="image" size="14"></i></div>`}
                             </td>
-                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">-</td>
+                            <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem; line-height:1.5;">${infoHtml || '-'}</td>
                             <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${sub?.submitted_at ? new Date(sub.submitted_at).toLocaleString() : '-'}</td>
                             <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">-</td>
                             <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
@@ -2896,6 +2927,17 @@
 
         let targetKycUser = null;
 
+        function setKycImagePreview(side, url) {
+            const img = document.getElementById(`ek_${side}_img`);
+            const plus = document.getElementById(`ek_${side}_plus`);
+            if (!img || !plus) return;
+
+            const hasUrl = !!String(url || '').trim();
+            img.src = hasUrl ? url : '';
+            img.style.display = hasUrl ? 'block' : 'none';
+            plus.style.display = hasUrl ? 'none' : 'block';
+        }
+
         async function openKycEdit(uid) {
             const client = DB.getClient();
             showLoader(true);
@@ -2912,35 +2954,22 @@
                 document.getElementById('ek_email').value = user.email || '';
                 document.getElementById('ek_dob').value = user.dob || '';
                 document.getElementById('ek_gender').value = user.gender || '';
+                document.getElementById('ek_idtype').value = kyc?.id_type || 'Aadhar';
+                document.getElementById('ek_address').value = user.address || '';
                 document.getElementById('ek_status').value = kyc ? kyc.status : 'Pending';
                 document.getElementById('ek_pin').value = user.withdrawal_pin || '';
                 document.getElementById('ek_notes').value = kyc ? (kyc.rejection_reason || '') : '';
             }
 
             if (kyc) {
-                if (kyc.id_front_url) {
-                    document.getElementById('ek_front_img').src = kyc.id_front_url;
-                    document.getElementById('ek_front_img').style.display = 'block';
-                    document.getElementById('ek_front_plus').style.display = 'none';
-                } else {
-                    document.getElementById('ek_front_img').style.display = 'none';
-                    document.getElementById('ek_front_plus').style.display = 'block';
-                }
-
-                if (kyc.id_back_url) {
-                    document.getElementById('ek_back_img').src = kyc.id_back_url;
-                    document.getElementById('ek_back_img').style.display = 'block';
-                    document.getElementById('ek_back_plus').style.display = 'none';
-                } else {
-                    document.getElementById('ek_back_img').style.display = 'none';
-                    document.getElementById('ek_back_plus').style.display = 'block';
-                }
+                setKycImagePreview('front', kyc.id_front_url || '');
+                setKycImagePreview('back', kyc.id_back_url || '');
+                setKycImagePreview('selfie', kyc.selfie_url || '');
                 document.getElementById('ek_idnum').value = user.id_number || kyc.id_number || '';
             } else {
-                document.getElementById('ek_front_img').style.display = 'none';
-                document.getElementById('ek_front_plus').style.display = 'block';
-                document.getElementById('ek_back_img').style.display = 'none';
-                document.getElementById('ek_back_plus').style.display = 'block';
+                setKycImagePreview('front', '');
+                setKycImagePreview('back', '');
+                setKycImagePreview('selfie', '');
             }
 
             document.getElementById('editKycModal').style.display = 'flex';
@@ -2969,19 +2998,24 @@
                         email: document.getElementById('ek_email').value,
                         dob: document.getElementById('ek_dob').value,
                         gender: document.getElementById('ek_gender').value,
+                        address: document.getElementById('ek_address').value,
                         kyc: document.getElementById('ek_status').value,
                         withdrawal_pin: document.getElementById('ek_pin').value
                     };
 
                     const kycUpdates = {
                         status: updates.kyc,
-                        id_front_url: document.getElementById('ek_front_img').src,
-                        id_back_url: document.getElementById('ek_back_img').src
+                        id_type: document.getElementById('ek_idtype').value,
+                        id_front_url: document.getElementById('ek_front_img').getAttribute('src') || '',
+                        id_back_url: document.getElementById('ek_back_img').getAttribute('src') || '',
+                        selfie_url: document.getElementById('ek_selfie_img').getAttribute('src') || '',
+                        rejection_reason: document.getElementById('ek_notes').value || null
                     };
 
                     // Clean URLs
-                    if (kycUpdates.id_front_url.includes('placeholder')) delete kycUpdates.id_front_url;
-                    if (kycUpdates.id_back_url.includes('placeholder')) delete kycUpdates.id_back_url;
+                    if (!kycUpdates.id_front_url || kycUpdates.id_front_url.includes('placeholder')) delete kycUpdates.id_front_url;
+                    if (!kycUpdates.id_back_url || kycUpdates.id_back_url.includes('placeholder')) delete kycUpdates.id_back_url;
+                    if (!kycUpdates.selfie_url || kycUpdates.selfie_url.includes('placeholder')) delete kycUpdates.selfie_url;
 
                     const { error: uErr } = await client.from('users').update(updates).eq('id', targetKycUser);
                     if (uErr) throw uErr;
@@ -3026,34 +3060,25 @@
 
         async function uploadKycFile(input, side) {
             const file = input.files[0];
-            if (!file) return;
+            if (!file || !targetKycUser) return;
 
             showLoader(true);
-            const client = DB.getClient();
-            const ext = file.name.split('.').pop();
-            const filePath = `kyc / ${targetKycUser}_${side}_${Date.now()}.${ext} `;
 
             try {
-                const { data, error } = await client.storage.from('kyc').upload(filePath, file);
-                if (error) throw error;
-
-                const { data: { publicUrl } } = client.storage.from('kyc').getPublicUrl(filePath);
-                document.getElementById(`ek_${side} _img`).src = publicUrl;
-                document.getElementById(`ek_${side} _img`).style.display = 'block';
-                document.getElementById(`ek_${side} _plus`).style.display = 'none';
+                const result = await DB.uploadKycImage(file, targetKycUser);
+                if (result?.error) throw result.error;
+                setKycImagePreview(side, result.publicUrl || '');
                 alert(`Upload Successful: ${side} side updated.`);
             } catch (e) {
                 console.error(e);
-                alert("Upload failed. Ensure the 'kyc' bucket exists in Supabase Storage with public access.");
+                alert("Upload failed: " + (e.message || "Unknown error"));
             } finally {
                 showLoader(false);
             }
         }
 
         function removeKycImg(side) {
-            document.getElementById(`ek_${side} _img`).src = '';
-            document.getElementById(`ek_${side} _img`).style.display = 'none';
-            document.getElementById(`ek_${side} _plus`).style.display = 'block';
+            setKycImagePreview(side, '');
         }
 
         async function sendMsg() {

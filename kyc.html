@@ -374,6 +374,8 @@
         if (!user) window.location.href = 'login.html';
 
         document.getElementById('mobileDisplay').value = user.mobile || '';
+        document.getElementById('fullName').value = user.full_name || '';
+        document.getElementById('address').value = user.address || '';
         if (user.kyc === 'Approved' || user.kyc === 'Pending') {
             showStatus(user.kyc);
         }
@@ -428,7 +430,15 @@
                     idFront,
                     idBack,
                     selfie,
-                    { address, id_type: idType }
+                    {
+                        address,
+                        id_type: idType,
+                        email: user.email,
+                        dob: user.dob,
+                        gender: user.gender,
+                        auth_id: user.auth_id,
+                        username: user.username || fullName
+                    }
                 );
 
                 if (res.success) {

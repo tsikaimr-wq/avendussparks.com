@@ -901,7 +901,10 @@ window.openKYCModal = async function () {
     const modal = document.getElementById('kycModal');
     if (modal) modal.style.display = 'flex';
 
-    const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+    const refreshedUser = (window.DB && typeof window.DB.refreshCurrentUser === 'function')
+        ? await window.DB.refreshCurrentUser()
+        : null;
+    const user = refreshedUser || (window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null);
     if (!user) return;
 
     const mobileInput = document.getElementById('kycMobile');
@@ -983,20 +986,13 @@ window.submitKYC = async function () {
     const backInput = document.getElementById('kycBackInput');
 
     // Check for existing previews if no new file is selected
-    const frontPreview = document.getElementById('kycFrontPreview').src;
-    const backPreview = document.getElementById('kycBackPreview').src;
+    const frontPreview = document.getElementById('kycFrontPreview')?.getAttribute('src') || '';
+    const backPreview = document.getElementById('kycBackPreview')?.getAttribute('src') || '';
 
     if (!name || !mobile || !idNum || (!frontInput.files[0] && (!frontPreview || frontPreview.includes('placeholder'))) || (!backInput.files[0] && (!backPreview || backPreview.includes('placeholder')))) {
         await window.CustomUI.alert('Please complete all fields (Name, Mobile, ID) and upload both ID images.', 'Incomplete Form');
         return;
     }
-
-    const toBase64 = file => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = error => reject(error);
-    });
 
     try {
         const submitBtn = document.querySelector('.btn-submit');
@@ -1004,55 +1000,49 @@ window.submitKYC = async function () {
         submitBtn.textContent = 'Submitting...';
         submitBtn.disabled = true;
 
-        const frontImg = frontInput.files[0] ? await toBase64(frontInput.files[0]) : frontPreview;
-        const backImg = backInput.files[0] ? await toBase64(backInput.files[0]) : backPreview;
+        const frontImg = frontInput.files[0] || (frontPreview && !frontPreview.includes('placeholder') ? frontPreview : null);
+        const backImg = backInput.files[0] || (backPreview && !backPreview.includes('placeholder') ? backPreview : null);
 
-        // 1. Update User Profile (Primary data goes to 'users' table)
-        const userResult = await window.DB.updateUser(user.id, {
-            full_name: name,
-            mobile: mobile,
-            id_number: idNum,
-            kyc: 'Pending'
-        });
-
-        if (!userResult.success) {
-            throw new Error(userResult.error?.message || 'Failed to update user profile info');
-        }
-
-        // Update local "Memory" (Local Storage) so data persists across refreshes
-        user.full_name = name;
-        user.mobile = mobile;
-        user.id_number = idNum;
-        user.kyc = 'Pending';
-        localStorage.setItem('avendus_current_user', JSON.stringify(user));
-
-        // 2. Insert/Update KYC Submissions (Only images and status go here)
-        const kycData = {
-            id_front_url: frontImg,
-            id_back_url: backImg,
-            status: 'Pending',
-            submitted_at: new Date().toISOString()
-        };
-
-        const result = await window.DB.submitKYC(user.id, kycData);
+        const result = await window.DB.submitKYC(
+            user.id,
+            name,
+            mobile,
+            idNum,
+            frontImg,
+            backImg,
+            null,
+            {
+                email: user.email,
+                dob: user.dob,
+                gender: user.gender,
+                address: user.address,
+                auth_id: user.auth_id,
+                username: user.username || name,
+                id_type: user.id_type || 'Aadhar'
+            }
+        );
 
         if (result.success) {
+            user.full_name = name;
+            user.mobile = mobile;
+            user.id_number = idNum;
+            user.kyc = 'Pending';
+            localStorage.setItem('avendus_current_user', JSON.stringify(user));
+            if (window.DB && typeof window.DB.refreshCurrentUser === 'function') {
+                await window.DB.refreshCurrentUser();
+            }
             await window.CustomUI.alert('KYC Verification Submitted Successfully!', 'Submission Success');
             if (window.syncUserData) window.syncUserData(); // Update UI
             window.closeKYCModal();
         } else {
-            // Note: If images fail but profile updated, we log and alert
             console.error("KYC files submission error:", result.error);
-            await window.CustomUI.alert('Partial Success: Profile info updated. (Note: ID Images failed to sync)', 'Partial Update');
-            window.closeKYCModal();
+            throw new Error(result.error?.message || 'KYC submission failed.');
         }
-
-        submitBtn.textContent = originalText;
-        submitBtn.disabled = false;
 
     } catch (e) {
         console.error(e);
         await window.CustomUI.alert('An error occurred: ' + e.message, 'Error');
+    } finally {
         const btn = document.querySelector('.btn-submit');
         if (btn) {
             btn.disabled = false;

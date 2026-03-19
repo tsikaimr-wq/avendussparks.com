@@ -1049,7 +1049,7 @@ window.DB = {
 
         const { data, error } = await client
             .from('users')
-            .select('id, mobile, username, kyc, credit_score, vip, balance, invested, frozen, outstanding, full_name, id_number, address, loan_enabled, created_at, csr_id, invitation_code')
+            .select('id, mobile, email, username, auth_id, kyc, credit_score, vip, balance, invested, frozen, outstanding, full_name, id_number, address, dob, gender, withdrawal_pin, loan_enabled, created_at, csr_id, invitation_code')
             .eq('id', user.id)
             .single();
 
@@ -1314,34 +1314,84 @@ window.DB = {
     },
 
     // --- KYC ---
+    async fileToDataUrl(file) {
+        return await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error || new Error('Failed to read file.'));
+            reader.readAsDataURL(file);
+        });
+    },
+
+    getKycStorageBuckets() {
+        const configured = [window.KYC_STORAGE_BUCKET, this.KYC_STORAGE_BUCKET];
+        return [...new Set([...configured, 'kyc-documents', 'kyc'].filter(Boolean).map(v => String(v).trim()).filter(Boolean))];
+    },
+
     async uploadKycImage(file, userId) {
         const client = this.getClient();
         if (!client) return { error: 'No client' };
 
         const fileExt = file.name.split('.').pop();
         const fileName = `${userId}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const bucketErrors = [];
 
-        // 1. Upload
-        const { data, error } = await client.storage
-            .from('kyc-documents')
-            .upload(fileName, file);
+        for (const bucket of this.getKycStorageBuckets()) {
+            try {
+                const { error } = await client.storage
+                    .from(bucket)
+                    .upload(fileName, file);
 
-        if (error) {
-            console.error("Upload Error:", error);
-            return { error: error };
+                if (error) {
+                    bucketErrors.push(`${bucket}: ${error.message || error}`);
+                    continue;
+                }
+
+                const { data: publicUrlData } = client.storage
+                    .from(bucket)
+                    .getPublicUrl(fileName);
+
+                if (publicUrlData?.publicUrl) {
+                    return { publicUrl: publicUrlData.publicUrl, bucket, storage: 'bucket' };
+                }
+            } catch (error) {
+                bucketErrors.push(`${bucket}: ${error.message || error}`);
+            }
         }
 
-        // 2. Get Public URL
-        const { data: publicUrlData } = client.storage
-            .from('kyc-documents')
-            .getPublicUrl(fileName);
-
-        return { publicUrl: publicUrlData.publicUrl };
+        try {
+            const inlineDataUrl = await this.fileToDataUrl(file);
+            return {
+                publicUrl: inlineDataUrl,
+                bucket: null,
+                storage: 'inline',
+                warning: bucketErrors.join(' | ')
+            };
+        } catch (inlineError) {
+            console.error("Upload Error:", bucketErrors, inlineError);
+            return { error: inlineError };
+        }
     },
 
     async submitKYC(userId, fullName, mobile, idNumber, idFront, idBack, selfie, extra = {}) {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
+
+        if (fullName && typeof fullName === 'object' && !Array.isArray(fullName) && !(fullName instanceof File)) {
+            const payload = fullName;
+            extra = { ...(payload.extra || {}), ...extra };
+            fullName = payload.full_name ?? payload.fullName ?? payload.name ?? '';
+            mobile = payload.mobile ?? '';
+            idNumber = payload.id_number ?? payload.idNumber ?? '';
+            idFront = payload.id_front_url ?? payload.idFront ?? payload.front ?? null;
+            idBack = payload.id_back_url ?? payload.idBack ?? payload.back ?? null;
+            selfie = payload.selfie_url ?? payload.selfie ?? null;
+        }
+
+        const normalizedFullName = String(fullName || '').trim();
+        const mobileDigits = String(mobile || '').replace(/\D/g, '');
+        const normalizedMobile = mobileDigits ? (mobileDigits.length > 10 ? mobileDigits.slice(-10) : mobileDigits) : String(mobile || '').trim();
+        const normalizedIdNumber = String(idNumber || '').trim();
 
         // 1. Process files (upload if they are File objects)
         const uploads = [
@@ -1353,7 +1403,7 @@ window.DB = {
         const urls = {};
         for (const up of uploads) {
             if (up.file) {
-                if (typeof up.file === 'string' && up.file.startsWith('http')) {
+                if (typeof up.file === 'string' && /^(https?:|data:|blob:)/i.test(up.file)) {
                     urls[up.key] = up.file;
                 } else if (up.file instanceof File || (typeof up.file === 'object' && up.file.name)) {
                     const res = await this.uploadKycImage(up.file, userId);
@@ -1369,15 +1419,16 @@ window.DB = {
         // 2. Prepare User Profile Update (Authoritative Profile Data)
         // Note: The users table uses 'kyc' for the status, not 'status'.
         const userPayload = {
-            full_name: fullName,
-            id_number: idNumber,
+            full_name: normalizedFullName,
+            mobile: normalizedMobile || undefined,
+            id_number: normalizedIdNumber || undefined,
             dob: extra.dob,
             email: extra.email,
             auth_id: extra.auth_id,
             username: extra.username,
             gender: extra.gender,
+            address: extra.address,
             kyc: 'Pending'
-            // Note: We skip 'mobile' because it's the unique ID and already set.
         };
 
         // Remove any undefined fields
@@ -1389,16 +1440,23 @@ window.DB = {
             return { success: false, error: userUpdateRes.error, stage: 'profile_update' };
         }
 
+        const updatedUser = Array.isArray(userUpdateRes.data) ? userUpdateRes.data[0] : null;
+        const currentUser = this.getCurrentUser();
+        if (updatedUser && currentUser && String(currentUser.id) === String(userId)) {
+            localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify({ ...currentUser, ...updatedUser }));
+        }
+
         // 3. Prepare KYC Submission Record
         const kycPayload = {
             user_id: userId,
             id_type: extra.id_type || 'Aadhar',
-            id_front_url: urls.id_front_url,
-            id_back_url: urls.id_back_url,
-            selfie_url: urls.selfie_url || null,
             status: 'Pending',
             submitted_at: new Date().toISOString()
         };
+
+        if (urls.id_front_url) kycPayload.id_front_url = urls.id_front_url;
+        if (urls.id_back_url) kycPayload.id_back_url = urls.id_back_url;
+        if (urls.selfie_url) kycPayload.selfie_url = urls.selfie_url;
 
         // Remove any undefined fields
         Object.keys(kycPayload).forEach(key => kycPayload[key] === undefined && delete kycPayload[key]);
