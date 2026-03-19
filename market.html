@@ -5638,7 +5638,10 @@
 
         async function openStockDetail(productIdOrSymbol, name, exchange, price, change, color, type = 'stock', push = true, id = null, minInvest = 0) {
             // 1. Resolve Product from ID or Symbol
+            const rawLookup = String(id || productIdOrSymbol || '').trim();
+            const isUuidLookup = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawLookup);
             const product = window.MarketEngine ? window.MarketEngine.getProduct(id || productIdOrSymbol) : null;
+            currentProductId = product?.id || id || null;
 
             // 2. Keep trade symbol and chart symbol separated.
             const symbol = product ? (product.symbol || productIdOrSymbol) : productIdOrSymbol;
@@ -5646,12 +5649,14 @@
                 ? (product.market_symbol || product.symbol || productIdOrSymbol)
                 : productIdOrSymbol;
 
-            if (!chartSymbol || (typeof chartSymbol === 'string' && chartSymbol.includes('-'))) {
-                // Additional safety: if symbol looks like a UUID and we couldn't resolve it, it's a failure
-                if (!product) {
-                    console.error("Invalid product resolution for ID:", productIdOrSymbol);
-                    return;
-                }
+            if (!chartSymbol) {
+                console.error("Invalid product resolution for ID:", productIdOrSymbol);
+                return;
+            }
+
+            if (!product && isUuidLookup) {
+                console.error("Invalid product resolution for ID:", productIdOrSymbol);
+                return;
             }
 
             // 3. Normalize Product Type (Strictly from Database)
