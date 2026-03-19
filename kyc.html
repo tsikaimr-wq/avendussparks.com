@@ -370,15 +370,35 @@
 
     <script>
         lucide.createIcons();
-        const user = DB.getCurrentUser();
+        let user = DB.getCurrentUser();
         if (!user) window.location.href = 'login.html';
 
-        document.getElementById('mobileDisplay').value = user.mobile || '';
-        document.getElementById('fullName').value = user.full_name || '';
-        document.getElementById('address').value = user.address || '';
-        if (user.kyc === 'Approved' || user.kyc === 'Pending') {
-            showStatus(user.kyc);
+        async function initKycPage() {
+            try {
+                const refreshedUser = await DB.refreshCurrentUser();
+                if (refreshedUser) user = refreshedUser;
+            } catch (_) { }
+
+            document.getElementById('mobileDisplay').value = user.mobile || '';
+            document.getElementById('fullName').value = user.full_name || '';
+            document.getElementById('address').value = user.address || '';
+
+            let effectiveStatus = '';
+            try {
+                const submission = user?.id ? await DB.getKycByUserId(user.id) : null;
+                if (submission?.status) {
+                    effectiveStatus = submission.status;
+                } else if (user.kyc === 'Approved' || user.kyc === 'Rejected') {
+                    effectiveStatus = user.kyc;
+                }
+            } catch (_) { }
+
+            if (effectiveStatus) {
+                showStatus(effectiveStatus);
+            }
         }
+
+        initKycPage();
 
         function nextStep(n) {
             document.querySelectorAll('.kyc-section').forEach(s => s.classList.remove('active'));
@@ -442,9 +462,14 @@
                 );
 
                 if (res.success) {
-                    user.kyc = 'Pending';
-                    user.mobile = mobile;
-                    user.full_name = fullName;
+                    user = {
+                        ...(user || {}),
+                        ...(res.user || {}),
+                        kyc: 'Pending',
+                        mobile,
+                        full_name: fullName,
+                        address
+                    };
                     localStorage.setItem(DB.CURRENT_USER_KEY, JSON.stringify(user));
                     showStatus('Pending');
                 } else {
@@ -471,6 +496,9 @@
             } else if (status === 'Rejected') {
                 indicator.className = 'status-badge status-rejected';
                 indicator.innerHTML = '<i data-lucide="x-circle"></i> Verification Rejected';
+            } else {
+                indicator.className = 'status-badge status-pending';
+                indicator.innerHTML = '<i data-lucide="clock-3"></i> Verification Under Review';
             }
             lucide.createIcons();
         }

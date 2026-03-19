@@ -7,13 +7,31 @@ console.log("⚠️ ROOT db.js EXECUTION START - Potential Conflict?");
 const SUPABASE_URL = "https://xizuwvmepfcfodwfwqce.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_gj30etPyQjlvfH062VUeSw_F83Eii85";
 
+window.APP_CURRENCY_CODE = 'INR';
+window.APP_CURRENCY_SYMBOL = '\u20B9';
+window.APP_CURRENCY_LOCALE = 'en-IN';
+window.formatAppCurrency = window.formatAppCurrency || function formatAppCurrency(value, digits = 2, fallback = '-') {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return fallback;
+    const sign = amount < 0 ? '-' : '';
+    return `${sign}${window.APP_CURRENCY_SYMBOL}${Math.abs(amount).toLocaleString(window.APP_CURRENCY_LOCALE, {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+    })}`;
+};
+
 window.DB = {
     // Local Storage Keys
     CURRENT_USER_KEY: 'avendus_current_user',
+    PENDING_REGISTRATION_KEY: 'avendus_pending_registration',
+    USER_PROFILE_SELECT_FIELDS: 'id, mobile, email, username, auth_id, kyc, credit_score, vip, balance, invested, frozen, outstanding, full_name, id_number, address, dob, gender, withdrawal_pin, loan_enabled, created_at, csr_id, invitation_code',
 
     // --- SUPABASE CONFIGURATION ---
     SUPABASE_URL: SUPABASE_URL,
     SUPABASE_KEY: SUPABASE_ANON_KEY,
+    APP_CURRENCY_CODE: window.APP_CURRENCY_CODE,
+    APP_CURRENCY_SYMBOL: window.APP_CURRENCY_SYMBOL,
+    APP_CURRENCY_LOCALE: window.APP_CURRENCY_LOCALE,
     client: null,
     marketPriceCache: {},
     marketPriceFailUntil: {},
@@ -30,6 +48,9 @@ window.DB = {
         ZOMATO: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
         ZOMATONS: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
         ZOMATOLIMITED: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
+    },
+    formatCurrency(value, digits = 2, fallback = '-') {
+        return window.formatAppCurrency(value, digits, fallback);
     },
 
     getClient() {
@@ -810,7 +831,7 @@ window.DB = {
             frozen: 0,
             invested: 0,
             outstanding: 0,
-            kyc: 'Pending'
+            kyc: 'NotSubmitted'
         };
 
         if (mobile && !normalizedMobile) {
@@ -849,6 +870,7 @@ window.DB = {
                 if (!existingByAuth.password) patch.password = password;
                 if (!existingByAuth.csr_id) patch.csr_id = invitationCheck.csr.id;
                 if (!existingByAuth.invitation_code) patch.invitation_code = invitationCheck.normalizedCode;
+                if (!existingByAuth.kyc) patch.kyc = 'NotSubmitted';
 
                 let finalUser = existingByAuth;
                 if (Object.keys(patch).length > 0) {
@@ -1040,6 +1062,214 @@ window.DB = {
         return user ? JSON.parse(user) : null;
     },
 
+    getPendingRegistrationData() {
+        try {
+            const raw = localStorage.getItem(this.PENDING_REGISTRATION_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (error) {
+            console.warn("DB: Failed to parse pending registration data:", error);
+            return null;
+        }
+    },
+
+    getUserProfileIdentity(profile = {}) {
+        const currentUser = this.getCurrentUser() || {};
+        const pending = this.getPendingRegistrationData() || {};
+        const mobileRaw = profile.mobile ?? currentUser.mobile ?? pending.mobile ?? '';
+        const fullName = String(profile.full_name ?? profile.fullName ?? profile.name ?? currentUser.full_name ?? pending.name ?? '').trim();
+
+        return {
+            currentUser,
+            pending,
+            userId: profile.userId ?? profile.user_id ?? profile.id ?? currentUser.id ?? pending.userId ?? null,
+            authId: String(profile.auth_id ?? profile.authId ?? currentUser.auth_id ?? pending.authId ?? '').trim(),
+            email: String(profile.email ?? currentUser.email ?? pending.email ?? '').trim().toLowerCase(),
+            mobileRaw: String(mobileRaw || '').trim(),
+            mobile: this.normalizeMobile(mobileRaw),
+            fullName,
+            username: String(profile.username ?? currentUser.username ?? pending.username ?? fullName ?? '').trim(),
+            invitationCode: this.normalizeInvitationCode(profile.invitation_code ?? profile.inviteCode ?? currentUser.invitation_code ?? pending.inviteCode ?? ''),
+            password: String(profile.password ?? pending.password ?? currentUser.password ?? '').trim(),
+            dob: profile.dob ?? currentUser.dob ?? pending.dob,
+            gender: profile.gender ?? currentUser.gender ?? pending.gender,
+            address: profile.address ?? currentUser.address ?? pending.address,
+            idNumber: String(profile.id_number ?? profile.idNumber ?? currentUser.id_number ?? pending.idNumber ?? '').trim(),
+            csrId: profile.csr_id ?? currentUser.csr_id ?? pending.csrId ?? null
+        };
+    },
+
+    doesUserMatchIdentity(user, identity = {}) {
+        if (!user) return false;
+
+        const authMatch = identity.authId && String(user.auth_id || '').trim() === identity.authId;
+        const emailMatch = identity.email && String(user.email || '').trim().toLowerCase() === identity.email;
+        const mobileMatch = identity.mobile && this.normalizeMobile(user.mobile) === identity.mobile;
+        const hasStrongIdentity = Boolean(identity.authId || identity.email || identity.mobile);
+
+        return hasStrongIdentity ? (authMatch || emailMatch || mobileMatch) : true;
+    },
+
+    async findUserProfileByIdentity(identity = {}) {
+        const client = this.getClient();
+        if (!client) return null;
+
+        const selectFields = this.USER_PROFILE_SELECT_FIELDS;
+        const readSingle = async (query, arrayMode = false) => {
+            const { data, error } = await query;
+            if (error) return null;
+            if (arrayMode) return Array.isArray(data) ? (data[0] || null) : null;
+            return data || null;
+        };
+
+        const hasStrongIdentity = Boolean(identity.authId || identity.email || identity.mobile);
+        const idCandidates = [];
+        const pushId = (value) => {
+            if (value === null || value === undefined || value === '') return;
+            if (!idCandidates.includes(value)) idCandidates.push(value);
+        };
+
+        pushId(identity.userId);
+        pushId(identity.currentUser?.id);
+        pushId(identity.pending?.userId);
+
+        for (const candidateId of idCandidates) {
+            const row = await readSingle(
+                client.from('users').select(selectFields).eq('id', candidateId).maybeSingle()
+            );
+            if (!row) continue;
+            if (!hasStrongIdentity || this.doesUserMatchIdentity(row, identity)) {
+                return row;
+            }
+        }
+
+        if (identity.authId) {
+            const row = await readSingle(
+                client.from('users').select(selectFields).eq('auth_id', identity.authId).maybeSingle()
+            );
+            if (row) return row;
+        }
+
+        if (identity.email) {
+            const row = await readSingle(
+                client.from('users').select(selectFields).eq('email', identity.email).maybeSingle()
+            );
+            if (row) return row;
+        }
+
+        const mobileCandidates = this.buildMobileCandidates(identity.mobileRaw || identity.mobile);
+        if (mobileCandidates.length > 0) {
+            const row = await readSingle(
+                client.from('users').select(selectFields).in('mobile', mobileCandidates).limit(1),
+                true
+            );
+            if (row) return row;
+        }
+
+        return null;
+    },
+
+    async resolveUserProfileForKyc(userId, profile = {}) {
+        const client = this.getClient();
+        if (!client) return { success: false, message: 'Database connecting...' };
+
+        const identity = this.getUserProfileIdentity({ ...profile, userId });
+        let user = await this.findUserProfileByIdentity(identity);
+
+        const resolveInvitation = async () => {
+            if (!identity.invitationCode) return null;
+            const invitationCheck = await this.validateInvitationCode(identity.invitationCode);
+            return invitationCheck.success && invitationCheck.csr ? invitationCheck : null;
+        };
+
+        if (user) {
+            const patch = {};
+            const currentMobile = this.normalizeMobile(user.mobile);
+            const currentEmail = String(user.email || '').trim().toLowerCase();
+            const currentAuthId = String(user.auth_id || '').trim();
+
+            if (identity.authId && identity.authId !== currentAuthId) patch.auth_id = identity.authId;
+            if (identity.email && identity.email !== currentEmail) patch.email = identity.email;
+            if (identity.mobile && identity.mobile !== currentMobile) patch.mobile = identity.mobile;
+            if (identity.fullName && !String(user.full_name || '').trim()) patch.full_name = identity.fullName;
+            if (identity.username && !String(user.username || '').trim()) patch.username = identity.username;
+            if (identity.idNumber && !String(user.id_number || '').trim()) patch.id_number = identity.idNumber;
+            if (identity.dob && !user.dob) patch.dob = identity.dob;
+            if (identity.gender && !user.gender) patch.gender = identity.gender;
+            if (identity.address && !String(user.address || '').trim()) patch.address = identity.address;
+            if (!String(user.kyc || '').trim()) patch.kyc = 'Pending';
+
+            if (!user.csr_id || !user.invitation_code) {
+                const invitationCheck = await resolveInvitation();
+                if (invitationCheck?.csr) {
+                    if (!user.csr_id) patch.csr_id = invitationCheck.csr.id;
+                    if (!user.invitation_code) patch.invitation_code = invitationCheck.normalizedCode;
+                } else {
+                    if (!user.csr_id && identity.csrId) patch.csr_id = identity.csrId;
+                    if (!user.invitation_code && identity.invitationCode) patch.invitation_code = identity.invitationCode;
+                }
+            }
+
+            if (Object.keys(patch).length > 0) {
+                const { data, error } = await client
+                    .from('users')
+                    .update(patch)
+                    .eq('id', user.id)
+                    .select(this.USER_PROFILE_SELECT_FIELDS)
+                    .single();
+
+                if (error) {
+                    console.error("KYC PIPELINE: Failed to sync user profile before KYC:", error);
+                    return { success: false, message: error.message, error, stage: 'resolve_user_profile' };
+                }
+
+                user = data || user;
+            }
+
+            return { success: true, user, userId: user.id, created: false };
+        }
+
+        const invitationCheck = await resolveInvitation();
+        const insertData = {
+            password: identity.password || 'OTP_AUTH_PENDING',
+            balance: 0,
+            frozen: 0,
+            invested: 0,
+            outstanding: 0,
+            kyc: 'Pending'
+        };
+
+        if (identity.mobile) insertData.mobile = identity.mobile;
+        if (identity.email) insertData.email = identity.email;
+        if (identity.authId) insertData.auth_id = identity.authId;
+        if (identity.fullName) insertData.full_name = identity.fullName;
+        if (identity.username) insertData.username = identity.username;
+        if (identity.idNumber) insertData.id_number = identity.idNumber;
+        if (identity.dob) insertData.dob = identity.dob;
+        if (identity.gender) insertData.gender = identity.gender;
+        if (identity.address) insertData.address = identity.address;
+
+        if (invitationCheck?.csr) {
+            insertData.csr_id = invitationCheck.csr.id;
+            insertData.invitation_code = invitationCheck.normalizedCode;
+        } else {
+            if (identity.csrId) insertData.csr_id = identity.csrId;
+            if (identity.invitationCode) insertData.invitation_code = identity.invitationCode;
+        }
+
+        const { data, error } = await client
+            .from('users')
+            .insert([insertData])
+            .select(this.USER_PROFILE_SELECT_FIELDS)
+            .single();
+
+        if (error) {
+            console.error("KYC PIPELINE: Failed to create missing user profile:", error);
+            return { success: false, message: error.message, error, stage: 'create_user_profile' };
+        }
+
+        return { success: true, user: data, userId: data?.id, created: true };
+    },
+
     async refreshCurrentUser() {
         const user = this.getCurrentUser();
         if (!user) return null;
@@ -1047,13 +1277,9 @@ window.DB = {
         const client = this.getClient();
         if (!client) return user;
 
-        const { data, error } = await client
-            .from('users')
-            .select('id, mobile, email, username, auth_id, kyc, credit_score, vip, balance, invested, frozen, outstanding, full_name, id_number, address, dob, gender, withdrawal_pin, loan_enabled, created_at, csr_id, invitation_code')
-            .eq('id', user.id)
-            .single();
+        const data = await this.findUserProfileByIdentity(this.getUserProfileIdentity(user));
 
-        if (data && !error) {
+        if (data) {
             localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify(data));
             return data;
         }
@@ -1393,6 +1619,32 @@ window.DB = {
         const normalizedMobile = mobileDigits ? (mobileDigits.length > 10 ? mobileDigits.slice(-10) : mobileDigits) : String(mobile || '').trim();
         const normalizedIdNumber = String(idNumber || '').trim();
 
+        const resolvedProfile = await this.resolveUserProfileForKyc(userId, {
+            full_name: normalizedFullName,
+            mobile: normalizedMobile,
+            id_number: normalizedIdNumber,
+            dob: extra.dob,
+            email: extra.email,
+            auth_id: extra.auth_id,
+            username: extra.username || normalizedFullName,
+            gender: extra.gender,
+            address: extra.address,
+            invitation_code: extra.invitation_code,
+            inviteCode: extra.inviteCode,
+            csr_id: extra.csr_id,
+            password: extra.password
+        });
+
+        if (!resolvedProfile.success || !resolvedProfile.userId) {
+            return {
+                success: false,
+                error: resolvedProfile.error || resolvedProfile.message || 'Failed to resolve user profile.',
+                stage: resolvedProfile.stage || 'resolve_user_profile'
+            };
+        }
+
+        const resolvedUserId = resolvedProfile.userId;
+
         // 1. Process files (upload if they are File objects)
         const uploads = [
             { file: idFront, key: 'id_front_url' },
@@ -1406,7 +1658,7 @@ window.DB = {
                 if (typeof up.file === 'string' && /^(https?:|data:|blob:)/i.test(up.file)) {
                     urls[up.key] = up.file;
                 } else if (up.file instanceof File || (typeof up.file === 'object' && up.file.name)) {
-                    const res = await this.uploadKycImage(up.file, userId);
+                    const res = await this.uploadKycImage(up.file, resolvedUserId);
                     if (res.error) {
                         console.error(`KYC PIPELINE: Upload Failed for ${up.key}:`, res.error);
                         return { success: false, error: res.error, stage: `upload_${up.key}` };
@@ -1434,21 +1686,22 @@ window.DB = {
         // Remove any undefined fields
         Object.keys(userPayload).forEach(key => userPayload[key] === undefined && delete userPayload[key]);
 
-        const userUpdateRes = await this.updateUser(userId, userPayload);
+        const userUpdateRes = await this.updateUser(resolvedUserId, userPayload);
         if (!userUpdateRes.success) {
             console.error("KYC PIPELINE: Profile Update Failed:", userUpdateRes.error);
             return { success: false, error: userUpdateRes.error, stage: 'profile_update' };
         }
 
-        const updatedUser = Array.isArray(userUpdateRes.data) ? userUpdateRes.data[0] : null;
-        const currentUser = this.getCurrentUser();
-        if (updatedUser && currentUser && String(currentUser.id) === String(userId)) {
-            localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify({ ...currentUser, ...updatedUser }));
+        const updatedUser = Array.isArray(userUpdateRes.data) ? userUpdateRes.data[0] : (userUpdateRes.data || null);
+        const mergedUser = { ...(resolvedProfile.user || {}), ...(updatedUser || {}) };
+        if (mergedUser && mergedUser.id) {
+            const currentUser = this.getCurrentUser() || {};
+            localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify({ ...currentUser, ...mergedUser }));
         }
 
         // 3. Prepare KYC Submission Record
         const kycPayload = {
-            user_id: userId,
+            user_id: resolvedUserId,
             id_type: extra.id_type || 'Aadhar',
             status: 'Pending',
             submitted_at: new Date().toISOString()
@@ -1464,7 +1717,7 @@ window.DB = {
         const { data: existing } = await client
             .from('kyc_submissions')
             .select('id')
-            .eq('user_id', userId)
+            .eq('user_id', resolvedUserId)
             .limit(1);
 
         let res;
@@ -1472,7 +1725,7 @@ window.DB = {
             res = await client
                 .from('kyc_submissions')
                 .update(kycPayload)
-                .eq('user_id', userId);
+                .eq('user_id', resolvedUserId);
         } else {
             res = await client
                 .from('kyc_submissions')
@@ -1482,6 +1735,8 @@ window.DB = {
         return {
             success: !res.error,
             error: res.error,
+            user: mergedUser,
+            userId: resolvedUserId,
             profileUpdate: userUpdateRes,
             kycInsert: res,
             stage: 'kyc_submission'

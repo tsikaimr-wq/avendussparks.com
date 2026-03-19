@@ -761,6 +761,11 @@
             color: #991b1b;
         }
 
+        .kyc-badge.not-submitted {
+            background: #e2e8f0;
+            color: #475569;
+        }
+
         .kyc-image-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -3688,8 +3693,15 @@
             };
         }
 
+        function formatTradeCurrencyLocked(value) {
+            if (typeof window.formatAppCurrency === 'function') {
+                return window.formatAppCurrency(value);
+            }
+            return `${window.APP_CURRENCY_SYMBOL || '\u20B9'}${(parseFloat(value) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
         function formatTradeCurrency(value) {
-            return `₹${(parseFloat(value) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            return formatTradeCurrencyLocked(value);
         }
 
         function computeTradeFeeSummary(baseAmount) {
@@ -3739,8 +3751,8 @@
             const metrics = getTradeFinancials(trade);
             return `
                 <div style="font-weight:700;">${metrics.requestedQty || 0}</div>
-                <div style="font-size:0.65rem; color:#64748b;">Value: ${formatTradeCurrency(metrics.baseAmount)}</div>
-                <div style="font-size:0.65rem; color:#94a3b8;">Fees: ${formatTradeCurrency(metrics.totalFees)}</div>
+                <div style="font-size:0.65rem; color:#64748b;">Value: ${formatTradeCurrencyLocked(metrics.baseAmount)}</div>
+                <div style="font-size:0.65rem; color:#94a3b8;">Fees: ${formatTradeCurrencyLocked(metrics.totalFees)}</div>
             `;
         }
 
@@ -3749,7 +3761,7 @@
             if (!(metrics.approvedQty > 0)) return '-';
             return `
                 <div style="font-weight:700; color:#10b981;">${metrics.approvedQty}</div>
-                <div style="font-size:0.65rem; color:#64748b;">Value: ${formatTradeCurrency(metrics.baseAmount)}</div>
+                <div style="font-size:0.65rem; color:#64748b;">Value: ${formatTradeCurrencyLocked(metrics.baseAmount)}</div>
             `;
         }
 
@@ -3789,22 +3801,22 @@
                 if (reqQtyGroup) reqQtyGroup.style.display = 'flex';
                 if (reqAmtGroup) {
                     reqAmtGroup.style.display = shouldShowFinancials ? 'flex' : 'none';
-                    document.getElementById('otm_req_amt').innerText = formatTradeCurrency(financials.baseAmount);
+                    document.getElementById('otm_req_amt').innerText = formatTradeCurrencyLocked(financials.baseAmount);
                 }
                 if (feeGroup) {
                     feeGroup.style.display = shouldShowFinancials ? 'flex' : 'none';
-                    document.getElementById('otm_fee_total').innerText = formatTradeCurrency(financials.totalFees);
+                    document.getElementById('otm_fee_total').innerText = formatTradeCurrencyLocked(financials.totalFees);
                 }
                 if (feeBreakdownGroup) {
                     feeBreakdownGroup.style.display = shouldShowFinancials ? 'flex' : 'none';
-                    document.getElementById('otm_fee_breakdown').innerText = `Tax ${formatTradeCurrency(financials.taxAmount)} + Txn ${formatTradeCurrency(financials.txnCharge)}`;
+                    document.getElementById('otm_fee_breakdown').innerText = `Tax ${formatTradeCurrencyLocked(financials.taxAmount)} + Txn ${formatTradeCurrencyLocked(financials.txnCharge)}`;
                 }
                 if (totalGroup) {
                     totalGroup.style.display = shouldShowFinancials ? 'flex' : 'none';
-                    document.getElementById('otm_total_debit').innerText = formatTradeCurrency(financials.totalDebit);
+                    document.getElementById('otm_total_debit').innerText = formatTradeCurrencyLocked(financials.totalDebit);
                 }
 
-                document.getElementById('otm_user_balance').innerText = formatTradeCurrency(trade.users.balance || 0);
+                document.getElementById('otm_user_balance').innerText = formatTradeCurrencyLocked(trade.users.balance || 0);
                 document.getElementById('otm_approved_qty').value = trade.requested_quantity || trade.quantity || 1;
 
                 // Fetch Available Shares
@@ -4143,7 +4155,8 @@
             }
 
             // Render Dashboard Stats
-            const pendingKycCount = allUsers.filter(x => x.kyc === 'Pending').length;
+            const kycRows = Array.isArray(kyc) ? kyc : [];
+            const pendingKycCount = allUsers.filter(x => deriveKycStatus(x, getLatestUserKycSubmissionFromList(kycRows, x.id)) === 'Pending').length;
             const pendingTradesCount = tradesData.filter(t => isPendingTradeStatus(t.status)).length;
 
             const s = stats; // Short alias
@@ -4648,6 +4661,29 @@
             renderKycList();
         }
 
+        function getLatestUserKycSubmissionFromList(submissions, userId) {
+            const matches = (Array.isArray(submissions) ? submissions : [])
+                .filter(s => String(s.user_id) === String(userId))
+                .sort((a, b) => new Date(b.submitted_at || b.created_at || 0) - new Date(a.submitted_at || a.created_at || 0));
+            return matches[0] || null;
+        }
+
+        function getLatestUserKycSubmission(userId) {
+            return getLatestUserKycSubmissionFromList(allSubmissions, userId);
+        }
+
+        function deriveKycStatus(user, submission) {
+            const submissionStatus = String(submission?.status || '').trim();
+            if (submissionStatus) return submissionStatus;
+
+            const userStatus = String(user?.kyc || '').trim();
+            if (userStatus === 'Approved' || userStatus === 'Rejected') {
+                return userStatus;
+            }
+
+            return 'NotSubmitted';
+        }
+
 
         function renderKycList() {
             const list = document.getElementById('kycList');
@@ -4659,16 +4695,16 @@
             const fs = document.getElementById('kf_sales')?.value.toLowerCase();
 
             let data = allUsers.filter(u => {
-                const sub = allSubmissions.find(s => s.user_id === u.id);
+                const sub = getLatestUserKycSubmission(u.id);
+                const effectiveStatus = deriveKycStatus(u, sub);
                 // Status Filter
                 if (kycStatusFilter !== 'all') {
-                    if (kycStatusFilter === 'NotSubmitted' && sub) return false;
-                    if (kycStatusFilter !== 'NotSubmitted' && u.kyc !== kycStatusFilter) return false;
+                    if (effectiveStatus !== kycStatusFilter) return false;
                 }
                 // String Search Filters
                 if (fu && !(u.username || '').toLowerCase().includes(fu)) return false;
                 if (fn && !(u.full_name || '').toLowerCase().includes(fn)) return false;
-                if (fp && !u.mobile.toLowerCase().includes(fp)) return false;
+                if (fp && !(u.mobile || '').toLowerCase().includes(fp)) return false;
 
                 // Salesperson Filter
                 if (fs) {
@@ -4687,12 +4723,19 @@
             });
 
             list.innerHTML = data.map(x => {
-                const userKyc = allSubmissions.find(k => k.user_id === x.id);
-                const effectiveStatus = userKyc?.status || x.kyc || 'Pending';
-                const statusClass = effectiveStatus === 'Approved' ? 'approved' : (effectiveStatus === 'Rejected' ? 'reject' : 'pending');
+                const userKyc = getLatestUserKycSubmission(x.id);
+                const effectiveStatus = deriveKycStatus(x, userKyc);
+                const statusClass = effectiveStatus === 'Approved'
+                    ? 'approved'
+                    : (effectiveStatus === 'Rejected' ? 'reject' : (effectiveStatus === 'Pending' ? 'pending' : 'not-submitted'));
                 // Status Map for i18n
-                const statusKey = `status_${String(effectiveStatus || 'pending').toLowerCase()}`;
-                const statusText = window.i18n(statusKey, effectiveStatus === 'Pending' ? 'Pending' : effectiveStatus);
+                const statusKey = effectiveStatus === 'NotSubmitted'
+                    ? 'status_not_submitted'
+                    : `status_${String(effectiveStatus || 'pending').toLowerCase()}`;
+                const statusText = window.i18n(
+                    statusKey,
+                    effectiveStatus === 'Pending' ? 'Pending' : (effectiveStatus === 'NotSubmitted' ? 'Not Submitted' : effectiveStatus)
+                );
 
                 let salesperson = '-';
                 if (x.csr_id) {
@@ -5664,6 +5707,7 @@
             targetKycUser = uid;
 
             if (user) {
+                const effectiveStatus = deriveKycStatus(user, kyc);
                 document.getElementById('ek_name').value = user.username || '';
                 document.getElementById('ek_fullname').value = user.full_name || '';
                 document.getElementById('ek_idnum').value = user.id_number || 'No ID set';
@@ -5673,7 +5717,7 @@
                 document.getElementById('ek_gender').value = user.gender || '';
                 document.getElementById('ek_idtype').value = kyc?.id_type || 'Aadhar';
                 document.getElementById('ek_address').value = user.address || '';
-                document.getElementById('ek_status').value = kyc?.status || user.kyc || 'Pending';
+                document.getElementById('ek_status').value = effectiveStatus === 'NotSubmitted' ? 'Pending' : effectiveStatus;
                 document.getElementById('ek_pin').value = user.withdrawal_pin || '';
                 document.getElementById('ek_notes').value = kyc?.rejection_reason || '';
             }
