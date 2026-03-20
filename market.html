@@ -5998,26 +5998,122 @@
                 return { time: ts, open: o, high: h, low: l, close: c };
             };
 
+            const getKlineFallbackWindows = () => {
+                const windows = [];
+                const pushWindow = (period, interval) => {
+                    const key = `${period}|${interval}`;
+                    if (!windows.some(win => `${win.period}|${win.interval}` === key)) {
+                        windows.push({ period, interval });
+                    }
+                };
+
+                pushWindow(desiredPeriod, desiredInterval);
+
+                if (desiredPeriod === '1d' && desiredInterval === '5m') {
+                    pushWindow('5d', '30m');
+                    pushWindow('1mo', '1d');
+                    pushWindow('3mo', '1d');
+                } else if (desiredPeriod === '5d' && desiredInterval === '30m') {
+                    pushWindow('1mo', '1d');
+                    pushWindow('3mo', '1d');
+                } else if (desiredPeriod === '1mo' && desiredInterval === '1d') {
+                    pushWindow('3mo', '1d');
+                    pushWindow('6mo', '1d');
+                } else {
+                    pushWindow('1mo', '1d');
+                    pushWindow('3mo', '1d');
+                }
+
+                return windows;
+            };
+
+            const trimFallbackRows = (rows) => {
+                const sorted = (Array.isArray(rows) ? rows : [])
+                    .filter(row => row && row.t && Number.isFinite(Number(row.c)))
+                    .sort((a, b) => new Date(a.t).getTime() - new Date(b.t).getTime());
+                if (!sorted.length) return [];
+
+                const maxPointsMap = {
+                    '1d|5m': 96,
+                    '5d|30m': 120,
+                    '1mo|1d': 90,
+                    '3mo|1d': 120,
+                    '6mo|1d': 140
+                };
+                const fallbackKey = `${desiredPeriod}|${desiredInterval}`;
+                const maxPoints = maxPointsMap[fallbackKey] || 120;
+                return sorted.slice(-maxPoints);
+            };
+
             const fetchKlineFromLocalApi = async (sym, name = '') => {
+                const requestWindows = getKlineFallbackWindows();
                 for (const base of marketApiBases()) {
-                    try {
-                        const baseUrl = String(base || '').replace(/\/$/, '');
-                        const isFnBase = /\/functions\/v1$/i.test(baseUrl);
-                        const url = isFnBase
-                            ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(desiredPeriod)}&interval=${encodeURIComponent(desiredInterval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`
-                            : `${baseUrl}/kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(desiredPeriod)}&interval=${encodeURIComponent(desiredInterval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`;
-                        const response = await fetch(url, {
-                            cache: 'no-store',
-                            headers: isFnBase ? edgeHeaders() : undefined
-                        });
-                        if (!response.ok) continue;
-                        const data = await response.json();
-                        if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
-                            return { payload: data, base: baseUrl };
-                        }
-                    } catch (_) { }
+                    for (const requestWindow of requestWindows) {
+                        try {
+                            const baseUrl = String(base || '').replace(/\/$/, '');
+                            const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                            const url = isFnBase
+                                ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(requestWindow.period)}&interval=${encodeURIComponent(requestWindow.interval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`
+                                : `${baseUrl}/kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(requestWindow.period)}&interval=${encodeURIComponent(requestWindow.interval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`;
+                            const response = await fetch(url, {
+                                cache: 'no-store',
+                                headers: isFnBase ? edgeHeaders() : undefined
+                            });
+                            if (!response.ok) continue;
+                            const data = await response.json();
+                            if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
+                                return { payload: data, base: baseUrl, requestWindow };
+                            }
+                        } catch (_) { }
+                    }
                 }
                 return null;
+            };
+
+            const buildRowsFromChartSnapshot = (chartResult) => {
+                const timestamps = Array.isArray(chartResult?.timestamp) ? chartResult.timestamp : [];
+                const quote = chartResult?.indicators?.quote?.[0] || {};
+                const opens = Array.isArray(quote.open) ? quote.open : [];
+                const highs = Array.isArray(quote.high) ? quote.high : [];
+                const lows = Array.isArray(quote.low) ? quote.low : [];
+                const closes = Array.isArray(quote.close) ? quote.close : [];
+                const volumes = Array.isArray(quote.volume) ? quote.volume : [];
+
+                const rows = [];
+                for (let i = 0; i < timestamps.length; i++) {
+                    const ts = Number(timestamps[i]);
+                    const close = toFiniteNumber(closes[i]);
+                    if (!Number.isFinite(ts) || close === null) continue;
+                    rows.push({
+                        t: new Date(ts * 1000).toISOString(),
+                        o: toFiniteNumber(opens[i]) ?? close,
+                        h: toFiniteNumber(highs[i]) ?? close,
+                        l: toFiniteNumber(lows[i]) ?? close,
+                        c: close,
+                        v: toFiniteNumber(volumes[i]) ?? 0
+                    });
+                }
+
+                return trimFallbackRows(rows);
+            };
+
+            const fetchHistoricalSnapshotFallback = async (rawSymbol, exchangeHint, fallbackProduct) => {
+                if (typeof fetchYahooChartSnapshot !== 'function') return null;
+                try {
+                    const snapshot = await fetchYahooChartSnapshot(rawSymbol, exchangeHint, fallbackProduct);
+                    if (!snapshot?.chartResult) return null;
+                    const rows = buildRowsFromChartSnapshot(snapshot.chartResult);
+                    if (!rows.length) return null;
+                    return {
+                        success: true,
+                        symbol: snapshot.yahooSymbol || rawSymbol,
+                        source: 'historical_snapshot_fallback',
+                        delayed: true,
+                        data: rows
+                    };
+                } catch (_) {
+                    return null;
+                }
             };
 
             const fetchQuoteFromLocalApi = async (sym, name = '') => {
@@ -6131,6 +6227,18 @@
                         ? quotePrice
                         : productPrice;
                     if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, quote?.symbol || usedSymbol);
+                }
+
+                if (!klinePayload) {
+                    const historicalFallback = await fetchHistoricalSnapshotFallback(
+                        options.originalSymbol || symbol,
+                        options.exchangeHint || baseProduct?.exchange || '',
+                        baseProduct
+                    );
+                    if (historicalFallback) {
+                        klinePayload = historicalFallback;
+                        usedSymbol = historicalFallback.symbol || usedSymbol;
+                    }
                 }
                 if (!klinePayload) throw new Error("No kline data from edge market API");
 
