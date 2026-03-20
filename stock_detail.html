@@ -303,6 +303,12 @@
                 <!-- Left Column: Chart -->
                 <div class="market-left-col">
                     <div class="main-index-view" style="padding: 0;">
+                        <div id="stockDetailMainTfGroup"
+                            style="display:flex; gap:10px; flex-wrap:wrap; padding:1rem 1rem 0;">
+                            <button class="mini-tf-btn active" onclick="updateChartInterval('H', this)">1H</button>
+                            <button class="mini-tf-btn" onclick="updateChartInterval('D', this)">1D</button>
+                            <button class="mini-tf-btn" onclick="updateChartInterval('M', this)">1M</button>
+                        </div>
                         <div class="chart-container-realtime"
                             style="height: 700px; margin-bottom: 0; border: none; border-radius: 16px; overflow: hidden;">
                             <div id="tradingview_widget" style="height:100%; width:100%;"></div>
@@ -453,10 +459,22 @@
         let currentPrice = 0;
         let currentBuyPrice = 0;
         let currentMarketPrice = 0;
-        let currentInterval = 'D';
+        let currentInterval = 'H';
         let currentProductId = null;
         let currentMinInvest = 0;
         let currentProductType = '';
+        const stockDetailChartIntervalMap = {
+            H: { period: '5d', interval: '60m' },
+            D: { period: '1mo', interval: '1d' },
+            M: { period: '1y', interval: '1mo' }
+        };
+
+        function updateChartInterval(interval, btn) {
+            currentInterval = interval;
+            document.querySelectorAll('#stockDetailMainTfGroup .mini-tf-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            if (currentActiveSymbol) loadWidget(currentActiveSymbol);
+        }
 
         async function syncBalance() {
             const user = window.DB.getCurrentUser();
@@ -945,6 +963,7 @@
             if (container) container.innerHTML = '';
 
             const raw = String(symbol || '').toUpperCase();
+            const intervalOptions = stockDetailChartIntervalMap[currentInterval] || stockDetailChartIntervalMap.H;
             const indexYahooMap = {
                 'NIFTY1!': '^NSEI',
                 'NSE:NIFTY': '^NSEI',
@@ -974,8 +993,8 @@
                     originalSymbol: symbol,
                     exchangeHint,
                     seriesType: isIndexLike ? 'line' : 'candlestick',
-                    period: '1d',
-                    interval: '5m',
+                    period: intervalOptions.period,
+                    interval: intervalOptions.interval,
                     allowTradingViewFallback: false
                 });
                 return;

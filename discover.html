@@ -2877,11 +2877,11 @@
                                         <!-- Chart Controls Row -->
                                         <div class="chart-controls-row"
                                             style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid #f1f5f9; margin-bottom: 10px;">
-                                            <div class="tf-group" style="display: flex; gap: 10px;">
+                                            <div class="tf-group" id="discoverMainTfGroup" style="display: flex; gap: 10px;">
                                                 <button class="mini-tf-btn active"
-                                                    onclick="updateChartInterval('D', this)">1D</button>
+                                                    onclick="updateChartInterval('H', this)">1H</button>
                                                 <button class="mini-tf-btn"
-                                                    onclick="updateChartInterval('W', this)">1W</button>
+                                                    onclick="updateChartInterval('D', this)">1D</button>
                                                 <button class="mini-tf-btn"
                                                     onclick="updateChartInterval('M', this)">1M</button>
                                             </div>
@@ -3083,11 +3083,11 @@
         <script type="text/javascript">
             let currentWidget = null;
             let currentActiveSymbol = 'NSE:NIFTY';
-            let currentInterval = 'D';
+            let currentInterval = 'H';
 
             function loadWidgetWithInterval(interval, btn) {
                 currentInterval = interval;
-                document.querySelectorAll('.mini-tf-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('#discoverMainTfGroup .mini-tf-btn').forEach(b => b.classList.remove('active'));
                 if (btn) btn.classList.add('active');
                 loadWidget(currentActiveSymbol);
             }
@@ -3144,9 +3144,9 @@
 
                 const raw = String(symbol || '').toUpperCase();
                 const majorChartIntervalMap = {
-                    D: { period: '1d', interval: '5m' },
-                    W: { period: '5d', interval: '30m' },
-                    M: { period: '1mo', interval: '1d' }
+                    H: { period: '5d', interval: '60m' },
+                    D: { period: '1mo', interval: '1d' },
+                    M: { period: '1y', interval: '1mo' }
                 };
                 const indexYahooMap = {
                     'NIFTY1!': '^NSEI',
@@ -3168,7 +3168,7 @@
                     'NIFSMCP100': '^NSESMCP100',
                     'NSE:NIFSMCP100': '^NSESMCP100'
                 };
-                const intervalOptions = majorChartIntervalMap[currentInterval] || majorChartIntervalMap.D;
+                const intervalOptions = majorChartIntervalMap[currentInterval] || majorChartIntervalMap.H;
                 const yahooSymbol = indexYahooMap[raw] || symbol;
                 const isIndexLike = !!indexYahooMap[raw];
                 const exchangeHint = raw.startsWith('BSE:') ? 'BSE' : (raw.startsWith('KRX:') ? 'KRX' : 'NSE');
@@ -3193,7 +3193,7 @@
 
             function updateChartInterval(interval, btn) {
                 currentInterval = interval;
-                document.querySelectorAll('.mini-tf-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('#discoverMainTfGroup .mini-tf-btn').forEach(b => b.classList.remove('active'));
                 if (btn) btn.classList.add('active');
                 loadWidget(currentActiveSymbol);
             }
@@ -3594,6 +3594,13 @@
                                 <span class="info-val-text">10,608,975</span>
                             </div>
                         </div>
+                    </div>
+
+                    <div class="timeframe-btns" id="discoverDetailTfGroup"
+                        style="display:flex; gap:0.8rem; flex-wrap:wrap; margin:1.25rem 0 1rem;">
+                        <button class="tf-btn active" onclick="updateDetailChartInterval('H', this)">1H</button>
+                        <button class="tf-btn" onclick="updateDetailChartInterval('D', this)">1D</button>
+                        <button class="tf-btn" onclick="updateDetailChartInterval('M', this)">1M</button>
                     </div>
 
                     <div class="chart-container-realtime" id="detChartContainer">
@@ -4690,6 +4697,13 @@
         let detailLiveTimer = null;
         let currentProductId = null;
         let currentMinInvest = 0;
+        let currentDetailChartInterval = 'H';
+        let currentDetailChartContext = null;
+        const detailChartIntervalMap = {
+            H: { period: '5d', interval: '60m' },
+            D: { period: '1mo', interval: '1d' },
+            M: { period: '1y', interval: '1mo' }
+        };
         window.livePriceIntervals = window.livePriceIntervals || {};
         let detailStatsRequestSeq = 0;
         let detailStatsSnapshot = null;
@@ -4719,6 +4733,9 @@
         function formatInrValue(value, digits = 2) {
             const num = toFiniteNumber(value);
             if (num === null) return '-';
+            if (typeof window.formatAppCurrency === 'function') {
+                return window.formatAppCurrency(num, digits);
+            }
             return `₹${num.toLocaleString('en-IN', {
                 minimumFractionDigits: digits,
                 maximumFractionDigits: digits
@@ -4856,6 +4873,33 @@
             ];
             labels.forEach(label => setDetailStatCell(label, '-'));
             setDetailCompanyInfo();
+        }
+
+        function syncDetailChartIntervalButtons() {
+            document.querySelectorAll('#discoverDetailTfGroup .tf-btn').forEach(btn => {
+                const isActive = btn.textContent.trim().toUpperCase() === `1${currentDetailChartInterval}`;
+                btn.classList.toggle('active', isActive);
+            });
+        }
+
+        async function loadCurrentDetailChart() {
+            if (!currentDetailChartContext || typeof loadYahooChart !== 'function') return;
+            const intervalOptions = detailChartIntervalMap[currentDetailChartInterval] || detailChartIntervalMap.H;
+            await loadYahooChart(currentDetailChartContext.yahooSymbol, 'tradingview_det', {
+                originalSymbol: currentDetailChartContext.originalSymbol,
+                exchangeHint: currentDetailChartContext.exchangeHint,
+                seriesType: currentDetailChartContext.seriesType,
+                period: intervalOptions.period,
+                interval: intervalOptions.interval,
+                allowTradingViewFallback: false
+            });
+        }
+
+        function updateDetailChartInterval(interval, btn) {
+            currentDetailChartInterval = interval;
+            document.querySelectorAll('#discoverDetailTfGroup .tf-btn').forEach(b => b.classList.remove('active'));
+            if (btn) btn.classList.add('active');
+            loadCurrentDetailChart();
         }
 
         function buildYahooSymbolCandidates(rawSymbol, exchangeHint = '') {
@@ -5835,11 +5879,14 @@
                 mode: 'lightweight',
             });
 
-            await loadYahooChart(toYahooSymbol(preferredMarketSymbol, detailExchange), 'tradingview_det', {
+            currentDetailChartContext = {
+                yahooSymbol: toYahooSymbol(preferredMarketSymbol, detailExchange),
                 originalSymbol: preferredMarketSymbol,
                 exchangeHint: detailExchange,
-                allowTradingViewFallback: false
-            });
+                seriesType: isIndexLike ? 'line' : 'candlestick'
+            };
+            syncDetailChartIntervalButtons();
+            await loadCurrentDetailChart();
 
             window.scrollTo(0, 0);
             renderDetailHoldings();
@@ -8487,7 +8534,7 @@
             const updateVal = (id, val) => {
                 const el = document.getElementById(id);
                 if (el) {
-                    if (typeof fitText === 'function') fitText(el, formatCurrency(val));
+                    if (typeof fitText === 'function') fitText(el, typeof window.formatAppCurrency === 'function' ? window.formatAppCurrency(val) : ((val < 0 ? '-' : '') + '₹' + Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })));
                     else el.textContent = (val < 0 ? '-' : '') + '₹' + Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
             };
@@ -8506,7 +8553,7 @@
             const updatePortfolioVal = (id, val) => {
                 const el = document.getElementById(id);
                 if (el) {
-                    if (typeof fitText === 'function') fitText(el, formatCurrency(val));
+                    if (typeof fitText === 'function') fitText(el, typeof window.formatAppCurrency === 'function' ? window.formatAppCurrency(val) : ((val < 0 ? '-' : '') + '₹' + Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })));
                     else el.textContent = (val < 0 ? '-' : '') + '₹' + Math.abs(val).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 }
             };
