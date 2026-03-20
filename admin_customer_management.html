@@ -5719,7 +5719,7 @@
                 document.getElementById('ek_address').value = user.address || '';
                 document.getElementById('ek_status').value = effectiveStatus === 'NotSubmitted' ? 'Pending' : effectiveStatus;
                 document.getElementById('ek_pin').value = user.withdrawal_pin || '';
-                document.getElementById('ek_notes').value = kyc?.rejection_reason || '';
+                document.getElementById('ek_notes').value = kyc?.admin_note || kyc?.rejection_reason || '';
             }
 
             setKycImagePreview('front', kyc?.id_front_url || '');
@@ -5782,7 +5782,7 @@
                         id_front_url: document.getElementById('ek_front_img').getAttribute('src') || '',
                         id_back_url: document.getElementById('ek_back_img').getAttribute('src') || '',
                         selfie_url: document.getElementById('ek_selfie_img').getAttribute('src') || '',
-                        rejection_reason: document.getElementById('ek_notes').value || null
+                        admin_note: document.getElementById('ek_notes').value || null
                     };
 
                     if (!kycUpdates.id_front_url || kycUpdates.id_front_url.includes('placeholder')) delete kycUpdates.id_front_url;

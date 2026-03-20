@@ -2958,7 +2958,7 @@
                 document.getElementById('ek_address').value = user.address || '';
                 document.getElementById('ek_status').value = kyc ? kyc.status : 'Pending';
                 document.getElementById('ek_pin').value = user.withdrawal_pin || '';
-                document.getElementById('ek_notes').value = kyc ? (kyc.rejection_reason || '') : '';
+                document.getElementById('ek_notes').value = kyc ? (kyc.admin_note || kyc.rejection_reason || '') : '';
             }
 
             if (kyc) {
@@ -3009,7 +3009,7 @@
                         id_front_url: document.getElementById('ek_front_img').getAttribute('src') || '',
                         id_back_url: document.getElementById('ek_back_img').getAttribute('src') || '',
                         selfie_url: document.getElementById('ek_selfie_img').getAttribute('src') || '',
-                        rejection_reason: document.getElementById('ek_notes').value || null
+                        admin_note: document.getElementById('ek_notes').value || null
                     };
 
                     // Clean URLs
