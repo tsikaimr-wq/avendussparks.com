@@ -83,6 +83,8 @@ const buildIndexLookup = () => {
 };
 
 const INDEX_ALIAS_LOOKUP = buildIndexLookup();
+const LAST_GOOD_INDEX_QUOTES = new Map();
+const LAST_GOOD_INDEX_TTL_MS = 12 * 60 * 60 * 1000;
 
 const json = async (url, init = undefined, retries = 1) => {
   for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -880,18 +882,63 @@ const fetchNseIndexQuote = async (indexSymbol) => {
   };
 };
 
+const isLowConfidenceIndexQuote = (quote) => {
+  const source = String(quote?.source || '').toLowerCase();
+  return quote?.delayed === true || source.includes('fallback') || source.includes('cache');
+};
+
+const rememberLiveIndexQuote = (indexSymbol, quote) => {
+  if (!indexSymbol || !quote || isLowConfidenceIndexQuote(quote)) return;
+  LAST_GOOD_INDEX_QUOTES.set(indexSymbol, {
+    ts: Date.now(),
+    quote: {
+      ...quote,
+      symbol: indexSymbol,
+    },
+  });
+};
+
+const getRememberedIndexQuote = (indexSymbol) => {
+  const cached = LAST_GOOD_INDEX_QUOTES.get(indexSymbol);
+  if (!cached) return null;
+  if ((Date.now() - cached.ts) > LAST_GOOD_INDEX_TTL_MS) {
+    LAST_GOOD_INDEX_QUOTES.delete(indexSymbol);
+    return null;
+  }
+
+  return {
+    ...cached.quote,
+    symbol: indexSymbol,
+    source: 'index_live_cache',
+    delayed: true,
+    cached: true,
+  };
+};
+
 const fetchIndexQuote = async ({ symbol, name }) => {
   const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
   if (!indexSymbol) return null;
 
   const yahooQuote = await fetchYahooQuote({ symbol: indexSymbol, indexOnly: true });
-  if (yahooQuote) return yahooQuote;
+  if (yahooQuote) {
+    rememberLiveIndexQuote(indexSymbol, yahooQuote);
+    return yahooQuote;
+  }
 
   const nseQuote = await fetchNseIndexQuote(indexSymbol);
-  if (nseQuote) return nseQuote;
+  if (nseQuote) {
+    rememberLiveIndexQuote(indexSymbol, nseQuote);
+    return nseQuote;
+  }
 
   const jinaQuote = await fetchYahooQuoteViaJina({ symbol: indexSymbol, indexOnly: true });
-  if (jinaQuote) return jinaQuote;
+  if (jinaQuote) {
+    rememberLiveIndexQuote(indexSymbol, jinaQuote);
+    return jinaQuote;
+  }
+
+  const rememberedQuote = getRememberedIndexQuote(indexSymbol);
+  if (rememberedQuote) return rememberedQuote;
 
   return getIndexFallbackQuote(indexSymbol);
 };

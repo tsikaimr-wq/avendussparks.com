@@ -89,7 +89,13 @@
                     price,
                     change,
                     prevClose,
-                    changePercent: prevClose > 0 ? (change / prevClose) * 100 : 0
+                    changePercent: prevClose > 0 ? (change / prevClose) * 100 : 0,
+                    hasMarketQuote: false,
+                    quoteSource: 'seed',
+                    quoteStatus: '',
+                    quoteStatusColor: '#94a3b8',
+                    delayed: true,
+                    updated_at: null
                 };
             });
             this.dbProducts = []; // Cache for database products (IPO)
@@ -142,6 +148,39 @@
             if (rawSymbol === 'VIX' || upper.includes('VIX')) return 'INDIA VIX';
 
             return rawName || rawSymbol || 'INDEX';
+        }
+
+        describeQuoteStatus(payload) {
+            if (!payload || payload.status === 'error') {
+                return { text: '', color: '#94a3b8', delayed: true };
+            }
+
+            const source = String(payload.source || '').toLowerCase();
+            if (payload.delayed || source.includes('fallback') || source.includes('cache')) {
+                return { text: '', color: '#f59e0b', delayed: true };
+            }
+
+            return { text: '', color: '#10b981', delayed: false };
+        }
+
+        isLowConfidenceIndexQuote(payload, status = null) {
+            const resolvedStatus = status || this.describeQuoteStatus(payload);
+            const source = String(payload?.source || '').toLowerCase();
+            return resolvedStatus.delayed === true || source.includes('fallback') || source.includes('cache');
+        }
+
+        shouldRejectIndexQuote(idx, payload, latestPrice, status = null) {
+            if (!idx || !payload) return false;
+
+            const resolvedStatus = status || this.describeQuoteStatus(payload);
+            if (!this.isLowConfidenceIndexQuote(payload, resolvedStatus)) return false;
+            if (!idx.hasMarketQuote || idx.delayed !== false) return false;
+
+            const currentPrice = Number(idx.price);
+            if (!Number.isFinite(currentPrice) || currentPrice <= 0) return false;
+
+            const deviation = Math.abs(latestPrice - currentPrice) / currentPrice;
+            return deviation > 0.03;
         }
 
         parseProfitPercent(raw) {
@@ -459,6 +498,7 @@
                     const data = await db.getMarketPrice(yahooSymbol);
                     const latestPrice = parseFloat(data?.price);
                     if (!Number.isFinite(latestPrice) || latestPrice <= 0) continue;
+                    const status = this.describeQuoteStatus(data);
 
                     const remotePrevClose = parseFloat(data?.previousClose ?? data?.prevClose);
                     const baselinePrevClose = Number.isFinite(remotePrevClose) && remotePrevClose > 0
@@ -470,6 +510,11 @@
                             console.warn(`Skipping abnormal index quote for ${idx.symbol}: ${latestPrice} vs prevClose ${baselinePrevClose}`);
                             continue;
                         }
+                    }
+
+                    if (this.shouldRejectIndexQuote(idx, data, latestPrice, status)) {
+                        console.warn(`Skipping low-confidence index quote for ${idx.symbol}: ${latestPrice} vs current ${idx.price}`);
+                        continue;
                     }
 
                     idx.price = latestPrice;
@@ -486,6 +531,12 @@
                     idx.changePercent = idx.prevClose > 0 ? (idx.change / idx.prevClose) * 100 : 0;
                     if (data?.name) idx.name = data.name;
                     idx.displayName = this.normalizeIndexDisplayName(data?.name || idx.name || idx.symbol, idx.symbol);
+                    idx.hasMarketQuote = true;
+                    idx.quoteSource = data?.source || 'market_api';
+                    idx.quoteStatus = status.text;
+                    idx.quoteStatusColor = status.color;
+                    idx.delayed = status.delayed;
+                    idx.updated_at = new Date().toISOString();
                 } catch (e) {
                     console.error(`Failed to sync index ${idx.symbol}:`, e);
                 }
