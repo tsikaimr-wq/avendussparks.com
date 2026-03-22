@@ -4803,7 +4803,7 @@
             return parseConfiguredProfitInfo(getConfiguredProfitRawValue(source));
         }
 
-        function parseListingGateDate(value) {
+        function parseDiscoverListingGateDate(value) {
             const raw = String(value || '').trim();
             if (!raw) return null;
             const dateOnly = raw.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
@@ -4814,8 +4814,8 @@
             return parsed;
         }
 
-        function hasListingStarted(value) {
-            const listingDate = parseListingGateDate(value);
+        function hasDiscoverListingStarted(value) {
+            const listingDate = parseDiscoverListingGateDate(value);
             if (!listingDate) return true;
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -4829,7 +4829,7 @@
             const listingDateRaw = trade?.products?.listing_date ?? trade?.listing_date ?? '';
             if (!listingDateRaw) return false;
 
-            return !hasListingStarted(listingDateRaw);
+            return !hasDiscoverListingStarted(listingDateRaw);
         }
 
         function getIpoEstimatedReturnMetrics(source) {
@@ -7831,9 +7831,9 @@
                                         <div style="font-size: 0.75rem; color: #94a3b8;">${date}  - Buy Price ₹${parseFloat(t.price).toLocaleString('en-IN')}</div>
                                         ${(() => {
                                     const pListingDate = t.products ? t.products.listing_date : null;
-                                    const isPreListing = pListingDate && !hasListingStarted(pListingDate);
+                                    const isPreListing = pListingDate && !hasDiscoverListingStarted(pListingDate);
                                     if (isPreListing) {
-                                        const listingGateDate = parseListingGateDate(pListingDate) || new Date(pListingDate);
+                                        const listingGateDate = parseDiscoverListingGateDate(pListingDate) || new Date(pListingDate);
                                         const lDateStr = listingGateDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
                                         return `<button class="h-btn close" style="margin-top: 0.5rem; padding: 4px 12px; height: auto; font-size: 0.70rem; background:#475569 !important; border-color:#475569 !important; cursor:not-allowed; opacity:0.8;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
                                     }
@@ -7978,7 +7978,7 @@
                     const primaryActionHtml = `<button class="premium-subscribe-btn transaction-action-btn" style="background:rgba(212, 175, 55, 0.1); color:#d4af37; border:1px solid #d4af37; pointer-events: auto !important; position: relative; z-index: 10;" onclick="openHoldingDetail('${item.id}')">View Details</button>`;
                     const secondaryActionHtml = (() => {
                         const pListingDate = item.products ? item.products.listing_date : null;
-                        const isPreListing = pListingDate && !hasListingStarted(pListingDate);
+                        const isPreListing = pListingDate && !hasDiscoverListingStarted(pListingDate);
                         if (isLocked) {
                             return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked until ${lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</button>`;
                         } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
@@ -7986,7 +7986,7 @@
                         } else if (item.sell_restriction_message) {
                             return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>${item.sell_restriction_label || 'Selling Restricted'}</button>`;
                         } else if (isPreListing) {
-                            const listingGateDate = parseListingGateDate(pListingDate) || new Date(pListingDate);
+                            const listingGateDate = parseDiscoverListingGateDate(pListingDate) || new Date(pListingDate);
                             const lDateStr = listingGateDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
                             return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
                         }
