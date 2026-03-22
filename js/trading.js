@@ -37,6 +37,25 @@ const normalizeTradeType = (value) => {
     return raw;
 };
 
+const parseListingGateDate = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    const dateOnly = raw.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+    const normalized = dateOnly ? `${dateOnly}T00:00:00` : raw;
+    const parsed = new Date(normalized);
+    if (Number.isNaN(parsed.getTime())) return null;
+    parsed.setHours(0, 0, 0, 0);
+    return parsed;
+};
+
+const hasListingStarted = (value) => {
+    const listingDate = parseListingGateDate(value);
+    if (!listingDate) return true;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return listingDate <= today;
+};
+
 const isMarketTrackedTrade = (trade) => ['stock', 'ins.stocks', 'otc', 'ipo'].includes(normalizeTradeType(trade?.type));
 
 const getTradeMarketSymbol = (trade) => String(
@@ -560,8 +579,8 @@ window.openCloseOrderModal = async function (tradeOrId) {
 
     // LISTING DATE GUARD (UI Layer)
     if (trade.products && trade.products.listing_date) {
-        const listingDate = new Date(trade.products.listing_date);
-        if (listingDate > new Date()) {
+        const listingDate = parseListingGateDate(trade.products.listing_date);
+        if (listingDate && !hasListingStarted(trade.products.listing_date)) {
             alert(`You cannot sell this asset before its official listing date (${listingDate.toLocaleDateString('en-IN')}).`);
             return;
         }
@@ -727,8 +746,8 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
             if (!prodErr && product) listingDateRaw = product.listing_date || null;
         }
         if (listingDateRaw) {
-            const listingDate = new Date(listingDateRaw);
-            if (listingDate > new Date()) {
+            const listingDate = parseListingGateDate(listingDateRaw);
+            if (listingDate && !hasListingStarted(listingDateRaw)) {
                 throw new Error(`You cannot sell this asset before its official listing date (${listingDate.toLocaleDateString('en-IN')}).`);
             }
         }

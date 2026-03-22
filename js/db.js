@@ -3393,6 +3393,130 @@ window.DB = {
             ]
         };
 
+        const parseTurboDate = (value) => {
+            const raw = String(value || '').trim();
+            if (!raw) return null;
+            const normalized = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? `${raw}T00:00:00` : raw;
+            const parsed = new Date(normalized);
+            if (Number.isNaN(parsed.getTime())) return null;
+            parsed.setHours(0, 0, 0, 0);
+            return parsed;
+        };
+
+        const normalizeTurboExchange = (value) => {
+            const upper = String(value || '').trim().toUpperCase();
+            if (!upper) return '';
+            if (upper.includes('NSE')) return 'NSE';
+            if (upper.includes('BSE')) return 'BSE';
+            return upper;
+        };
+
+        const normalizeTurboSymbol = (value) => String(value || '')
+            .trim()
+            .toUpperCase()
+            .replace(/^NSE:|^BSE:/, '')
+            .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+
+        const normalizeTurboItem = (row) => {
+            const exchange = normalizeTurboExchange(row?.exchange || row?.market);
+            const rawSymbol = row?.symbol || row?.market_symbol || '';
+            const symbol = normalizeTurboSymbol(rawSymbol);
+            const subscriptionPrice = Number(row?.subscription_price);
+            const livePrice = Number(row?.price);
+            const minInvest = Number(row?.min_invest ?? row?.minInvest ?? row?.minimum_investment);
+            const profitRaw = row?.est_profit_percent
+                ?? row?.est_profit
+                ?? row?.profit
+                ?? row?.estimated_profit
+                ?? row?.ipo_yield
+                ?? row?.yield
+                ?? '';
+
+            return {
+                ...row,
+                name: row?.name || row?.title || symbol || '',
+                symbol,
+                market_symbol: row?.market_symbol || rawSymbol || symbol,
+                exchange: exchange || 'NSE',
+                price: Number.isFinite(subscriptionPrice) && subscriptionPrice > 0
+                    ? subscriptionPrice
+                    : (Number.isFinite(livePrice) && livePrice > 0 ? livePrice : 0),
+                live_price: Number.isFinite(livePrice) && livePrice > 0 ? livePrice : null,
+                listing_date: row?.listing_date || '',
+                start_date: row?.start_date || '',
+                end_date: row?.end_date || '',
+                allotment_date: row?.allotment_date || row?.allocation_date || '',
+                description: row?.description || '',
+                min_invest: Number.isFinite(minInvest) && minInvest > 0 ? minInvest : 0,
+                est_profit_percent: profitRaw,
+                est_profit: profitRaw,
+                profit: profitRaw
+            };
+        };
+
+        const isTurboIpoCandidate = (row) => {
+            const explicitType = String(row?.product_type || row?.type || '').trim().toUpperCase();
+            if (explicitType) return explicitType === 'IPO';
+            return !!(row?.listing_date || row?.start_date || row?.end_date || row?.allotment_date || row?.allocation_date);
+        };
+
+        const ipoCutoff = new Date();
+        ipoCutoff.setHours(0, 0, 0, 0);
+        ipoCutoff.setDate(ipoCutoff.getDate() - 7);
+
+        const isCurrentTurboIpo = (row) => {
+            const dates = [
+                row?.start_date,
+                row?.end_date,
+                row?.allotment_date,
+                row?.allocation_date,
+                row?.listing_date
+            ]
+                .map(parseTurboDate)
+                .filter(Boolean);
+
+            if (!dates.length) return true;
+            return dates.some((date) => date >= ipoCutoff);
+        };
+
+        const sortTurboIpo = (left, right) => {
+            const getSortDate = (row) => (
+                parseTurboDate(row?.start_date)
+                || parseTurboDate(row?.end_date)
+                || parseTurboDate(row?.listing_date)
+                || parseTurboDate(row?.allotment_date)
+                || parseTurboDate(row?.allocation_date)
+            );
+            const leftDate = getSortDate(left);
+            const rightDate = getSortDate(right);
+            if (leftDate && rightDate) return leftDate - rightDate;
+            if (leftDate) return -1;
+            if (rightDate) return 1;
+            return String(left?.name || '').localeCompare(String(right?.name || ''));
+        };
+
+        if (type === 'IPO') {
+            try {
+                const activeIpos = await this.getActiveProductsByType('IPO');
+                const normalizedIpos = (activeIpos || [])
+                    .filter(isTurboIpoCandidate)
+                    .map(normalizeTurboItem)
+                    .filter(isCurrentTurboIpo)
+                    .sort(sortTurboIpo);
+
+                if (normalizedIpos.length > 0) {
+                    return normalizedIpos;
+                }
+            } catch (error) {
+                console.error('Failed to load IPO products from DB:', error);
+            }
+
+            return (data.IPO || [])
+                .map(normalizeTurboItem)
+                .filter(isCurrentTurboIpo)
+                .sort(sortTurboIpo);
+        }
+
         return data[type] || [];
     },
 

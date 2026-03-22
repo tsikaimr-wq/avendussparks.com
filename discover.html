@@ -16,7 +16,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="stocktv_config.js?v=1.0.2"></script>
-    <script src="db.js?v=20260317b"></script>
+    <script src="db.js?v=20260322a"></script>
     <script src="market_data.js?v=20260320a"></script>
     <style>
         /* Using global styles from styles.css */
@@ -4803,6 +4803,25 @@
             return parseConfiguredProfitInfo(getConfiguredProfitRawValue(source));
         }
 
+        function parseListingGateDate(value) {
+            const raw = String(value || '').trim();
+            if (!raw) return null;
+            const dateOnly = raw.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+            const normalized = dateOnly ? `${dateOnly}T00:00:00` : raw;
+            const parsed = new Date(normalized);
+            if (Number.isNaN(parsed.getTime())) return null;
+            parsed.setHours(0, 0, 0, 0);
+            return parsed;
+        }
+
+        function hasListingStarted(value) {
+            const listingDate = parseListingGateDate(value);
+            if (!listingDate) return true;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            return listingDate <= today;
+        }
+
         function isPreListingIpoTrade(trade) {
             const type = String(trade?.type || trade?.products?.type || '').trim().toLowerCase().replace(/_/g, '.');
             if (type !== 'ipo') return false;
@@ -4810,9 +4829,7 @@
             const listingDateRaw = trade?.products?.listing_date ?? trade?.listing_date ?? '';
             if (!listingDateRaw) return false;
 
-            const listingDate = new Date(listingDateRaw);
-            if (Number.isNaN(listingDate.getTime())) return false;
-            return listingDate > new Date();
+            return !hasListingStarted(listingDateRaw);
         }
 
         function getIpoEstimatedReturnMetrics(source) {
@@ -6656,19 +6673,33 @@
                         }
                     }
 
-                    const liveProfitPct = (isOTC && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
+                    const isPreListingIPO = isIPO ? isPreListingIpoTrade(s) : false;
+                    const isListedIPO = isIPO && !isPreListingIPO;
+                    const liveProfitPct = ((isOTC || isListedIPO) && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
                         ? ((marketPrice - subscriptionPrice) / subscriptionPrice) * 100
                         : null;
                     const ipoProfitInfo = getConfiguredProfitInfo(s);
                     const profitRange = isIPO
-                        ? ipoProfitInfo.text
+                        ? (isPreListingIPO
+                            ? ipoProfitInfo.text
+                            : (liveProfitPct !== null
+                                ? `${liveProfitPct >= 0 ? '+' : ''}${liveProfitPct.toFixed(2)}%`
+                                : '--'))
                         : (liveProfitPct !== null
                             ? `${liveProfitPct >= 0 ? '+' : ''}${liveProfitPct.toFixed(2)}%`
                             : "20% - 60%");
                     const profitColor = isIPO
-                        ? (ipoProfitInfo.hasValue ? (ipoProfitInfo.value >= 0 ? '#10b981' : '#ef4444') : '#94a3b8')
+                        ? (isPreListingIPO
+                            ? (ipoProfitInfo.hasValue ? (ipoProfitInfo.value >= 0 ? '#10b981' : '#ef4444') : '#94a3b8')
+                            : (liveProfitPct !== null ? (liveProfitPct >= 0 ? '#10b981' : '#ef4444') : '#94a3b8'))
                         : (liveProfitPct !== null ? (liveProfitPct >= 0 ? '#10b981' : '#ef4444') : '');
-                    const profitLabel = isIPO ? 'EST. Profit' : (isOTC ? 'Live Profit' : 'Est. Profit');
+                    const profitLabel = isIPO
+                        ? (isPreListingIPO ? 'EST. Profit' : 'Live Profit')
+                        : (isOTC ? 'Live Profit' : 'Est. Profit');
+                    const priceLabel = isListedIPO ? 'Market Price' : 'Subscription Price';
+                    const displayPrice = (isListedIPO && Number.isFinite(marketPrice) && marketPrice > 0)
+                        ? marketPrice
+                        : subscriptionPrice;
                     const vipLv = (isIPO && s.level) ? s.level : (isIPO ? "Lv &ge;2" : "Lv &ge;1");
                     const isLocked = false; // Allow all IPOs to be viewable for now as requested
                     const exchange = s.symbol.includes('NSE') ? 'NSE' : 'BSE';
@@ -6726,8 +6757,8 @@
                             </div>
                             <div class="premium-details-grid">
                                 <div class="premium-detail-item">
-                                    <span class="label">Subscription Price</span>
-                                    <span class="value">₹${subscriptionPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                    <span class="label">${priceLabel}</span>
+                                    <span class="value">₹${displayPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                                 </div>
                                 <div class="premium-detail-item">
                                     <span class="label">Level Limit</span>
@@ -6739,7 +6770,7 @@
                                 data-type="${s.type?.toUpperCase()}"
                                 data-name="${s.name}"
                                 data-price="${subscriptionPrice}"
-                                data-yield="${isIPO ? (ipoProfitInfo.hasValue ? ipoProfitInfo.value.toFixed(2) : 0) : (liveProfitPct !== null ? liveProfitPct.toFixed(2) : 0)}">
+                                data-yield="${isIPO ? (isPreListingIPO ? (ipoProfitInfo.hasValue ? ipoProfitInfo.value.toFixed(2) : 0) : (liveProfitPct !== null ? liveProfitPct.toFixed(2) : 0)) : (liveProfitPct !== null ? liveProfitPct.toFixed(2) : 0)}">
                                 ${isLocked ? 'Locked' : 'Subscribe'}
                             </button>
                         </div>
@@ -7800,9 +7831,10 @@
                                         <div style="font-size: 0.75rem; color: #94a3b8;">${date}  - Buy Price ₹${parseFloat(t.price).toLocaleString('en-IN')}</div>
                                         ${(() => {
                                     const pListingDate = t.products ? t.products.listing_date : null;
-                                    const isPreListing = pListingDate && new Date(pListingDate) > new Date();
+                                    const isPreListing = pListingDate && !hasListingStarted(pListingDate);
                                     if (isPreListing) {
-                                        const lDateStr = new Date(pListingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                                        const listingGateDate = parseListingGateDate(pListingDate) || new Date(pListingDate);
+                                        const lDateStr = listingGateDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
                                         return `<button class="h-btn close" style="margin-top: 0.5rem; padding: 4px 12px; height: auto; font-size: 0.70rem; background:#475569 !important; border-color:#475569 !important; cursor:not-allowed; opacity:0.8;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
                                     }
                                     if (t.sell_restriction_message) {
@@ -7946,7 +7978,7 @@
                     const primaryActionHtml = `<button class="premium-subscribe-btn transaction-action-btn" style="background:rgba(212, 175, 55, 0.1); color:#d4af37; border:1px solid #d4af37; pointer-events: auto !important; position: relative; z-index: 10;" onclick="openHoldingDetail('${item.id}')">View Details</button>`;
                     const secondaryActionHtml = (() => {
                         const pListingDate = item.products ? item.products.listing_date : null;
-                        const isPreListing = pListingDate && new Date(pListingDate) > new Date();
+                        const isPreListing = pListingDate && !hasListingStarted(pListingDate);
                         if (isLocked) {
                             return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked until ${lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</button>`;
                         } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
@@ -7954,7 +7986,8 @@
                         } else if (item.sell_restriction_message) {
                             return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>${item.sell_restriction_label || 'Selling Restricted'}</button>`;
                         } else if (isPreListing) {
-                            const lDateStr = new Date(pListingDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+                            const listingGateDate = parseListingGateDate(pListingDate) || new Date(pListingDate);
+                            const lDateStr = listingGateDate.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
                             return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked: Sell Available After Listing - ${lDateStr}</button>`;
                         }
                         return `<button class="premium-subscribe-btn transaction-action-btn close-order-btn" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid #ef4444;" data-id="${item.id}">Close Order</button>`;
@@ -10414,7 +10447,7 @@
             color: #fff;
         }
     </style>
-    <script src="js/trading.js?v=1.0.6"></script>
+    <script src="js/trading.js?v=1.0.7"></script>
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             if (typeof openStockDetailFromRoute === 'function' && openStockDetailFromRoute(false, { requireReady: true })) {
