@@ -214,15 +214,20 @@
         }
 
         getSymbolCandidates(sym) {
+            if (window.DB && typeof window.DB.getMarketApiSymbolCandidates === 'function') {
+                const resolved = window.DB.getMarketApiSymbolCandidates(sym);
+                if (Array.isArray(resolved) && resolved.length > 0) return resolved;
+            }
+
             const raw = String(sym || '').trim().toUpperCase();
             if (!raw) return [];
             const norm = this.normalizeSymbol(raw);
             const out = new Set([raw, norm]);
 
             if (raw.includes(':')) {
-                const suffix = raw.split(':')[0];
-                if (suffix === 'NSE') out.add(`${norm}.NS`);
-                if (suffix === 'BSE') out.add(`${norm}.BO`);
+                const prefix = raw.split(':')[0];
+                if (prefix === 'NSE') out.add(`${norm}.NS`);
+                if (prefix === 'BSE') out.add(`${norm}.BO`);
             } else {
                 out.add(`${norm}.NS`);
                 out.add(`${norm}.BO`);
@@ -251,6 +256,7 @@
         }
 
         async syncMarketCache() {
+            if (window.DISABLE_MARKET_DB === true) return;
             const client = window.supabaseClient || (window.DB && typeof window.DB.getClient === 'function' ? window.DB.getClient() : null);
             if (client && typeof client.from === 'function') {
                 try {
@@ -300,12 +306,20 @@
                         this.notifyListeners();
                     }
                 } catch (e) {
+                    if (window.DB && typeof window.DB.isMarketCacheSchemaMissing === 'function' && window.DB.isMarketCacheSchemaMissing(e)) {
+                        if (typeof window.DB.disableMarketCache === 'function') {
+                            window.DB.disableMarketCache(e.message);
+                        } else {
+                            window.DISABLE_MARKET_DB = true;
+                        }
+                        return;
+                    }
                     console.error("Failed to sync market cache: ", e);
                 }
             }
         }
 
-        async syncFromDB() {
+        async syncFromDBLegacy() {
             if (window.DB && window.DB.getActiveProductsByType) {
                 try {
                     // Fetch IPOs
@@ -405,6 +419,174 @@
             }
         }
 
+        async syncFromDB() {
+            let retries = 0;
+            const maxRetries = 20;
+
+            while (retries < maxRetries) {
+                if (window.DB && typeof window.DB.getActiveProductsByType === 'function') {
+                    try {
+                        const loadProductRows = async (type) => {
+                            let rows = [];
+                            try {
+                                rows = await window.DB.getActiveProductsByType(type);
+                            } catch (error) {
+                                console.error(`Failed to load ${type} rows from DB, using fallback if available:`, error);
+                            }
+
+                            if (Array.isArray(rows) && rows.length > 0) return rows;
+                            if (typeof window.DB.getTurboMarketData !== 'function') return Array.isArray(rows) ? rows : [];
+
+                            const turboRows = await window.DB.getTurboMarketData(type);
+                            if (!Array.isArray(turboRows) || turboRows.length === 0) {
+                                return Array.isArray(rows) ? rows : [];
+                            }
+
+                            console.log(`MarketEngine fallback loaded ${turboRows.length} ${type} items from Turbo data.`);
+                            return turboRows.map((item, index) => ({
+                                id: item.id || `${String(type).toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${item.symbol || item.market_symbol || index}`,
+                                name: item.name || '',
+                                symbol: item.symbol || item.market_symbol || '',
+                                market_symbol: item.market_symbol || item.symbol || '',
+                                price: parseFloat(item.live_price ?? item.price) || 0,
+                                subscription_price: parseFloat(item.subscription_price ?? item.price) || 0,
+                                est_profit_percent: item.est_profit_percent ?? item.est_profit ?? item.profit ?? item.estimated_profit ?? item.ipo_yield ?? item.yield ?? null,
+                                estimated_profit: item.estimated_profit ?? item.est_profit_percent ?? item.est_profit ?? item.profit ?? item.ipo_yield ?? item.yield ?? null,
+                                profit: item.profit ?? item.est_profit_percent ?? item.est_profit ?? item.estimated_profit ?? item.ipo_yield ?? item.yield ?? null,
+                                ipo_yield: item.ipo_yield ?? item.est_profit_percent ?? item.est_profit ?? item.profit ?? item.estimated_profit ?? item.yield ?? null,
+                                yield: item.yield ?? item.est_profit_percent ?? item.est_profit ?? item.profit ?? item.estimated_profit ?? item.ipo_yield ?? null,
+                                start_date: item.start_date || '',
+                                end_date: item.end_date || '',
+                                listing_date: item.listing_date || '',
+                                allotment_date: item.allotment_date || item.allocation_date || item.end_date || '',
+                                allocation_date: item.allotment_date || item.allocation_date || item.end_date || '',
+                                min_invest: parseFloat(item.min_invest ?? item.minInvest) || 0,
+                                max_invest: parseFloat(item.max_invest ?? item.maxInvest) || 0,
+                                total_shares: item.total_shares || 0,
+                                available_shares: item.available_shares || 0,
+                                exchange: item.exchange || '',
+                                product_type: type,
+                                status: 'Active'
+                            }));
+                        };
+
+                        const buildDisplaySymbol = (row) => row.market_symbol || (row.name ? row.name.split(' ')[0].toUpperCase() : '');
+
+                        const ipoData = await loadProductRows('IPO');
+                        this.dbProducts = ipoData.map(p => {
+                            const profitInfo = this.parseProfitPercent(
+                                p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
+                            );
+                            return {
+                                id: p.id,
+                                symbol: buildDisplaySymbol(p),
+                                market_symbol: p.market_symbol,
+                                name: p.name,
+                                price: parseFloat(p.price) || 0,
+                                subscription_price: parseFloat(p.subscription_price) || 0,
+                                yield: profitInfo.text,
+                                estimated_profit: Number.isFinite(profitInfo.value) ? profitInfo.value : 0,
+                                est_profit_percent: Number.isFinite(profitInfo.value) ? profitInfo.value : null,
+                                subDate: p.start_date || 'TBD',
+                                deadline: p.end_date || 'TBD',
+                                listingDate: p.listing_date || 'TBD',
+                                start_date: p.start_date || '',
+                                end_date: p.end_date || '',
+                                listing_date: p.listing_date || '',
+                                allotment_date: p.allotment_date || p.allocation_date || p.end_date || '',
+                                allocation_date: p.allotment_date || p.allocation_date || p.end_date || '',
+                                min_invest: parseFloat(p.min_invest) || 0,
+                                level: (parseFloat(p.min_invest) > 100000) ? 'Lv >= 2' : 'Lv >= 1',
+                                minInvest: parseFloat(p.min_invest) || 0,
+                                maxInvest: parseFloat(p.max_invest) || 0,
+                                type: 'IPO',
+                                totalShares: p.total_shares || 0,
+                                availableShares: p.available_shares || 0,
+                                exchange: p.exchange,
+                                change: 0
+                            };
+                        });
+
+                        const otcData = await loadProductRows('OTC');
+                        this.dbOtcProducts = otcData.map(p => {
+                            const profitInfo = this.parseProfitPercent(
+                                p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
+                            );
+                            return {
+                                id: p.id,
+                                symbol: buildDisplaySymbol(p),
+                                market_symbol: p.market_symbol,
+                                name: p.name,
+                                price: parseFloat(p.price) || 0,
+                                subscription_price: parseFloat(p.subscription_price) || 0,
+                                yield: profitInfo.text,
+                                estimated_profit: Number.isFinite(profitInfo.value) ? profitInfo.value : 0,
+                                est_profit_percent: Number.isFinite(profitInfo.value) ? profitInfo.value : null,
+                                subDate: p.start_date || 'TBD',
+                                deadline: p.end_date || 'TBD',
+                                listingDate: p.listing_date || 'TBD',
+                                start_date: p.start_date || '',
+                                end_date: p.end_date || '',
+                                listing_date: p.listing_date || '',
+                                allotment_date: p.allotment_date || p.allocation_date || p.end_date || '',
+                                allocation_date: p.allotment_date || p.allocation_date || p.end_date || '',
+                                min_invest: parseFloat(p.min_invest) || 0,
+                                level: (parseFloat(p.min_invest) > 100000) ? 'Lv >= 2' : 'Lv >= 1',
+                                minInvest: parseFloat(p.min_invest) || 0,
+                                maxInvest: parseFloat(p.max_invest) || 0,
+                                type: 'OTC',
+                                totalShares: p.total_shares || 0,
+                                availableShares: p.available_shares || 0,
+                                exchange: p.exchange,
+                                change: 0
+                            };
+                        });
+
+                        const insData = await loadProductRows('Ins.stocks');
+                        this.dbInsStocks = insData.map(p => ({
+                            id: p.id,
+                            symbol: buildDisplaySymbol(p),
+                            market_symbol: p.market_symbol,
+                            name: p.name,
+                            price: parseFloat(p.price) || 0,
+                            subscription_price: parseFloat(p.subscription_price) || 0,
+                            yield: this.parseProfitPercent(
+                                p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
+                            ).text,
+                            subDate: p.start_date || 'TBD',
+                            deadline: p.end_date || 'TBD',
+                            listingDate: p.listing_date || 'TBD',
+                            start_date: p.start_date || '',
+                            end_date: p.end_date || '',
+                            listing_date: p.listing_date || '',
+                            allotment_date: p.allotment_date || p.allocation_date || p.end_date || '',
+                            allocation_date: p.allotment_date || p.allocation_date || p.end_date || '',
+                            min_invest: parseFloat(p.min_invest) || 0,
+                            minInvest: parseFloat(p.min_invest) || 0,
+                            level: (parseFloat(p.min_invest) > 100000) ? 'Lv >= 2' : 'Lv >= 1',
+                            type: 'INS.STOCKS',
+                            totalShares: p.total_shares || 0,
+                            availableShares: p.available_shares || 0,
+                            exchange: p.exchange,
+                            change: 0
+                        }));
+
+                        console.log(`Synced ${this.dbProducts.length} IPOs, ${this.dbOtcProducts.length} OTCs, and ${this.dbInsStocks.length} Ins.stocks`);
+                        this.notifyListeners();
+                        return;
+                    } catch (e) {
+                        console.error("Failed to sync products from DB:", e);
+                        return;
+                    }
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 250));
+                retries++;
+            }
+
+            console.warn("MarketEngine DB sync timed out after 5 seconds.");
+        }
+
         startSimulation() {
             setInterval(() => {
                 // Fluctuate Stocks
@@ -477,7 +659,7 @@
         search(query) {
             if (!query) return [];
             const q = query.toLowerCase();
-            const all = [...this.stocks, ...this.getOTC(), ...this.getIPO(), ...this.indices];
+            const all = [...this.stocks, ...this.getOTC(), ...this.getIPO(), ...(this.dbInsStocks || []), ...this.indices];
             return all.filter(s =>
                 s.symbol.toLowerCase().includes(q) ||
                 s.name.toLowerCase().includes(q)
