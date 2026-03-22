@@ -29,6 +29,7 @@ window.DB = {
     marketPriceCache: {},
     marketPriceFailUntil: {},
     marketPricePending: {},
+    marketCacheDisabledLogged: false,
     MARKET_PRICE_CACHE_TTL_MS: 10000,
     MARKET_PRICE_FAIL_COOLDOWN_MS: 15000,
     MARKET_SYMBOL_ALIAS: {
@@ -44,6 +45,19 @@ window.DB = {
     },
     formatCurrency(value, digits = 2, fallback = '-') {
         return window.formatAppCurrency(value, digits, fallback);
+    },
+
+    isMarketCacheSchemaMissing(error) {
+        const message = String(error?.message || '');
+        return error?.code === 'PGRST205'
+            || message.includes("Could not find the table 'public.market_cache'");
+    },
+
+    disableMarketCache(reason = '') {
+        window.DISABLE_MARKET_DB = true;
+        if (this.marketCacheDisabledLogged) return;
+        this.marketCacheDisabledLogged = true;
+        console.warn(`Market cache disabled${reason ? `: ${reason}` : ''}`);
     },
 
     getClient() {
@@ -391,7 +405,14 @@ window.DB = {
                     .select("price, symbol")
                     .eq("symbol", sym)
                     .maybeSingle();
-                if (error || !data) continue;
+                if (error) {
+                    if (this.isMarketCacheSchemaMissing(error)) {
+                        this.disableMarketCache(error.message);
+                        return null;
+                    }
+                    continue;
+                }
+                if (!data) continue;
                 const price = Number(data.price);
                 if (!Number.isFinite(price) || price <= 0) continue;
                 return {
@@ -2881,7 +2902,14 @@ window.DB = {
                 .eq("symbol", sym)
                 .maybeSingle();
 
-            if (error || !data) continue;
+            if (error) {
+                if (this.isMarketCacheSchemaMissing(error)) {
+                    this.disableMarketCache(error.message);
+                    return null;
+                }
+                continue;
+            }
+            if (!data) continue;
             const price = Number(data.price);
             if (Number.isFinite(price) && price > 0) {
                 return price;
@@ -3462,7 +3490,7 @@ window.DB = {
 
         const ipoCutoff = new Date();
         ipoCutoff.setHours(0, 0, 0, 0);
-        ipoCutoff.setDate(ipoCutoff.getDate() - 7);
+        ipoCutoff.setDate(ipoCutoff.getDate() - 45);
 
         const isCurrentTurboIpo = (row) => {
             const dates = [
