@@ -4534,6 +4534,32 @@
             return `₹${numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
         }
 
+        function isIndiaRegularMarketOpenNow() {
+            try {
+                const parts = new Intl.DateTimeFormat('en-GB', {
+                    timeZone: 'Asia/Kolkata',
+                    weekday: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hourCycle: 'h23'
+                }).formatToParts(new Date()).reduce((acc, part) => {
+                    if (part.type !== 'literal') acc[part.type] = part.value;
+                    return acc;
+                }, {});
+
+                const weekday = String(parts.weekday || '');
+                const hour = Number(parts.hour);
+                const minute = Number(parts.minute);
+                if (!Number.isFinite(hour) || !Number.isFinite(minute)) return true;
+                if (weekday === 'Sat' || weekday === 'Sun') return false;
+
+                const totalMinutes = (hour * 60) + minute;
+                return totalMinutes >= ((9 * 60) + 15) && totalMinutes < ((15 * 60) + 30);
+            } catch (_) {
+                return true;
+            }
+        }
+
         function getMoverNoQuoteState() {
             const marketOpen = isIndiaRegularMarketOpenNow();
             return {
