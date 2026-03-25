@@ -1596,6 +1596,70 @@
         let currentInterval = 'D';
         let homeChartTimer = null;
         let homeChartResizeObserver = null;
+        const CHART_LABEL_LOCALE = 'hi-IN';
+        const HINDI_MONTH_NAMES = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर'];
+        const HINDI_MONTH_SHORT_NAMES = ['जन', 'फ़र', 'मार्च', 'अप्रै', 'मई', 'जून', 'जुल', 'अग', 'सित', 'अक्टू', 'नव', 'दिस'];
+        const DEVANAGARI_DIGITS = ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'];
+
+        function toChartDateValue(time) {
+            if (typeof time === 'number' && Number.isFinite(time)) return new Date(time * 1000);
+            if (typeof time === 'string') {
+                const parsed = Date.parse(time);
+                if (Number.isFinite(parsed)) return new Date(parsed);
+            }
+            if (time && typeof time === 'object') {
+                if (Number.isFinite(time.timestamp)) return new Date(time.timestamp * 1000);
+                if (Number.isFinite(time.year) && Number.isFinite(time.month) && Number.isFinite(time.day)) {
+                    return new Date(time.year, time.month - 1, time.day);
+                }
+            }
+            return null;
+        }
+
+        function toHindiDigits(value) {
+            return String(value).replace(/\d/g, (digit) => DEVANAGARI_DIGITS[Number(digit)] ?? digit);
+        }
+
+        function formatHindiClock(date) {
+            return `${toHindiDigits(String(date.getHours()).padStart(2, '0'))}:${toHindiDigits(String(date.getMinutes()).padStart(2, '0'))}`;
+        }
+
+        function formatHindiDate(date, { includeDay = true, includeMonth = true, includeYear = false, shortMonth = true } = {}) {
+            const parts = [];
+            if (includeDay) parts.push(toHindiDigits(date.getDate()));
+            if (includeMonth) parts.push((shortMonth ? HINDI_MONTH_SHORT_NAMES : HINDI_MONTH_NAMES)[date.getMonth()]);
+            if (includeYear) parts.push(toHindiDigits(date.getFullYear()));
+            return parts.join(' ');
+        }
+
+        function formatHindiChartTick(time, tickMarkType) {
+            const date = toChartDateValue(time);
+            if (!date || Number.isNaN(date.getTime())) return '';
+            const TickMarkType = window.LightweightCharts?.TickMarkType || {};
+
+            if (tickMarkType === TickMarkType.Year) {
+                return toHindiDigits(date.getFullYear());
+            }
+            if (tickMarkType === TickMarkType.Month) {
+                return formatHindiDate(date, { includeDay: false, includeMonth: true, includeYear: true, shortMonth: true });
+            }
+            if (tickMarkType === TickMarkType.Time || tickMarkType === TickMarkType.TimeWithSeconds) {
+                return formatHindiClock(date);
+            }
+            return formatHindiDate(date, { includeDay: true, includeMonth: true, includeYear: false, shortMonth: true });
+        }
+
+        function getHindiChartLocalizationOptions() {
+            return {
+                locale: CHART_LABEL_LOCALE,
+                timeFormatter: (time) => {
+                    const date = toChartDateValue(time);
+                    return date && !Number.isNaN(date.getTime())
+                        ? formatHindiDate(date, { includeDay: true, includeMonth: true, includeYear: true, shortMonth: false })
+                        : '';
+                }
+            };
+        }
 
         const indexData = {
             'BSE:SENSEX': {
@@ -1834,6 +1898,7 @@
                             textColor: '#94a3b8',
                             fontFamily: 'Outfit, sans-serif',
                         },
+                        localization: getHindiChartLocalizationOptions(),
                         grid: {
                             vertLines: { color: '#1f1f1f' },
                             horzLines: { color: '#1f1f1f' },
@@ -1846,6 +1911,7 @@
                             borderColor: '#1f1f1f',
                             timeVisible: true,
                             secondsVisible: false,
+                            tickMarkFormatter: formatHindiChartTick,
                         },
                     });
                     const series = chart.addAreaSeries({
