@@ -1989,6 +1989,18 @@ async function loadCSMessages() {
     targetBox.scrollTop = targetBox.scrollHeight;
 }
 
+async function resolveRealtimeUserId(user) {
+    if (!user) return null;
+    if (!window.DB || typeof window.DB._getNumericUserId !== 'function') return user.id;
+
+    try {
+        return await window.DB._getNumericUserId(user.id);
+    } catch (error) {
+        console.error("Realtime User ID Resolution Error:", error);
+        return user.id;
+    }
+}
+
 window.startChatListener = async function () {
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
     if (!user || isChatSubscribed) return;
@@ -1996,12 +2008,15 @@ window.startChatListener = async function () {
     const client = window.DB ? window.DB.getClient() : null;
     if (!client) return;
 
-    client.channel('public:messages')
+    const realtimeUserId = await resolveRealtimeUserId(user);
+    if (realtimeUserId === null || realtimeUserId === undefined || realtimeUserId === '') return;
+
+    client.channel(`public:messages:${realtimeUserId}`)
         .on('postgres_changes', {
             event: 'INSERT',
             schema: 'public',
             table: 'messages',
-            filter: `user_id=eq.${user.id}`
+            filter: `user_id=eq.${realtimeUserId}`
         }, payload => {
             const m = payload.new;
             if (m.sender === 'System') return; // Ignore System (if any exist)
@@ -2203,13 +2218,16 @@ window.startNotificationListener = async function () {
     const client = window.DB ? window.DB.getClient() : null;
     if (!client) return;
 
+    const realtimeUserId = await resolveRealtimeUserId(user);
+    if (realtimeUserId === null || realtimeUserId === undefined || realtimeUserId === '') return;
+
     // Listen for NEW Notifications in 'messages' table
-    client.channel('user-notices-real')
+    client.channel(`user-notices-real:${realtimeUserId}`)
         .on('postgres_changes', {
             event: 'INSERT',
             schema: 'public',
             table: 'messages', // Reverted to messages table
-            filter: `user_id=eq.${user.id}`
+            filter: `user_id=eq.${realtimeUserId}`
         }, payload => {
             const m = payload.new;
             // Only trigger if it looks like a notification (Admin/System)

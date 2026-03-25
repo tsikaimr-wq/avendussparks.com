@@ -464,6 +464,48 @@
             return normalizeProductType(value) === 'INS.STOCKS';
         }
 
+        function resolveMarketProduct(rawSymbol, productId = null) {
+            const base = String(rawSymbol || '').toUpperCase();
+            const compact = base
+                .replace(/^NSE:|^BSE:/, '')
+                .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+            return window.MarketEngine?.getProduct?.(productId || rawSymbol)
+                || window.MarketEngine?.getProduct?.(base)
+                || window.MarketEngine?.getProduct?.(compact)
+                || window.MarketEngine?.getProduct?.(`${compact}.NS`)
+                || window.MarketEngine?.getProduct?.(`${compact}.BO`)
+                || null;
+        }
+
+        function getInsStockFallbackQuote(source, options = {}) {
+            const product = (source && typeof source === 'object')
+                ? source
+                : resolveMarketProduct(source, options.productId || null);
+
+            if (product && typeof window.MarketEngine?.applyInsStockFallbackQuote === 'function') {
+                const simulated = window.MarketEngine.applyInsStockFallbackQuote(product, { volatility: 0.0010, maxDeviation: 0.03 });
+                if (simulated && Number.isFinite(Number(simulated.price)) && Number(simulated.price) > 0) {
+                    return simulated;
+                }
+            }
+
+            const fallbackPrice = Number(product?.price ?? product?.configured_price ?? product?.subscription_price ?? options.snapshotPrice);
+            if (!Number.isFinite(fallbackPrice) || fallbackPrice <= 0) return null;
+
+            const prevClose = Number.isFinite(Number(product?.prevClose)) && Number(product?.prevClose) > 0
+                ? Number(product.prevClose)
+                : fallbackPrice;
+            const changePercent = prevClose > 0 ? ((fallbackPrice - prevClose) / prevClose) * 100 : 0;
+            return {
+                price: fallbackPrice,
+                previousClose: prevClose,
+                prevClose,
+                changePercent,
+                source: 'configured_fallback',
+                delayed: true
+            };
+        }
+
         function setStandaloneQuoteUnavailableState(priceText = 'Unavailable') {
             const detPriceEl = document.getElementById('detPrice');
             const bpPriceEl = document.getElementById('bpCurrentPrice');
@@ -978,8 +1020,14 @@
                     if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, quote?.symbol || usedSymbol);
                 }
                 if (!klinePayload && isInsStockChart) {
-                    container.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-family: Outfit, sans-serif;">Realtime chart unavailable.</div>';
-                    return;
+                    const currentProduct = window.MarketEngine?.getProduct?.(currentProductId)
+                        || window.MarketEngine?.getProduct?.(usedSymbol)
+                        || window.MarketEngine?.getProduct?.(baseSymbol);
+                    const fallbackQuote = getInsStockFallbackQuote(currentProduct || symbol, { productId: currentProductId });
+                    const fallbackSeed = Number(fallbackQuote?.price ?? currentProduct?.price ?? currentProduct?.configured_price ?? currentProduct?.subscription_price);
+                    if (Number.isFinite(fallbackSeed) && fallbackSeed > 0) {
+                        klinePayload = buildSyntheticKline(fallbackSeed, usedSymbol);
+                    }
                 }
                 if (!klinePayload) throw new Error("No kline data from edge market API");
 
@@ -1599,6 +1647,9 @@
                 marketSymbol = product?.market_symbol || product?.symbol || symbol;
                 productName = product?.name || currentStockName || '';
                 const isCurrentInsStock = isInsStockType(product?.type || currentProductType);
+                const fallbackQuote = isCurrentInsStock
+                    ? getInsStockFallbackQuote(product || marketSymbol, { productId: currentProductId })
+                    : null;
 
                 if (price === null) {
                     const data = await window.DB.getMarketPrice(marketSymbol, productName);
@@ -1626,12 +1677,25 @@
                     return Number.isFinite(numeric) ? numeric : NaN;
                 };
 
-                if (!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) {
-                    if (isCurrentInsStock) {
+                if ((!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) && isCurrentInsStock) {
+                    const fallbackPrice = Number(fallbackQuote?.price);
+                    if (Number.isFinite(fallbackPrice) && fallbackPrice > 0) {
+                        price = fallbackPrice;
+                        if (product) {
+                            product.price = fallbackPrice;
+                            const fallbackPrevClose = Number(fallbackQuote?.previousClose ?? fallbackQuote?.prevClose);
+                            if (Number.isFinite(fallbackPrevClose) && fallbackPrevClose > 0) {
+                                product.prevClose = fallbackPrevClose;
+                            }
+                        }
+                    } else {
                         setStandaloneQuoteUnavailableState('Unavailable');
                         updateBuyTotal();
                         return;
                     }
+                }
+
+                if (!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) {
                     const base = String(marketSymbol || symbol || '').toUpperCase();
                     const compact = base
                         .replace(/^NSE:|^BSE:/, '')

@@ -255,6 +255,97 @@
             if (!Number.isFinite(stock.change) || prev <= 0) stock.change = pct * 100;
         }
 
+        toFiniteValue(value) {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric : null;
+        }
+
+        getInsStockSeedPrice(item) {
+            if (!item) return null;
+            const symbolCandidates = this.getSymbolCandidates(item.market_symbol || item.symbol || item.id);
+            for (const symbol of symbolCandidates) {
+                const livePrice = this.toFiniteValue(this.livePrices?.[symbol]);
+                if (livePrice !== null && livePrice > 0) return livePrice;
+                const cachedPrice = this.toFiniteValue(this.cachedPrices?.[symbol]?.price);
+                if (cachedPrice !== null && cachedPrice > 0) return cachedPrice;
+            }
+
+            const candidates = [
+                item.price,
+                item.configured_price,
+                item.subscription_price,
+                item.prevClose
+            ];
+
+            for (const candidate of candidates) {
+                const numeric = this.toFiniteValue(candidate);
+                if (numeric !== null && numeric > 0) return numeric;
+            }
+
+            return null;
+        }
+
+        applyInsStockFallbackQuote(item, options = {}) {
+            if (!this.isInsStockProduct(item)) return null;
+
+            const seedPrice = this.getInsStockSeedPrice(item);
+            if (seedPrice === null || seedPrice <= 0) return null;
+
+            const volatility = Number(options.volatility);
+            const maxDeviation = Number(options.maxDeviation);
+            const tickVolatility = Number.isFinite(volatility) && volatility > 0 ? volatility : 0.0008;
+            const deviationCap = Number.isFinite(maxDeviation) && maxDeviation > 0 ? maxDeviation : 0.025;
+
+            if (!Number.isFinite(item.simulatedBasePrice) || item.simulatedBasePrice <= 0) {
+                item.simulatedBasePrice = seedPrice;
+            }
+
+            const anchorPrice = Number.isFinite(item.simulatedBasePrice) && item.simulatedBasePrice > 0
+                ? item.simulatedBasePrice
+                : seedPrice;
+
+            if (!Number.isFinite(item.price) || item.price <= 0) {
+                item.price = anchorPrice;
+            }
+
+            const randomPct = (Math.random() * tickVolatility * 2) - tickVolatility;
+            let nextPrice = item.price * (1 + randomPct);
+            const upperBound = anchorPrice * (1 + deviationCap);
+            const lowerBound = Math.max(0.01, anchorPrice * (1 - deviationCap));
+            nextPrice = Math.min(upperBound, Math.max(lowerBound, nextPrice));
+
+            item.price = Math.max(0.01, nextPrice);
+            if (!Number.isFinite(item.prevClose) || item.prevClose <= 0) {
+                item.prevClose = anchorPrice;
+            }
+
+            const pctChange = item.prevClose > 0
+                ? ((item.price - item.prevClose) / item.prevClose) * 100
+                : 0;
+
+            item.change = pctChange;
+            item.changePercent = pctChange;
+            item.quoteSource = 'simulated_fallback';
+            item.delayed = true;
+            item.isSimulated = true;
+            item.updated_at = new Date().toISOString();
+
+            const resolvedPrice = item.price;
+            const symbolCandidates = this.getSymbolCandidates(item.market_symbol || item.symbol || item.id);
+            for (const symbol of symbolCandidates) {
+                this.livePrices[symbol] = resolvedPrice;
+            }
+
+            return {
+                price: resolvedPrice,
+                previousClose: item.prevClose,
+                prevClose: item.prevClose,
+                changePercent: pctChange,
+                source: 'simulated_fallback',
+                delayed: true
+            };
+        }
+
         isInsStockProduct(item) {
             const normalizedType = String(item?.type || '').trim().toUpperCase();
             return normalizedType === 'INS.STOCKS' || normalizedType === 'INS_STOCKS';
@@ -564,7 +655,7 @@
                             market_symbol: p.market_symbol,
                             name: p.name,
                             configured_price: parseFloat(p.price) || 0,
-                            price: 0,
+                            price: parseFloat(p.price) || parseFloat(p.subscription_price) || 0,
                             subscription_price: parseFloat(p.subscription_price) || 0,
                             yield: this.parseProfitPercent(
                                 p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
@@ -588,6 +679,7 @@
                             change: 0,
                             changePercent: null
                         }));
+                        this.dbInsStocks.forEach(stock => this.applyInsStockFallbackQuote(stock));
 
                         console.log(`Synced ${this.dbProducts.length} IPOs, ${this.dbOtcProducts.length} OTCs, and ${this.dbInsStocks.length} Ins.stocks`);
                         this.notifyListeners();
@@ -642,7 +734,18 @@
                 [this.dbInsStocks, this.dbOtcProducts, this.dbProducts].forEach(list => {
                     list.forEach(stock => {
                         if (!stock) return;
-                        if (this.isInsStockProduct(stock)) return;
+                        if (this.isInsStockProduct(stock)) {
+                            const hasReliableLiveQuote = stock.quoteSource !== 'simulated_fallback'
+                                && stock.isCached
+                                && !stock.cacheStale
+                                && !this.isQuoteStale(stock)
+                                && Number.isFinite(stock.price)
+                                && stock.price > 0;
+                            if (!hasReliableLiveQuote) {
+                                this.applyInsStockFallbackQuote(stock, { volatility: 0.0009, maxDeviation: 0.03 });
+                            }
+                            return;
+                        }
                         if (stock.isCached && !stock.cacheStale && !this.isQuoteStale(stock)) return;
                         this.applySyntheticTick(stock, stock.type === 'INS.STOCKS' || stock.type === 'stock' ? 0.0016 : 0.0010);
                     });
@@ -780,6 +883,9 @@
                             stock.change = 0;
                             stock.changePercent = null;
                         }
+                        stock.quoteSource = data?.source || 'market_api';
+                        stock.delayed = !!data?.delayed;
+                        stock.isSimulated = false;
                     }
                     stock.isCached = true;
                     stock.cacheStale = false;
@@ -790,6 +896,17 @@
                 return latestPrice;
             } catch (e) {
                 console.error(`MarketEngine: Failed to fetch live price for ${sym}:`, e);
+                const candidates = this.getSymbolCandidates(sym);
+                const stock = [...this.stocks, ...this.dbOtcProducts, ...this.dbProducts, ...this.dbInsStocks]
+                    .find(s => {
+                        const own = this.getSymbolCandidates(s.market_symbol || s.symbol);
+                        return own.some(v => candidates.includes(v));
+                    });
+                if (this.isInsStockProduct(stock)) {
+                    const fallback = this.applyInsStockFallbackQuote(stock, { volatility: 0.0010, maxDeviation: 0.03 });
+                    this.notifyListeners();
+                    return fallback?.price ?? null;
+                }
                 return null;
             }
         }

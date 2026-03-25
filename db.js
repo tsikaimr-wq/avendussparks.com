@@ -1360,12 +1360,20 @@ window.DB = {
     // --- MESSAGES / CHAT / NOTICES ---
     async getMessages(userId) {
         const client = this.getClient();
+        const numericId = await this._getNumericUserId(userId);
+        if (numericId === null || numericId === undefined || numericId === '') return [];
+
         const { data, error } = await client
             .from('messages')
             .select('*')
-            .eq('user_id', userId)
+            .eq('user_id', numericId)
             .neq('sender', 'System') // Exclude System Notices from Chat
             .order('created_at', { ascending: true });
+
+        if (error) {
+            console.error("Get Messages Error:", error);
+            return [];
+        }
 
         return data || [];
     },
@@ -1373,21 +1381,34 @@ window.DB = {
     // New: Get Notices (System Messages)
     async getNotices(userId) {
         const client = this.getClient();
+        const numericId = await this._getNumericUserId(userId);
+        if (numericId === null || numericId === undefined || numericId === '') return [];
+
         const { data, error } = await client
             .from('messages')
             .select('*')
-            .eq('user_id', userId)
+            .eq('user_id', numericId)
             .eq('sender', 'System') // Only System Notices
             .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Get Notices Error:", error);
+            return [];
+        }
 
         return data || [];
     },
 
     async sendMessage(userId, message, sender = 'User') {
         const client = this.getClient();
+        const numericId = await this._getNumericUserId(userId);
+        if (numericId === null || numericId === undefined || numericId === '') {
+            return { success: false, error: new Error('Unable to resolve chat user id.') };
+        }
+
         const { data, error } = await client
             .from('messages')
-            .insert([{ user_id: userId, message, sender }]);
+            .insert([{ user_id: numericId, message, sender }]);
 
         return { success: !error, error };
     },
@@ -1421,10 +1442,15 @@ window.DB = {
 
     async deleteUserConversation(userId) {
         const client = this.getClient();
+        const numericId = await this._getNumericUserId(userId);
+        if (numericId === null || numericId === undefined || numericId === '') {
+            return { success: false, error: new Error('Unable to resolve chat user id.') };
+        }
+
         // Delete all non-system messages (chat history)
         const { error } = await client.from('messages')
             .delete()
-            .eq('user_id', userId)
+            .eq('user_id', numericId)
             .neq('sender', 'System');
         return { success: !error, error };
     },

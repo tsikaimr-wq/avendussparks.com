@@ -3297,12 +3297,10 @@
                     const rankSearchResults = (items, rawQuery) => [...(items || [])]
                         .sort((left, right) => scoreSearchResult(right, rawQuery) - scoreSearchResult(left, rawQuery));
                     const formatInitialPrice = (value, type = '') => {
-                        if (isInsStockType(type)) return 'Loading...';
                         const numeric = Number(value);
                         return Number.isFinite(numeric) && numeric > 0 ? numeric.toFixed(2) : 'Loading...';
                     };
                     const formatInitialChange = (value, type = '') => {
-                        if (isInsStockType(type)) return 'Unavailable';
                         const numeric = Number(value);
                         return Number.isFinite(numeric) ? `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%` : '+0.00%';
                     };
@@ -3366,7 +3364,7 @@
                                         <div class="search-symbol">${m.symbol}</div>
                                         <div class="search-name">${m.name}</div>
                                     </div>
-                                    <div class="search-price-val">${isInsStockType(m.type) ? 'Loading...' : `₹${(m.price || 0).toLocaleString('en-IN')}`}</div>
+                                    <div class="search-price-val">${Number.isFinite(Number(m.price)) && Number(m.price) > 0 ? `₹${Number(m.price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : 'Loading...'}</div>
                                 </div>
                             `).join('');
                         } else {
@@ -3387,12 +3385,6 @@
                 if (sResults) sResults.style.display = 'none';
 
                 const product = { symbol: sym, name: name, type: type.toLowerCase() };
-                if (isInsStockType(product.type)) {
-                    initialPrice = 'Loading...';
-                    initialChange = 'Unavailable';
-                    initialColor = '#94a3b8';
-                }
-
                 // Direct call to openStockDetail for better reliability with external data
                 const hint = String(exchHint || '').toUpperCase();
                 const exchange = sym.includes('.NS')
@@ -4785,6 +4777,49 @@
             return normalizeProductType(value) === 'INS.STOCKS';
         }
 
+        function resolveMarketProduct(rawSymbol, productId = null) {
+            const base = String(rawSymbol || '').toUpperCase();
+            const compact = base
+                .replace(/^NSE:|^BSE:/, '')
+                .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+            return window.MarketEngine?.getProduct?.(productId || rawSymbol)
+                || window.MarketEngine?.getProduct?.(base)
+                || window.MarketEngine?.getProduct?.(compact)
+                || window.MarketEngine?.getProduct?.(`${compact}.NS`)
+                || window.MarketEngine?.getProduct?.(`${compact}.BO`)
+                || null;
+        }
+
+        function getInsStockFallbackQuote(source, options = {}) {
+            const product = (source && typeof source === 'object')
+                ? source
+                : resolveMarketProduct(source, options.productId || null);
+
+            if (product && typeof window.MarketEngine?.applyInsStockFallbackQuote === 'function') {
+                const simulated = window.MarketEngine.applyInsStockFallbackQuote(product, { volatility: 0.0010, maxDeviation: 0.03 });
+                if (simulated && toFiniteNumber(simulated.price) !== null && Number(simulated.price) > 0) {
+                    return simulated;
+                }
+            }
+
+            const fallbackPrice = toFiniteNumber(product?.price)
+                ?? toFiniteNumber(product?.configured_price)
+                ?? toFiniteNumber(product?.subscription_price)
+                ?? toFiniteNumber(options.snapshotPrice);
+            if (fallbackPrice === null || fallbackPrice <= 0) return null;
+
+            const prevClose = toFiniteNumber(product?.prevClose) ?? fallbackPrice;
+            const changePercent = prevClose > 0 ? ((fallbackPrice - prevClose) / prevClose) * 100 : 0;
+            return {
+                price: fallbackPrice,
+                previousClose: prevClose,
+                prevClose,
+                changePercent,
+                source: 'configured_fallback',
+                delayed: true
+            };
+        }
+
         function setDetailQuoteUnavailableState(priceText = 'Unavailable') {
             const detPriceEl = document.getElementById('detPrice');
             const detBuyPriceEl = document.getElementById('detBuyPrice');
@@ -5697,6 +5732,9 @@
                     || window.MarketEngine?.getProduct?.(`${compact}.NS`)
                     || window.MarketEngine?.getProduct?.(`${compact}.BO`);
                 const isDetailInsStock = isInsStockType(detailProduct?.type);
+                const insFallbackQuote = isDetailInsStock
+                    ? getInsStockFallbackQuote(detailProduct || lookupSymbol, { productId: currentProductId, snapshotPrice: detailStatsSnapshot?.currentPrice })
+                    : null;
                 const directQuote = await fetchDetailQuoteDirect(lookupSymbol, name);
                 const liveQuote = directQuote || ((window.DB && typeof window.DB.getMarketPrice === 'function')
                     ? await window.DB.getMarketPrice(lookupSymbol, name)
@@ -5710,25 +5748,22 @@
                 const timestampEl = document.getElementById("detTimestamp");
 
                 if (!cacheData && el) {
-                    if (isDetailInsStock) {
-                        setDetailQuoteUnavailableState('Unavailable');
-                        if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
-                        return;
-                    }
-
                     const fallbackPrice = toFiniteNumber(detailProduct?.price);
                     const fallbackSubPrice = toFiniteNumber(detailProduct?.subscription_price);
                     const snapshotPrice = toFiniteNumber(detailStatsSnapshot?.currentPrice);
-                    const effectiveFallbackPrice = (fallbackPrice !== null && fallbackPrice > 0)
+                    const insFallbackPrice = toFiniteNumber(insFallbackQuote?.price);
+                    const effectiveFallbackPrice = (insFallbackPrice !== null && insFallbackPrice > 0)
+                        ? insFallbackPrice
+                        : ((fallbackPrice !== null && fallbackPrice > 0)
                         ? fallbackPrice
                         : ((fallbackSubPrice !== null && fallbackSubPrice > 0)
                             ? fallbackSubPrice
-                            : ((snapshotPrice !== null && snapshotPrice > 0) ? snapshotPrice : 0));
+                            : ((snapshotPrice !== null && snapshotPrice > 0) ? snapshotPrice : 0)));
 
-                if (effectiveFallbackPrice > 0) {
-                    const fallbackPrevClose = toFiniteNumber(liveQuote?.previousClose ?? liveQuote?.prevClose ?? detailStatsSnapshot?.prevClose);
-                    const formattedFallback = `₹${effectiveFallbackPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                    el.innerText = formattedFallback;
+                    if (effectiveFallbackPrice > 0) {
+                        const fallbackPrevClose = toFiniteNumber(insFallbackQuote?.previousClose ?? insFallbackQuote?.prevClose ?? liveQuote?.previousClose ?? liveQuote?.prevClose ?? detailStatsSnapshot?.prevClose);
+                        const formattedFallback = `₹${effectiveFallbackPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                        el.innerText = formattedFallback;
                         if (!syncStaticDetailBuyPrice()) {
                             const detBuyPriceEl = document.getElementById("detBuyPrice");
                             if (detBuyPriceEl) detBuyPriceEl.innerText = formattedFallback;
@@ -5739,9 +5774,13 @@
                             const pctChange = (absChange / fallbackPrevClose) * 100;
                             detChangeEl.innerText = `${absChange >= 0 ? '+' : ''}${absChange.toFixed(2)} (${formatPercentValue(pctChange, 2, true)})`;
                             detChangeEl.className = `index-chg ${pctChange >= 0 ? 'green' : 'red'}`;
+                        } else if (detChangeEl && toFiniteNumber(insFallbackQuote?.changePercent) !== null) {
+                            const pctChange = Number(insFallbackQuote.changePercent);
+                            detChangeEl.innerText = `${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(2)}%`;
+                            detChangeEl.className = `index-chg ${pctChange >= 0 ? 'green' : 'red'}`;
                         }
                         if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
-                        if (timestampEl) timestampEl.innerHTML = `<span style="color:#f59e0b;">Using fallback price</span>`;
+                        if (timestampEl) timestampEl.innerHTML = `<span style="color:#f59e0b;">Estimated price</span>`;
                     } else if (timestampEl) {
                         timestampEl.innerHTML = `<span style="color:#ef4444;">Price unavailable</span>`;
                     }
@@ -5801,16 +5840,20 @@
                         detChangeEl.innerText = `${absChange >= 0 ? '+' : ''}${absChange.toFixed(2)} (${formatPercentValue(pctChange, 2, true)})`;
                         detChangeEl.className = `index-chg ${pctChange >= 0 ? 'green' : 'red'}`;
                     } else if (detChangeEl && isDetailInsStock) {
-                        detChangeEl.innerText = 'Unavailable';
-                        detChangeEl.className = 'index-chg';
+                        const pctChange = toFiniteNumber(insFallbackQuote?.changePercent);
+                        if (pctChange !== null) {
+                            detChangeEl.innerText = `${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(2)}%`;
+                            detChangeEl.className = `index-chg ${pctChange >= 0 ? 'green' : 'red'}`;
+                        } else {
+                            detChangeEl.innerText = '+0.00%';
+                            detChangeEl.className = 'index-chg green';
+                        }
                     }
 
                     if (timestampEl) {
-                        if (isDetailInsStock && !hasLivePrice && ageMins > 5) {
-                            setDetailQuoteUnavailableState('Unavailable');
-                            return;
-                        }
-                        if (ageMins > 5) {
+                        if (isDetailInsStock && !hasLivePrice && ageMins > 5 && insFallbackQuote) {
+                            timestampEl.innerHTML = `<span style="color:#f59e0b;">Estimated price</span>`;
+                        } else if (ageMins > 5) {
                             timestampEl.innerHTML = `<span style="color:#ef4444;">Price unavailable</span>`;
                         } else {
                             const timeStr = updatedAt.toLocaleTimeString('en-IN');
@@ -6549,8 +6592,14 @@
                     }
                 }
                 if (!klinePayload && isInsStockChart) {
-                    container.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-family: Outfit, sans-serif;">Realtime chart unavailable.</div>';
-                    return;
+                    const fallbackQuote = getInsStockFallbackQuote(baseProduct || routeSymbol, { productId: baseProduct?.id });
+                    const fallbackSeed = toFiniteNumber(fallbackQuote?.price)
+                        ?? toFiniteNumber(baseProduct?.price)
+                        ?? toFiniteNumber(baseProduct?.configured_price)
+                        ?? toFiniteNumber(baseProduct?.subscription_price);
+                    if (fallbackSeed !== null && fallbackSeed > 0) {
+                        klinePayload = buildSyntheticKline(fallbackSeed, usedSymbol);
+                    }
                 }
                 if (!klinePayload) throw new Error("No kline data from edge market API");
 
@@ -7199,18 +7248,24 @@
                     const liveProduct = typeof me?.getProduct === 'function'
                         ? (me.getProduct(s.id || marketSymbol) || me.getProduct(marketSymbol) || me.getProduct(s.symbol))
                         : null;
+                    const fallbackQuote = isInsStock
+                        ? getInsStockFallbackQuote(liveProduct || s, { productId: s.id, snapshotPrice: s.price })
+                        : null;
                     const livePrice = (me?.livePrices ? toFiniteNumber(me.livePrices[marketSymbol]) : null)
                         ?? toFiniteNumber(liveProduct?.price)
                         ?? toFiniteNumber(s.price);
                     const prevClose = toFiniteNumber(liveProduct?.prevClose ?? s.prevClose);
+                    const quoteSource = String(liveProduct?.quoteSource || s.quoteSource || '').toLowerCase();
+                    const isSimulatedQuote = isInsStock && quoteSource.includes('simulated');
                     const updatedAtValue = liveProduct?.updated_at || s.updated_at || '';
                     const updatedDate = updatedAtValue ? new Date(updatedAtValue) : null;
                     const isFresh = !!updatedDate
                         && !isNaN(updatedDate.getTime())
                         && ((new Date() - updatedDate) <= (10 * 60 * 1000))
                         && livePrice !== null
-                        && livePrice > 0;
-                    if (isInsStock && !isFresh && marketSymbol && typeof me?.fetchMarketPrice === 'function') {
+                        && livePrice > 0
+                        && !isSimulatedQuote;
+                    if (isInsStock && (!isFresh || isSimulatedQuote) && marketSymbol && typeof me?.fetchMarketPrice === 'function') {
                         me.fetchMarketPrice(marketSymbol);
                     }
 
@@ -7219,6 +7274,8 @@
                         if (isFresh) {
                             const timeStr = updatedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
                             lastUpdatedHtml = `<div style="font-size: 0.7rem; color: #10b981; margin-top: 4px; font-weight: 500;">Synced: ${timeStr}</div>`;
+                        } else if (fallbackQuote && toFiniteNumber(fallbackQuote.price) !== null && Number(fallbackQuote.price) > 0) {
+                            lastUpdatedHtml = `<div style="font-size: 0.7rem; color: #f59e0b; margin-top: 4px; font-weight: 500;">Estimated price</div>`;
                         } else {
                             lastUpdatedHtml = `<div style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px; font-weight: 500;">Loading realtime price...</div>`;
                         }
@@ -7240,14 +7297,18 @@
                     const priceVal = toFiniteNumber(s.price);
                     const subPriceVal = toFiniteNumber(s.subscription_price);
                     const effectivePrice = isInsStock
-                        ? (isFresh ? livePrice : null)
+                        ? ((isFresh ? livePrice : null)
+                            ?? toFiniteNumber(fallbackQuote?.price)
+                            ?? toFiniteNumber(liveProduct?.price)
+                            ?? toFiniteNumber(s.price))
                         : ((priceVal !== null && priceVal > 0)
                             ? priceVal
                             : ((subPriceVal !== null && subPriceVal > 0) ? subPriceVal : 0));
                     const changeVal = isInsStock
-                        ? ((prevClose !== null && prevClose > 0 && effectivePrice !== null && effectivePrice > 0)
+                        ? (toFiniteNumber(liveProduct?.changePercent ?? s.changePercent ?? fallbackQuote?.changePercent)
+                            ?? ((prevClose !== null && prevClose > 0 && effectivePrice !== null && effectivePrice > 0)
                             ? ((effectivePrice - prevClose) / prevClose) * 100
-                            : null)
+                            : null))
                         : (toFiniteNumber(s.change) ?? 0);
 
                     const priceDisplay = isInsStock
@@ -7256,7 +7317,7 @@
                             : '<span style="font-size:0.8rem; color:#94a3b8; font-weight:normal;">Loading...</span>')
                         : ('₹' + effectivePrice.toLocaleString('en-IN', { minimumFractionDigits: 2 }));
                     const changeDisplay = isInsStock
-                        ? (changeVal !== null ? `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%` : 'Unavailable')
+                        ? (changeVal !== null ? `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%` : '+0.00%')
                         : `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%`;
                     const changeColor = changeVal === null ? '#94a3b8' : (changeVal >= 0 ? '#10b981' : '#ef4444');
 
