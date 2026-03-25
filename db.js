@@ -6,6 +6,17 @@ console.log("⚠️ ROOT db.js EXECUTION START - Potential Conflict?");
 // --- SUPABASE CONFIGURATION ---
 const SUPABASE_URL = "https://xizuwvmepfcfodwfwqce.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_gj30etPyQjlvfH062VUeSw_F83Eii85";
+const MARKET_CACHE_DISABLED_STORAGE_KEY = 'avendus_market_cache_disabled_until';
+const MARKET_CACHE_DISABLED_TTL_MS = 60 * 60 * 1000;
+
+try {
+    const disabledUntil = Number(window.localStorage?.getItem(MARKET_CACHE_DISABLED_STORAGE_KEY) || 0);
+    if (Number.isFinite(disabledUntil) && disabledUntil > Date.now()) {
+        window.DISABLE_MARKET_DB = true;
+    } else if (disabledUntil) {
+        window.localStorage?.removeItem(MARKET_CACHE_DISABLED_STORAGE_KEY);
+    }
+} catch (_) { }
 
 window.APP_CURRENCY_CODE = 'INR';
 window.APP_CURRENCY_SYMBOL = '\u20B9';
@@ -39,6 +50,8 @@ window.DB = {
     marketCacheDisabledLogged: false,
     MARKET_PRICE_CACHE_TTL_MS: 10000,
     MARKET_PRICE_FAIL_COOLDOWN_MS: 15000,
+    MARKET_CACHE_DISABLED_STORAGE_KEY: MARKET_CACHE_DISABLED_STORAGE_KEY,
+    MARKET_CACHE_DISABLED_TTL_MS: MARKET_CACHE_DISABLED_TTL_MS,
     MARKET_SYMBOL_ALIAS: {
         KCEIL: 'KCEIL-SM.NS',
         ZOMATO: 'ETERNAL.NS',
@@ -62,6 +75,12 @@ window.DB = {
 
     disableMarketCache(reason = '') {
         window.DISABLE_MARKET_DB = true;
+        try {
+            window.localStorage?.setItem(
+                this.MARKET_CACHE_DISABLED_STORAGE_KEY,
+                String(Date.now() + (Number(this.MARKET_CACHE_DISABLED_TTL_MS) || MARKET_CACHE_DISABLED_TTL_MS))
+            );
+        } catch (_) { }
         if (this.marketCacheDisabledLogged) return;
         this.marketCacheDisabledLogged = true;
         console.warn(`Market cache disabled${reason ? `: ${reason}` : ''}`);
@@ -212,12 +231,12 @@ window.DB = {
                 || (String(variantHint || '').includes('BSE') || String(variantHint || '').includes('BOM') ? 'BSE' : '')
                 || (String(variantHint || '').includes('NSE') ? 'NSE' : '');
 
-            push(compact);
             if (preferredExchange === 'BSE') {
                 push(`${compact}.BO`);
                 push(`${compact}.NS`);
                 push(`BSE:${compact}`);
                 push(`NSE:${compact}`);
+                push(compact);
                 return;
             }
 
@@ -225,6 +244,7 @@ window.DB = {
             push(`${compact}.BO`);
             push(`NSE:${compact}`);
             push(`BSE:${compact}`);
+            push(compact);
         };
 
         const alias = this.MARKET_SYMBOL_ALIAS[this.normalizeMarketSymbolKey(raw)];
@@ -232,6 +252,25 @@ window.DB = {
         addVariants(raw, hint);
 
         return candidates;
+    },
+
+    getPreferredMarketApiSymbol(symbol, exchangeHint = '') {
+        const candidates = this.getMarketApiSymbolCandidates(symbol, exchangeHint);
+        if (!Array.isArray(candidates) || candidates.length === 0) return '';
+
+        const hint = String(exchangeHint || '').trim().toUpperCase();
+        if (hint.includes('BSE') || hint.includes('BOM')) {
+            const bse = candidates.find((value) => /\.BO$/i.test(String(value || '')));
+            if (bse) return bse;
+        }
+
+        if (hint.includes('NSE')) {
+            const nse = candidates.find((value) => /\.NS$/i.test(String(value || '')));
+            if (nse) return nse;
+        }
+
+        const marketQualified = candidates.find((value) => /^\^/.test(String(value || '')) || /\.(NS|BO)$/i.test(String(value || '')));
+        return marketQualified || candidates[0] || '';
     },
 
     getYahooSymbolCandidates(symbol) {
@@ -2471,7 +2510,10 @@ window.DB = {
         const client = this.getClient();
         if (!client) return [];
 
-        let query = client.from('products').select('*');
+        let query = client
+            .from('products')
+            .select('*')
+            .or('is_deleted.is.null,is_deleted.eq.false');
 
         if (createdBy) {
             query = query.eq('created_by', createdBy);
@@ -2490,7 +2532,11 @@ window.DB = {
         const client = this.getClient();
         if (!client) return [];
 
-        let query = client.from('products').select('*').eq('status', 'Active');
+        let query = client
+            .from('products')
+            .select('*')
+            .or('is_deleted.is.null,is_deleted.eq.false')
+            .eq('status', 'Active');
 
         if (type === 'IPO') {
             // For IPO, match explicit 'IPO' or catch legacy nulls/empties
@@ -2548,6 +2594,14 @@ window.DB = {
     async saveProduct(productData) {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database not connected' };
+        const adminAuth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
+        const normalizedProductData = { ...productData };
+        const isNewProduct = !normalizedProductData.id || normalizedProductData.id.toString().startsWith('local_');
+        const adminId = Number(adminAuth?.id);
+
+        if (isNewProduct && !Number.isNaN(adminId) && Number.isFinite(adminId) && !normalizedProductData.created_by) {
+            normalizedProductData.created_by = adminId;
+        }
 
         const performSave = async (data) => {
             if (data.id && !data.id.toString().startsWith('local_')) {
@@ -2567,24 +2621,43 @@ window.DB = {
             }
         };
 
-        let result = await performSave(productData);
+        let workingProductData = { ...normalizedProductData };
+        let result = await performSave(workingProductData);
+
+        if (result.error && result.error.message && result.error.message.includes('created_by')) {
+            console.log('Detected missing created_by column, falling back without owner column...');
+            const fallbackData = { ...workingProductData };
+            delete fallbackData.created_by;
+            workingProductData = fallbackData;
+            result = await performSave(fallbackData);
+        }
 
         // Fallback for missing est_profit_percent column
         if (result.error && (result.error.message.includes('est_profit_percent') || result.error.code === 'PGRST204')) {
             console.log('Detected missing est_profit_percent, falling back to profit column...');
-            const fallbackData = { ...productData };
+            const fallbackData = { ...workingProductData };
             if (fallbackData.est_profit_percent !== undefined) {
                 fallbackData.profit = fallbackData.est_profit_percent;
                 delete fallbackData.est_profit_percent;
             }
+            workingProductData = fallbackData;
+            result = await performSave(fallbackData);
+        }
+
+        if (result.error && result.error.message && result.error.message.includes('created_by')) {
+            console.log('Detected missing created_by column after est_profit fallback, retrying without owner column...');
+            const fallbackData = { ...workingProductData };
+            delete fallbackData.created_by;
+            workingProductData = fallbackData;
             result = await performSave(fallbackData);
         }
 
         // Fallback for environments where products.allotment_date is not added yet.
         if (result.error && result.error.message && result.error.message.includes('allotment_date')) {
             console.log('Detected missing allotment_date, falling back without allocation date column...');
-            const fallbackData = { ...productData };
+            const fallbackData = { ...workingProductData };
             delete fallbackData.allotment_date;
+            workingProductData = fallbackData;
             result = await performSave(fallbackData);
         }
 
@@ -2593,10 +2666,61 @@ window.DB = {
 
     async deleteProduct(id) {
         const client = this.getClient();
-        if (!client) return { success: false };
-        // Hard delete as requested to remove from admin table
-        const { error } = await client.from('products').delete().eq('id', id);
-        return { success: !error, error };
+        if (!client) return { success: false, error: { message: 'Database not connected' } };
+
+        const normalizedId = Number.isFinite(Number(id)) ? Number(id) : id;
+        const adminAuth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
+        const adminId = Number(adminAuth?.id);
+
+        const hardDeleteResult = await client
+            .from('products')
+            .delete()
+            .eq('id', normalizedId)
+            .select('id')
+            .maybeSingle();
+
+        if (!hardDeleteResult.error && hardDeleteResult.data) {
+            return { success: true, data: hardDeleteResult.data, mode: 'hard_delete' };
+        }
+
+        if (hardDeleteResult.error) {
+            console.error("Hard delete product failed:", hardDeleteResult.error);
+        }
+
+        const trySoftDelete = async (payload) => {
+            return await client
+                .from('products')
+                .update(payload)
+                .eq('id', normalizedId)
+                .select('id')
+                .maybeSingle();
+        };
+
+        let softPayload = { is_deleted: true, status: 'Deleted' };
+        if (!Number.isNaN(adminId) && Number.isFinite(adminId)) {
+            softPayload.created_by = adminId;
+        }
+
+        let softDeleteResult = await trySoftDelete(softPayload);
+
+        if (softDeleteResult.error && softDeleteResult.error.message && softDeleteResult.error.message.includes('created_by')) {
+            const fallbackPayload = { ...softPayload };
+            delete fallbackPayload.created_by;
+            softDeleteResult = await trySoftDelete(fallbackPayload);
+        }
+
+        if (softDeleteResult.error && softDeleteResult.error.message && softDeleteResult.error.message.includes('is_deleted')) {
+            softDeleteResult = await trySoftDelete({ status: 'Deleted' });
+        }
+
+        if (!softDeleteResult.error && softDeleteResult.data) {
+            return { success: true, data: softDeleteResult.data, mode: 'soft_delete' };
+        }
+
+        return {
+            success: false,
+            error: softDeleteResult.error || hardDeleteResult.error || { message: 'No matching product was deleted.' }
+        };
     },
 
     async updateProductStatus(id, newStatus) {

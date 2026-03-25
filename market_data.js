@@ -255,6 +255,11 @@
             if (!Number.isFinite(stock.change) || prev <= 0) stock.change = pct * 100;
         }
 
+        isInsStockProduct(item) {
+            const normalizedType = String(item?.type || '').trim().toUpperCase();
+            return normalizedType === 'INS.STOCKS' || normalizedType === 'INS_STOCKS';
+        }
+
         async syncMarketCache() {
             if (window.DISABLE_MARKET_DB === true) return;
             const client = window.supabaseClient || (window.DB && typeof window.DB.getClient === 'function' ? window.DB.getClient() : null);
@@ -292,6 +297,16 @@
                                     const prevClose = (stock.prevClose && stock.prevClose > 0) ? stock.prevClose : stock.price;
                                     stock.change = stock.price - prevClose;
                                     stock.changePercent = prevClose > 0 ? (stock.change / prevClose) * 100 : 0;
+                                } else if (this.isInsStockProduct(stock)) {
+                                    stock.price = nextPrice;
+                                    if (Number.isFinite(stock.prevClose) && stock.prevClose > 0) {
+                                        const pctChange = ((nextPrice - stock.prevClose) / stock.prevClose) * 100;
+                                        stock.change = pctChange;
+                                        stock.changePercent = pctChange;
+                                    } else {
+                                        stock.change = 0;
+                                        stock.changePercent = null;
+                                    }
                                 } else {
                                     if (stock.price !== nextPrice && stock.price > 0) {
                                         stock.change = ((nextPrice - stock.price) / stock.price) * 100;
@@ -548,7 +563,8 @@
                             symbol: buildDisplaySymbol(p),
                             market_symbol: p.market_symbol,
                             name: p.name,
-                            price: parseFloat(p.price) || 0,
+                            configured_price: parseFloat(p.price) || 0,
+                            price: 0,
                             subscription_price: parseFloat(p.subscription_price) || 0,
                             yield: this.parseProfitPercent(
                                 p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
@@ -568,7 +584,9 @@
                             totalShares: p.total_shares || 0,
                             availableShares: p.available_shares || 0,
                             exchange: p.exchange,
-                            change: 0
+                            prevClose: null,
+                            change: 0,
+                            changePercent: null
                         }));
 
                         console.log(`Synced ${this.dbProducts.length} IPOs, ${this.dbOtcProducts.length} OTCs, and ${this.dbInsStocks.length} Ins.stocks`);
@@ -624,6 +642,7 @@
                 [this.dbInsStocks, this.dbOtcProducts, this.dbProducts].forEach(list => {
                     list.forEach(stock => {
                         if (!stock) return;
+                        if (this.isInsStockProduct(stock)) return;
                         if (stock.isCached && !stock.cacheStale && !this.isQuoteStale(stock)) return;
                         this.applySyntheticTick(stock, stock.type === 'INS.STOCKS' || stock.type === 'stock' ? 0.0016 : 0.0010);
                     });
@@ -750,6 +769,18 @@
 
                 if (stock) {
                     stock.price = latestPrice;
+                    if (this.isInsStockProduct(stock)) {
+                        const prevClose = parseFloat(data?.previousClose ?? data?.prevClose);
+                        if (Number.isFinite(prevClose) && prevClose > 0) {
+                            stock.prevClose = prevClose;
+                            const pctChange = ((latestPrice - prevClose) / prevClose) * 100;
+                            stock.change = pctChange;
+                            stock.changePercent = pctChange;
+                        } else if (!Number.isFinite(stock.prevClose) || stock.prevClose <= 0) {
+                            stock.change = 0;
+                            stock.changePercent = null;
+                        }
+                    }
                     stock.isCached = true;
                     stock.cacheStale = false;
                     stock.updated_at = new Date().toISOString();

@@ -16,7 +16,7 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js?v=1.0.5"></script>
-    <script src="js/db.js?v=1.0.14"></script>
+    <script src="js/db.js?v=1.0.15"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.12"></script>
     <script src="js/trading.js?v=1.0.7"></script>
@@ -454,6 +454,27 @@
             return '₹' + (parseFloat(val) || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
+        function normalizeProductType(value) {
+            const normalized = String(value || '').trim().toUpperCase().replace(/_/g, '.');
+            if (normalized.includes('INS') && normalized.includes('STOCK')) return 'INS.STOCKS';
+            return normalized;
+        }
+
+        function isInsStockType(value) {
+            return normalizeProductType(value) === 'INS.STOCKS';
+        }
+
+        function setStandaloneQuoteUnavailableState(priceText = 'Unavailable') {
+            const detPriceEl = document.getElementById('detPrice');
+            const bpPriceEl = document.getElementById('bpCurrentPrice');
+            const sdPriceEl = document.getElementById('sdPrice');
+            const buyPriceEl = document.getElementById('detBuyPrice');
+            if (detPriceEl) detPriceEl.innerText = priceText;
+            if (bpPriceEl) bpPriceEl.innerText = priceText;
+            if (sdPriceEl) sdPriceEl.innerText = priceText;
+            if (buyPriceEl) buyPriceEl.innerText = priceText;
+        }
+
         let currentActiveSymbol = '';
         let currentStockName = '';
         let currentPrice = 0;
@@ -589,15 +610,17 @@
             console.log("INIT PAGE LOADED");
             currentActiveSymbol = sym;
             currentStockName = name;
-            currentProductType = type;
+            currentProductType = normalizeProductType(type);
             currentProductId = id;
             currentMinInvest = parseFloat(minInvest) || 0;
             const currentProduct = window.MarketEngine?.getProduct?.(id) || window.MarketEngine?.getProduct?.(sym);
             const backendBuyPrice = Number(currentProduct?.subscription_price);
             const fallbackProductPrice = Number(currentProduct?.price);
-            currentBuyPrice = (Number.isFinite(backendBuyPrice) && backendBuyPrice > 0)
-                ? backendBuyPrice
-                : ((Number.isFinite(fallbackProductPrice) && fallbackProductPrice > 0) ? fallbackProductPrice : 0);
+            currentBuyPrice = isInsStockType(currentProductType)
+                ? 0
+                : ((Number.isFinite(backendBuyPrice) && backendBuyPrice > 0)
+                    ? backendBuyPrice
+                    : ((Number.isFinite(fallbackProductPrice) && fallbackProductPrice > 0) ? fallbackProductPrice : 0));
             currentMarketPrice = 0;
             currentPrice = 0; // Reset to 0 to ensure live price takes precedence
             if (currentProductType === 'OTC' || currentProductType === 'IPO') {
@@ -707,6 +730,10 @@
             };
 
             const normalizeApiSymbol = (raw) => {
+                if (window.DB && typeof window.DB.getPreferredMarketApiSymbol === 'function') {
+                    const preferred = window.DB.getPreferredMarketApiSymbol(raw);
+                    if (preferred) return preferred;
+                }
                 const s = String(raw || '').trim().toUpperCase();
                 if (!s) return '';
                 if (s.startsWith('^')) return s;
@@ -718,7 +745,28 @@
                     return prefix === 'BSE' ? `${code}.BO` : `${code}.NS`;
                 }
                 if (s.endsWith('.NS') || s.endsWith('.BO')) return s;
-                return s;
+                return `${s}.NS`;
+            };
+
+            const getApiSymbolCandidates = (raw) => {
+                const candidates = [];
+                const push = (value) => {
+                    const normalized = String(value || '').trim().toUpperCase();
+                    if (normalized && !candidates.includes(normalized)) candidates.push(normalized);
+                };
+
+                const normalized = normalizeApiSymbol(raw);
+                push(normalized);
+
+                if (window.DB && typeof window.DB.getMarketApiSymbolCandidates === 'function') {
+                    const resolved = window.DB.getMarketApiSymbolCandidates(raw, options.exchangeHint || '');
+                    if (Array.isArray(resolved)) resolved.forEach(push);
+                }
+
+                if (/\.BO$/i.test(normalized)) push(normalized.replace(/\.BO$/i, '.NS'));
+                if (/\.NS$/i.test(normalized)) push(normalized.replace(/\.NS$/i, '.BO'));
+
+                return candidates;
             };
 
             const toChartPoint = (row) => {
@@ -734,47 +782,53 @@
             };
 
             const fetchKlineFromLocalApi = async (sym, name = '') => {
-                for (const base of marketApiBases()) {
-                    try {
-                        const baseUrl = String(base || '').replace(/\/$/, '');
-                        const isFnBase = /\/functions\/v1$/i.test(baseUrl);
-                        const url = isFnBase
-                            ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(desiredPeriod)}&interval=${encodeURIComponent(desiredInterval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`
-                            : `${baseUrl}/kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(desiredPeriod)}&interval=${encodeURIComponent(desiredInterval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`;
-                        const response = await fetch(url, {
-                            cache: 'no-store',
-                            headers: isFnBase ? edgeHeaders() : undefined
-                        });
-                        if (!response.ok) continue;
-                        const data = await response.json();
-                        if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
-                            return { payload: data, base: baseUrl };
-                        }
-                    } catch (_) { }
+                const candidateSymbols = getApiSymbolCandidates(sym);
+                for (const candidate of candidateSymbols) {
+                    for (const base of marketApiBases()) {
+                        try {
+                            const baseUrl = String(base || '').replace(/\/$/, '');
+                            const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                            const url = isFnBase
+                                ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(candidate)}&period=${encodeURIComponent(desiredPeriod)}&interval=${encodeURIComponent(desiredInterval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`
+                                : `${baseUrl}/kline?symbol=${encodeURIComponent(candidate)}&period=${encodeURIComponent(desiredPeriod)}&interval=${encodeURIComponent(desiredInterval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`;
+                            const response = await fetch(url, {
+                                cache: 'no-store',
+                                headers: isFnBase ? edgeHeaders() : undefined
+                            });
+                            if (!response.ok) continue;
+                            const data = await response.json();
+                            if (data?.success && Array.isArray(data.data) && data.data.length > 0) {
+                                return { payload: data, base: baseUrl };
+                            }
+                        } catch (_) { }
+                    }
                 }
                 return null;
             };
 
             const fetchQuoteFromLocalApi = async (sym, name = '') => {
-                for (const base of marketApiBases()) {
-                    try {
-                        const baseUrl = String(base || '').replace(/\/$/, '');
-                        const isFnBase = /\/functions\/v1$/i.test(baseUrl);
-                        const response = isFnBase
-                            ? await fetch(`${baseUrl}/get-market-price`, {
-                                method: 'POST',
-                                headers: edgeHeaders(),
-                                body: JSON.stringify({ symbol: sym, name: name || undefined }),
-                                cache: 'no-store'
-                            })
-                            : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(sym)}${name ? `&name=${encodeURIComponent(name)}` : ''}`, { cache: 'no-store' });
-                        if (!response.ok) continue;
-                        const data = await response.json();
-                        const price = Number(data?.price);
-                        if (data?.success && Number.isFinite(price)) {
-                            return { price, symbol: data.symbol || sym, base: baseUrl };
-                        }
-                    } catch (_) { }
+                const candidateSymbols = getApiSymbolCandidates(sym);
+                for (const candidate of candidateSymbols) {
+                    for (const base of marketApiBases()) {
+                        try {
+                            const baseUrl = String(base || '').replace(/\/$/, '');
+                            const isFnBase = /\/functions\/v1$/i.test(baseUrl);
+                            const response = isFnBase
+                                ? await fetch(`${baseUrl}/get-market-price`, {
+                                    method: 'POST',
+                                    headers: edgeHeaders(),
+                                    body: JSON.stringify({ symbol: candidate, name: name || undefined }),
+                                    cache: 'no-store'
+                                })
+                                : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(candidate)}${name ? `&name=${encodeURIComponent(name)}` : ''}`, { cache: 'no-store' });
+                            if (!response.ok) continue;
+                            const data = await response.json();
+                            const price = Number(data?.price);
+                            if (data?.success && Number.isFinite(price)) {
+                                return { price, symbol: data.symbol || candidate, base: baseUrl };
+                            }
+                        } catch (_) { }
+                    }
                 }
                 if (window.DB && typeof window.DB.getMarketPrice === 'function') {
                     try {
@@ -826,15 +880,15 @@
 
             try {
                 const baseSymbol = normalizeApiSymbol(symbol);
-                const candidates = [];
-                if (baseSymbol) candidates.push(baseSymbol);
-                if (baseSymbol && !baseSymbol.startsWith('^') && !baseSymbol.includes(':') && !baseSymbol.includes('.')) {
-                    candidates.push(`${baseSymbol}.NS`, `${baseSymbol}.BO`);
-                }
-                const uniqCandidates = [...new Set(candidates.filter(Boolean))];
+                const routeSymbol = options.originalSymbol || symbol;
+                const isInsStockChart = isInsStockType(currentProductType);
+                const uniqCandidates = [...new Set([
+                    ...getApiSymbolCandidates(routeSymbol),
+                    baseSymbol
+                ].filter(Boolean))];
 
                 let klinePayload = null;
-                let usedSymbol = baseSymbol || symbol;
+                let usedSymbol = uniqCandidates[0] || normalizeApiSymbol(routeSymbol) || baseSymbol || symbol;
                 for (const candidate of uniqCandidates) {
                     const result = await fetchKlineFromLocalApi(candidate, window.MarketEngine?.getProduct?.(candidate)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
                     if (result?.payload) {
@@ -844,7 +898,7 @@
                     }
                 }
 
-                if (!klinePayload) {
+                if (!klinePayload && !isInsStockChart) {
                     const quote = await fetchQuoteFromLocalApi(usedSymbol, window.MarketEngine?.getProduct?.(usedSymbol)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
                     const quotePrice = Number(quote?.price);
                     const fallbackProduct = window.MarketEngine?.getProduct?.(usedSymbol)
@@ -858,6 +912,10 @@
                         ? quotePrice
                         : productPrice;
                     if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, quote?.symbol || usedSymbol);
+                }
+                if (!klinePayload && isInsStockChart) {
+                    container.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-family: Outfit, sans-serif;">Realtime chart unavailable.</div>';
+                    return;
                 }
                 if (!klinePayload) throw new Error("No kline data from edge market API");
 
@@ -1474,6 +1532,7 @@
                     || window.MarketEngine?.getProduct?.(symbol);
                 marketSymbol = product?.market_symbol || product?.symbol || symbol;
                 productName = product?.name || currentStockName || '';
+                const isCurrentInsStock = isInsStockType(product?.type || currentProductType);
 
                 if (price === null) {
                     const data = await window.DB.getMarketPrice(marketSymbol, productName);
@@ -1484,6 +1543,10 @@
                         }
                         if (product) {
                             product.price = price;
+                            const prevClose = Number(data?.previousClose ?? data?.prevClose);
+                            if (Number.isFinite(prevClose) && prevClose > 0) {
+                                product.prevClose = prevClose;
+                            }
                         }
                     }
                 }
@@ -1498,6 +1561,11 @@
                 };
 
                 if (!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) {
+                    if (isCurrentInsStock) {
+                        setStandaloneQuoteUnavailableState('Unavailable');
+                        updateBuyTotal();
+                        return;
+                    }
                     const base = String(marketSymbol || symbol || '').toUpperCase();
                     const compact = base
                         .replace(/^NSE:|^BSE:/, '')
@@ -1517,7 +1585,13 @@
                     }
                 }
 
-                if (!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) return;
+                if (!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) {
+                    if (isCurrentInsStock) {
+                        setStandaloneQuoteUnavailableState('Unavailable');
+                        updateBuyTotal();
+                    }
+                    return;
+                }
 
                 currentMarketPrice = parsedPrice(price);
                 if (!(currentProductType === 'OTC' || currentProductType === 'IPO')) {

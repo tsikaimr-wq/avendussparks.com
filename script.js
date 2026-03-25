@@ -1137,9 +1137,15 @@ window.loadUserAssets = async function (userId) {
         let outstanding = (typeof dbUser.outstanding_balance !== 'undefined') ? (parseFloat(dbUser.outstanding_balance) || 0) : (parseFloat(dbUser.outstanding) || 0);
 
         // --- DOM Helpers ---
-        const formatCurrency = (val) => {
+        const formatCurrencyLocked = (val) => {
+            if (typeof window.formatAppCurrency === 'function') {
+                return window.formatAppCurrency(val);
+            }
             const num = parseFloat(val) || 0;
-            return (num < 0 ? '-' : '') + '₹' + Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            return `${num < 0 ? '-' : ''}${window.APP_CURRENCY_SYMBOL || '\u20B9'}${Math.abs(num).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        };
+        const formatCurrency = (val) => {
+            return formatCurrencyLocked(val);
         };
 
         // Safe-fit text (replicated from market.html for consistency)
@@ -1208,7 +1214,7 @@ window.loadUserAssets = async function (userId) {
         const updateVal = (id, val) => {
             const el = document.getElementById(id);
             if (el) {
-                fitText(el, formatCurrency(val));
+                fitText(el, formatCurrencyLocked(val));
             }
         };
 
@@ -1219,7 +1225,7 @@ window.loadUserAssets = async function (userId) {
             const vals = [rawBalance, inv, bonus, displayPendingFunds, loan, outstanding];
             assetAmounts.forEach((el, idx) => {
                 if (vals[idx] !== undefined) {
-                    fitText(el, formatCurrency(vals[idx]));
+                    fitText(el, formatCurrencyLocked(vals[idx]));
                 }
             });
         }
@@ -1235,7 +1241,7 @@ window.loadUserAssets = async function (userId) {
 
         // Update additional UI fields for Outstanding/Pending Settlement
         document.querySelectorAll('.pending-settlement-value, .outstanding-balance-value').forEach(el => {
-            fitText(el, formatCurrency(outstanding));
+            fitText(el, formatCurrencyLocked(outstanding));
         });
 
         // --- Update Portfolio Page (Specific IDs) ---
@@ -1254,11 +1260,11 @@ window.loadUserAssets = async function (userId) {
         // --- Update Generic Indicators (Header/Script.js elements) ---
         const balanceEls = document.querySelectorAll('.stat-value.green, .portfolio-balance, #mainBalance, #valAvailable');
         balanceEls.forEach(el => {
-            fitText(el, formatCurrency(rawBalance));
+            fitText(el, formatCurrencyLocked(rawBalance));
         });
 
         const investedEls = document.querySelectorAll('.stat-value.blue, #valInvested');
-        investedEls.forEach(el => fitText(el, formatCurrency(inv)));
+        investedEls.forEach(el => fitText(el, formatCurrencyLocked(inv)));
 
         // Update LocalStorage to keep session fresh
         if (window.DB && window.DB.CURRENT_USER_KEY) {

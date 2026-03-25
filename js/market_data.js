@@ -195,8 +195,16 @@
                             if (stock) {
                                 stock.updated_at = item.updated_at; // Track for stale check
                                 
-                                // Calculate accurate change if possible
-                                if (stock.price !== item.price && stock.price > 0) {
+                                if (this.isInsStockProduct(stock)) {
+                                    if (Number.isFinite(stock.prevClose) && stock.prevClose > 0) {
+                                        const pctChange = ((Number(item.price) - stock.prevClose) / stock.prevClose) * 100;
+                                        stock.change = pctChange;
+                                        stock.changePercent = pctChange;
+                                    } else {
+                                        stock.change = 0;
+                                        stock.changePercent = null;
+                                    }
+                                } else if (stock.price !== item.price && stock.price > 0) {
                                     stock.change = ((item.price - stock.price) / stock.price) * 100;
                                 }
                                 
@@ -349,8 +357,8 @@
                             symbol: p.market_symbol || p.name.split(' ')[0].toUpperCase(),
                             market_symbol: p.market_symbol,
                             name: p.name,
-                            // Keep a usable fallback price so holdings never freeze at 0 when cache is stale/missing.
-                            price: parseFloat(p.price) || 0,
+                            configured_price: parseFloat(p.price) || 0,
+                            price: 0,
                             subscription_price: parseFloat(p.subscription_price) || 0,
                             yield: this.parseProfitPercent(
                                 p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
@@ -370,7 +378,9 @@
                             totalShares: p.total_shares || 0,
                             availableShares: p.available_shares || 0,
                             exchange: p.exchange,
-                            change: 0
+                            prevClose: null,
+                            change: 0,
+                            changePercent: null
                         }));
 
                         console.log(`Synced ${this.dbProducts.length} IPOs, ${this.dbOtcProducts.length} OTCs, and ${this.dbInsStocks.length} Ins.stocks`);
@@ -406,6 +416,7 @@
                 const dbLists = [this.dbInsStocks, this.dbOtcProducts, this.dbProducts];
                 dbLists.forEach(list => {
                     list.forEach(stock => {
+                        if (this.isInsStockProduct(stock)) return;
                         if (stock.price > 0) {
                             const volatility = 0.0015; 
                             const changePercent = (Math.random() * volatility * 2) - volatility;
@@ -427,6 +438,11 @@
 
                 this.notifyListeners();
             }, 5000); // 5 second refresh for simulation
+        }
+
+        isInsStockProduct(item) {
+            const normalizedType = String(item?.type || '').trim().toUpperCase();
+            return normalizedType === 'INS.STOCKS' || normalizedType === 'INS_STOCKS';
         }
 
         addListener(callback) {
@@ -604,6 +620,18 @@
                     const stock = stockMatch;
                     if (stock) {
                         stock.price = price;
+                        if (this.isInsStockProduct(stock)) {
+                            const prevClose = parseFloat(data?.previousClose ?? data?.prevClose);
+                            if (Number.isFinite(prevClose) && prevClose > 0) {
+                                stock.prevClose = prevClose;
+                                const pctChange = ((price - prevClose) / prevClose) * 100;
+                                stock.change = pctChange;
+                                stock.changePercent = pctChange;
+                            } else if (!Number.isFinite(stock.prevClose) || stock.prevClose <= 0) {
+                                stock.change = 0;
+                                stock.changePercent = null;
+                            }
+                        }
                         stock.isCached = true; // Mark as fresh
                         stock.cacheStale = false;
                         stock.updated_at = new Date().toISOString();

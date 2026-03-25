@@ -3612,7 +3612,7 @@
                     <td style="padding:12px;">${p.listing_date || ''}</td>
                     <td style="padding:12px;"><span class="vsl-badge approved">${p.status}</span></td>
                     <td style="padding:12px;">
-                        <button class="vsl-btn-small" style="background:#ef4444; color:white; border:none; cursor:pointer;" onclick="deleteProduct(${p.id})">Delete</button>
+                        <button class="vsl-btn-small" style="background:#ef4444; color:white; border:none; cursor:pointer;" onclick='deleteProduct(${JSON.stringify(String(p.id))})'>Delete</button>
                     </td>
                 </tr>
             `).join('');
