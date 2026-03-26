@@ -6884,7 +6884,11 @@
             }
         }
 
+        let tradesTabRenderRequestId = 0;
+
         async function switchTradesTab(el, type) {
+            if (!el) return;
+            const requestId = ++tradesTabRenderRequestId;
             // Update active state
             document.querySelectorAll('.discover-tabs .d-tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
@@ -6895,6 +6899,7 @@
             // MAINTENANCE CHECK for Institutional Stocks
             if (type === 'stocks' || type === 'all') {
                 const config = await window.DB.getPlatformSettings('institutional_config');
+                if (requestId !== tradesTabRenderRequestId) return;
                 if (config && config.status === 'Maintenance' && type === 'stocks') {
                     listContainer.innerHTML = `
                         <div style="background: #fff7ed; border: 1px solid #ffedd5; padding: 2rem; border-radius: 12px; text-align: center; margin-top: 1rem;">
@@ -6920,6 +6925,7 @@
                 data = MarketEngine.getIPO().map(s => ({ ...s, type: 'IPO' }));
             }
 
+            if (requestId !== tradesTabRenderRequestId) return;
             if (data.length === 0) {
                 listContainer.innerHTML = `<div style="color: #94a3b8; font-size: 0.9rem; margin-top: 1rem;">No data.</div>`;
                 return;
@@ -6934,7 +6940,7 @@
                 listContainer.style.gap = '1.5rem';
                 listContainer.style.padding = '1rem 0';
 
-                listContainer.innerHTML = data.map(s => {
+                const premiumHtml = data.map(s => {
                     const isOTC = s.type === 'OTC';
                     const isIPO = s.type === 'IPO';
                     const isInsStock = isInsStockType(s.type);
@@ -7112,6 +7118,9 @@
                         </div>
                     `;
                 }).join('');
+
+                if (requestId !== tradesTabRenderRequestId) return;
+                listContainer.innerHTML = premiumHtml;
             } else {
                 // Regular Stock Layout
                 listContainer.style.display = 'grid';
@@ -7119,7 +7128,7 @@
                 listContainer.style.gap = '1rem';
                 listContainer.style.padding = '1rem 0';
 
-                listContainer.innerHTML = data.map(s => {
+                const standardHtml = data.map(s => {
                     const rawYield = s.est_profit_percent ?? s.estimated_profit ?? s.profit ?? s.ipo_yield ?? s.yield;
                     const rawYieldText = String(rawYield ?? '').trim();
                     const parsedYield = Number(rawYieldText.replace(/,/g, '').replace('%', '').trim());
@@ -7151,6 +7160,9 @@
                         </div>
                     `;
                 }).join('');
+
+                if (requestId !== tradesTabRenderRequestId) return;
+                listContainer.innerHTML = standardHtml;
             }
             lucide.createIcons();
         }

@@ -7226,7 +7226,11 @@
             }
         }
 
+        let tradesTabRenderRequestId = 0;
+
         async function switchTradesTab(el, type) {
+            if (!el) return;
+            const requestId = ++tradesTabRenderRequestId;
             // Update active state
             document.querySelectorAll('.discover-tabs .d-tab').forEach(t => t.classList.remove('active'));
             el.classList.add('active');
@@ -7237,6 +7241,7 @@
             // MAINTENANCE CHECK for Institutional Stocks
             if (type === 'stocks' || type === 'all') {
                 const config = (window.DB && typeof window.DB.getPlatformSettings === 'function') ? await window.DB.getPlatformSettings('institutional_config') : null;
+                if (requestId !== tradesTabRenderRequestId) return;
                 if (config && config.status === 'Maintenance' && type === 'stocks') {
                     listContainer.innerHTML = `
                         <div style="background: #fff7ed; border: 1px solid #ffedd5; padding: 2rem; border-radius: 12px; text-align: center; margin-top: 1rem;">
@@ -7262,6 +7267,7 @@
                 data = MarketEngine.getIPO().map(s => ({ ...s, type: 'IPO' }));
             }
 
+            if (requestId !== tradesTabRenderRequestId) return;
             console.log(`DEBUG: switchTradesTab type: ${type} data count: ${data.length}`);
 
             if (data.length === 0) {
@@ -7275,7 +7281,7 @@
             listContainer.style.gap = '1.5rem';
             listContainer.style.padding = '1rem 0';
 
-            listContainer.innerHTML = data.map(s => {
+            const cardsHtml = data.map(s => {
                 const isOTC = s.type === 'OTC' || s.type?.toUpperCase() === 'OTC';
                 const isIPO = s.type === 'IPO' || s.type?.toUpperCase() === 'IPO';
                 const normalizedCardType = normalizeProductType(s.type || 'stock');
@@ -7481,6 +7487,9 @@
                     </div>
                 `;
             }).join('');
+
+            if (requestId !== tradesTabRenderRequestId) return;
+            listContainer.innerHTML = cardsHtml;
 
             lucide.createIcons();
         }

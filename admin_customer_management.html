@@ -7321,6 +7321,17 @@
         }
 
         let currentProductFilter = 'IPO';
+        let productRenderRequestId = 0;
+
+        function normalizeAdminProductType(value) {
+            return String(value || 'IPO').trim().toUpperCase();
+        }
+
+        function renderProductListPlaceholder(message) {
+            const list = document.getElementById('productList');
+            if (!list) return;
+            list.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;">${message}</td></tr>`;
+        }
         window.setProductFilter = function (type) {
             currentProductFilter = type;
             const ipoBtn = document.getElementById('btn_product_ipo');
@@ -7337,25 +7348,31 @@
                 turboBtn.innerHTML = `🚀 Fetch ${label} Turbo`;
             }
 
+            const loadingLabel = type === 'Ins.stocks' ? 'Institutional' : type;
+            renderProductListPlaceholder(`Loading ${loadingLabel} products...`);
             renderProducts();
         };
 
         async function renderProducts() {
+            const requestId = ++productRenderRequestId;
             const list = document.getElementById('productList');
             if (!list) return;
 
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
             const isCsr = auth.role === 'csr';
             const sellLockMap = await loadProductSellLockMap();
+            if (requestId !== productRenderRequestId) return;
 
             // Filter if CSR (Instruction 4 & 7)
             let dbProducts = await window.DB.getProducts(isCsr ? auth.id : null);
+            if (requestId !== productRenderRequestId) return;
 
             // 4. Filter by IPO vs OTC vs Ins.stocks tab
             dbProducts = dbProducts.filter(p => {
                 const pType = (p.product_type || p.type || 'IPO');
-                return pType.toUpperCase() === currentProductFilter.toUpperCase();
+                return normalizeAdminProductType(pType) === normalizeAdminProductType(currentProductFilter);
             });
+            if (requestId !== productRenderRequestId) return;
 
             if (dbProducts.length === 0) {
                 const emptyMsg = isCsr
@@ -7364,7 +7381,7 @@
                 list.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;" data-i18n="${isCsr ? 'no_products_csr' : 'no_products_admin'}">${emptyMsg}</td></tr>`;
                 return;
             }
-            list.innerHTML = dbProducts.map(p => {
+            const rowsHtml = dbProducts.map(p => {
                 const statusLower = (p.status || 'Active').toLowerCase();
                 const isActive = statusLower === 'active';
                 const badgeClass = isActive ? 'active' : 'inactive';
@@ -7399,6 +7416,8 @@
                     </tr>
                 `;
             }).join('');
+            if (requestId !== productRenderRequestId) return;
+            list.innerHTML = rowsHtml;
             window.applyLanguage(localStorage.getItem('admin_lang') || 'cn');
         }
 
