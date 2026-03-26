@@ -1914,6 +1914,106 @@ window.deleteMessage = async function (id, btn) {
 
 // --- Customer Service Logic ---
 let isChatSubscribed = false;
+let csPollingTimer = null;
+let csPollingInFlight = false;
+let csKnownMessageIds = new Set();
+let csHistorySignature = '';
+
+function isChatNotificationPayload(rawMessage) {
+    if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.trim().startsWith('{')) return false;
+    try {
+        const payload = JSON.parse(rawMessage);
+        return payload?.is_notification === true || payload?.title !== undefined;
+    } catch (_) {
+        return false;
+    }
+}
+
+function getRenderableCSMessages(messages = []) {
+    return (Array.isArray(messages) ? messages : []).filter(m => {
+        if (!m || m.sender === 'System') return false;
+        return !isChatNotificationPayload(m.message);
+    });
+}
+
+function getCSHistorySignature(messages = []) {
+    const renderable = Array.isArray(messages) ? messages : [];
+    const last = renderable[renderable.length - 1];
+    return `${renderable.length}:${last?.id || ''}:${last?.created_at || ''}`;
+}
+
+function rememberCSMessages(messages = []) {
+    (Array.isArray(messages) ? messages : []).forEach(m => {
+        if (m?.id !== null && m?.id !== undefined) {
+            csKnownMessageIds.add(String(m.id));
+        }
+    });
+}
+
+function isCSModalOpen() {
+    const modal = document.getElementById('csModal');
+    if (!modal) return false;
+    return getComputedStyle(modal).display !== 'none' && modal.style.display !== 'none';
+}
+
+function bumpCSBadges(amount = 1) {
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    const badges = [document.getElementById('csrMsgBadge'), document.getElementById('csrHeaderBadge')];
+    badges.forEach(badge => {
+        if (!badge) return;
+        const current = parseInt(badge.textContent || '0', 10) || 0;
+        badge.textContent = String(current + amount);
+        badge.style.display = 'block';
+    });
+}
+
+async function pollCSMessages({ forceRender = false } = {}) {
+    const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+    if (!user || csPollingInFlight || !window.DB || typeof window.DB.getMessages !== 'function') return;
+
+    csPollingInFlight = true;
+    try {
+        const msgs = await window.DB.getMessages(user.id);
+        const renderable = getRenderableCSMessages(msgs);
+        const signature = getCSHistorySignature(renderable);
+        const newMessages = renderable.filter(m => m?.id !== null && m?.id !== undefined && !csKnownMessageIds.has(String(m.id)));
+        const modalOpen = isCSModalOpen();
+
+        rememberCSMessages(renderable);
+
+        if (modalOpen || forceRender) {
+            const targetBox = document.getElementById('chatBox');
+            const shouldStickBottom = !targetBox || (targetBox.scrollHeight - targetBox.scrollTop - targetBox.clientHeight) < 80;
+            if (forceRender || signature !== csHistorySignature || newMessages.length > 0) {
+                renderMessages(renderable);
+                if (targetBox && shouldStickBottom) {
+                    targetBox.scrollTop = targetBox.scrollHeight;
+                }
+            }
+        } else {
+            const incomingSupportCount = newMessages.filter(m => m.sender !== 'User' && m.sender !== 'user').length;
+            if (incomingSupportCount > 0) {
+                playNotificationSound();
+                bumpCSBadges(incomingSupportCount);
+            }
+        }
+
+        csHistorySignature = signature;
+    } catch (error) {
+        console.error("CS polling failed:", error);
+    } finally {
+        csPollingInFlight = false;
+    }
+}
+
+function startCSPolling() {
+    if (csPollingTimer) return;
+    pollCSMessages({ forceRender: isCSModalOpen() });
+    csPollingTimer = setInterval(() => {
+        if (!(window.DB && window.DB.getCurrentUser && window.DB.getCurrentUser())) return;
+        pollCSMessages({ forceRender: isCSModalOpen() });
+    }, 2500);
+}
 
 window.openCS = function () {
     if (window.closeSettings) window.closeSettings();
@@ -1925,6 +2025,7 @@ window.openCS = function () {
     }
     localStorage.setItem('avendus_cs_open', 'true');
     if (window.startChatListener) window.startChatListener();
+    startCSPolling();
     loadCSMessages();
 };
 
@@ -1975,7 +2076,10 @@ async function loadCSMessages() {
 
     if (window.DB && window.DB.getMessages) {
         const msgs = await window.DB.getMessages(user.id);
-        renderMessages(msgs);
+        const renderable = getRenderableCSMessages(msgs);
+        rememberCSMessages(renderable);
+        csHistorySignature = getCSHistorySignature(renderable);
+        renderMessages(renderable);
     }
 
     // Clear badges when chat is opened
@@ -2027,6 +2131,9 @@ window.startChatListener = async function () {
                 const p = JSON.parse(m.message);
                 if (p.is_notification) return;
             } catch (e) { }
+
+            rememberCSMessages([m]);
+            csHistorySignature = '';
 
             const isUser = m.sender === 'User' || m.sender === 'user';
 
@@ -2081,6 +2188,7 @@ function appendSingleMessage(m) {
     const targetBox = document.getElementById('chatBox');
     if (!targetBox) return;
     if (m && m.id && isCSMessageAlreadyRendered(m.id)) return;
+    rememberCSMessages([m]);
 
     const div = document.createElement('div');
     const isUser = m.sender === 'User' || m.sender === 'user';
@@ -2291,6 +2399,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => {
             if (window.startChatListener) window.startChatListener();
             if (window.startNotificationListener) window.startNotificationListener();
+            startCSPolling();
             // Update CSR visibility
             const btn = document.getElementById('floatingCSR');
             if (btn) btn.style.display = 'flex';

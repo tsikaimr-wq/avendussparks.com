@@ -14,7 +14,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260322b"></script>
+    <script src="db.js?v=20260326a"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -5312,6 +5312,74 @@
         let currentChatUser = null;
         let chatUsers = [];
         let isAdminChatSubscribed = false;
+        let adminChatHistoryPollTimer = null;
+        let adminChatListPollTimer = null;
+        let adminChatHistoryInFlight = false;
+        let adminChatListInFlight = false;
+        let adminChatHistorySignature = '';
+
+        function isAdminChatNotificationPayload(rawMessage) {
+            if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.trim().startsWith('{')) return false;
+            try {
+                const payload = JSON.parse(rawMessage);
+                return payload?.is_notification === true || payload?.title !== undefined;
+            } catch (_) {
+                return false;
+            }
+        }
+
+        function getRenderableAdminChatMessages(messages = []) {
+            return (Array.isArray(messages) ? messages : []).filter(m => !isAdminChatNotificationPayload(m?.message || ''));
+        }
+
+        function getAdminChatHistorySignature(messages = []) {
+            const renderable = Array.isArray(messages) ? messages : [];
+            const last = renderable[renderable.length - 1];
+            return `${renderable.length}:${last?.id || ''}:${last?.created_at || ''}`;
+        }
+
+        function isLivechatPageVisible() {
+            const page = document.getElementById('pageLivechat');
+            if (!page) return false;
+            return getComputedStyle(page).display !== 'none' && page.style.display !== 'none';
+        }
+
+        async function syncActiveAdminChat(forceRender = false) {
+            if (!currentChatUser || !isLivechatPageVisible() || adminChatHistoryInFlight) return;
+            adminChatHistoryInFlight = true;
+            try {
+                const msgs = await DB.getMessages(currentChatUser.id);
+                const renderable = getRenderableAdminChatMessages(msgs);
+                const signature = getAdminChatHistorySignature(renderable);
+                if (forceRender || signature !== adminChatHistorySignature) {
+                    renderChatHistory(renderable);
+                    adminChatHistorySignature = signature;
+                }
+            } catch (error) {
+                console.error("Admin chat polling failed:", error);
+            } finally {
+                adminChatHistoryInFlight = false;
+            }
+        }
+
+        function startAdminChatPolling() {
+            if (!adminChatHistoryPollTimer) {
+                adminChatHistoryPollTimer = setInterval(() => {
+                    syncActiveAdminChat(false);
+                }, 2500);
+            }
+            if (!adminChatListPollTimer) {
+                adminChatListPollTimer = setInterval(async () => {
+                    if (!isLivechatPageVisible() || adminChatListInFlight) return;
+                    adminChatListInFlight = true;
+                    try {
+                        await initLiveChat();
+                    } finally {
+                        adminChatListInFlight = false;
+                    }
+                }, 5000);
+            }
+        }
 
         function playNotificationSound() {
             try {
@@ -5327,6 +5395,7 @@
         async function initLiveChat() {
             const client = DB.getClient();
             if (!client) return;
+            startAdminChatPolling();
 
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
             const isCsr = auth.role === 'csr';
@@ -5420,6 +5489,7 @@
             const user = allUsers.find(u => u.id == uid);
             if (!user) return;
             currentChatUser = user;
+            adminChatHistorySignature = '';
 
             // Clear unread for this specific user
             user.unreadCount = 0;
@@ -5439,12 +5509,14 @@
 
             renderChatUserList();
             const msgs = await DB.getMessages(uid);
-            renderChatHistory(msgs);
+            renderChatHistory(getRenderableAdminChatMessages(msgs));
         }
 
         function renderChatHistory(msgs) {
             const hist = document.getElementById('chatHistory');
-            hist.innerHTML = msgs.map(m => {
+            const renderable = getRenderableAdminChatMessages(msgs);
+            adminChatHistorySignature = getAdminChatHistorySignature(renderable);
+            hist.innerHTML = renderable.map(m => {
                 const isAdmin = m.sender === 'Admin';
                 let displayContent = m.message;
 
@@ -5524,6 +5596,7 @@
                     </div>`;
             hist.appendChild(div);
             hist.scrollTop = hist.scrollHeight;
+            adminChatHistorySignature = '';
             lucide.createIcons();
         }
 
@@ -5593,6 +5666,9 @@
             const res = await DB.sendMessage(currentChatUser.id, messageData, 'Admin');
             if (res && res.success && res.data) {
                 appendChatMessage(res.data);
+            } else {
+                adminChatHistorySignature = '';
+                syncActiveAdminChat(true);
             }
         }
 

@@ -1463,6 +1463,19 @@ window.DB = {
     // Helper to resolve numeric ID if needed
     async _getNumericUserId(paramUserId) {
         const client = this.getClient();
+        const rawParam = (paramUserId && typeof paramUserId === 'object')
+            ? (paramUserId.id ?? paramUserId.user_id ?? paramUserId.auth_id ?? paramUserId)
+            : paramUserId;
+        const normalizedParam = typeof rawParam === 'string' ? rawParam.trim() : rawParam;
+
+        if (typeof normalizedParam === 'number' && Number.isFinite(normalizedParam)) {
+            return normalizedParam;
+        }
+
+        if (typeof normalizedParam === 'string' && /^\d+$/.test(normalizedParam)) {
+            return Number(normalizedParam);
+        }
+
         try {
             // User requested strict logic: get numeric ID from users table using auth_id
             const { data: authData } = await client.auth.getUser();
@@ -1479,21 +1492,21 @@ window.DB = {
             }
 
             // Fallback: Check if paramUserId is already the numeric ID or if we can find it by auth_id=paramUserId
-            if (paramUserId) {
+            if (normalizedParam) {
                 // Try treating paramUserId as auth_id
                 const { data: userData } = await client
                     .from('users')
                     .select('id')
-                    .eq('auth_id', paramUserId)
+                    .eq('auth_id', normalizedParam)
                     .single();
                 if (userData) return userData.id;
 
                 // If not found, maybe paramUserId is ALREADY the numeric ID? 
                 // We return it as is if we couldn't resolve via auth_id
-                return paramUserId;
+                return normalizedParam;
             }
         } catch (e) { console.error("ID Resolution Error:", e); }
-        return paramUserId;
+        return normalizedParam;
     },
 
     async getNotifications(userId) {
