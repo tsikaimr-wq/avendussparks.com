@@ -5461,7 +5461,7 @@
                 }
 
                 return `
-                    <div class="msg-bubble-target" style="align-self: ${isAdmin ? 'flex-end' : 'flex-start'};
+                    <div class="msg-bubble-target" data-message-id="${m.id || ''}" style="align-self: ${isAdmin ? 'flex-end' : 'flex-start'};
                 background: ${isAdmin ? '#3b82f6' : 'white'};
                 color: ${isAdmin ? 'white' : '#1e293b'};
                 padding: 10px 16px; border-radius: ${isAdmin ? '18px 18px 2px 18px' : '18px 18px 18px 2px'};
@@ -5498,9 +5498,12 @@
             } catch (e) { }
 
             const hist = document.getElementById('chatHistory');
+            if (!hist) return;
+            if (m && m.id && hist.querySelector(`[data-message-id="${m.id}"]`)) return;
             const div = document.createElement('div');
             const isAdmin = m.sender === 'Admin';
             div.className = 'msg-bubble-target';
+            if (m && m.id) div.dataset.messageId = m.id;
             div.style.cssText = `align-self: ${isAdmin ? 'flex-end' : 'flex-start'};
                 background: ${isAdmin ? '#3b82f6' : 'white'};
                 color: ${isAdmin ? 'white' : '#1e293b'}; padding: 10px 16px;
@@ -5587,7 +5590,10 @@
                 clearAdminChatImage();
             }
 
-            await DB.sendMessage(currentChatUser.id, messageData, 'Admin');
+            const res = await DB.sendMessage(currentChatUser.id, messageData, 'Admin');
+            if (res && res.success && res.data) {
+                appendChatMessage(res.data);
+            }
         }
 
         window.toggleAdminEmojiPicker = function () {
@@ -6435,8 +6441,8 @@
         let _searchTimeout = null;
         window.debouncedAdminSearch = async function (query) {
             const resultsDiv = document.getElementById('admin_search_results');
-            const currentSource = document.getElementById('p_data_source')?.value || 'yahoo';
-            if (currentSource !== 'yahoo') {
+            const currentType = getProductFormType();
+            if (currentType !== 'Ins.stocks') {
                 if (resultsDiv) resultsDiv.style.display = 'none';
                 return;
             }
@@ -6488,8 +6494,9 @@
             // Store data globally for manual type-switch re-trigger
             window._lastSelectedYahooData = data;
             if (document.getElementById('p_data_source')) {
-                document.getElementById('p_data_source').value = 'turbo';
-                applyProductDataSourceUI('turbo');
+                const currentSource = normalizeProductDataSource(document.getElementById('p_data_source').value || getDefaultProductDataSource(getProductFormType()));
+                document.getElementById('p_data_source').value = currentSource;
+                applyProductDataSourceUI(currentSource);
             }
 
             // 1. SMART PRODUCT TYPE DETECTION
@@ -6974,12 +6981,13 @@
             const helpBlock = document.getElementById('p_source_help');
             const searchResults = document.getElementById('admin_search_results');
             const productType = getProductFormType();
+            const showMarketSearch = productType === 'Ins.stocks';
 
             if (document.getElementById('p_data_source')) {
                 document.getElementById('p_data_source').value = resolvedSource;
             }
 
-            if (yahooBlock) yahooBlock.style.display = 'none';
+            if (yahooBlock) yahooBlock.style.display = showMarketSearch ? 'block' : 'none';
             if (turboBlock) turboBlock.style.display = resolvedSource === 'turbo' ? 'block' : 'none';
             if (searchResults) searchResults.style.display = 'none';
             if (turboBlock) {
@@ -7006,12 +7014,13 @@
             const helpBlock = document.getElementById('p_source_help');
             const searchResults = document.getElementById('admin_search_results');
             const productType = getProductFormType();
+            const showMarketSearch = productType === 'Ins.stocks';
 
             if (document.getElementById('p_data_source')) {
                 document.getElementById('p_data_source').value = resolvedSource;
             }
 
-            if (yahooBlock) yahooBlock.style.display = 'none';
+            if (yahooBlock) yahooBlock.style.display = showMarketSearch ? 'block' : 'none';
             if (turboBlock) turboBlock.style.display = resolvedSource === 'turbo' ? 'block' : 'none';
             if (searchResults) searchResults.style.display = 'none';
             if (turboBlock) {
@@ -7021,9 +7030,15 @@
 
             if (helpBlock) {
                 const label = productType === 'Ins.stocks' ? 'Ins.Stock' : productType;
-                helpBlock.innerText = resolvedSource === 'turbo'
-                    ? `Current source: Turbo Database. Select a ${label} template to auto-fill the product form.`
-                    : `Current source: Manual Entry. Fill in the ${label} product fields manually.`;
+                if (showMarketSearch && resolvedSource === 'turbo') {
+                    helpBlock.innerText = `Current source: Turbo Database + Realtime Market Search. Search a live symbol like the frontend, or choose a Turbo preset to auto-fill ${label}.`;
+                } else if (showMarketSearch) {
+                    helpBlock.innerText = `Current source: Manual Entry + Realtime Market Search. Search a live symbol first, then fine-tune the ${label} fields manually.`;
+                } else if (resolvedSource === 'turbo') {
+                    helpBlock.innerText = `Current source: Turbo Database. Select a ${label} template to auto-fill the product form.`;
+                } else {
+                    helpBlock.innerText = `Current source: Manual Entry. Fill in the ${label} product fields manually.`;
+                }
             }
 
             if (resolvedSource === 'turbo') {
@@ -8041,14 +8056,13 @@
                 </div>
                 <div class="fm-group" id="p_source_help" style="grid-column: span 2; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; color:#475569; font-size:0.78rem;">
                 </div>
-                <!-- Yahoo Search Integration -->
+                <!-- Realtime Market Search -->
                 <div class="fm-group" id="p_yahoo_search_block" style="grid-column: span 2; position: relative; display:none;">
-                    <label style="color:#d4af37; font-weight:700;" data-i18n="lbl_yahoo_search">Yahoo Finance Search
-                        (Assistant)</label>
+                    <label style="color:#d4af37; font-weight:700;" data-i18n="lbl_yahoo_search">Realtime Market Search</label>
                     <div style="display:flex; gap:0.5rem;">
                         <input type="text" id="admin_product_search" class="vsl-input"
                             data-i18n="ph_admin_product_search"
-                            placeholder="Search Name or Symbol (e.g. Reliance, Hyundai)"
+                            placeholder="Search Name or Symbol (e.g. Reliance, TATA, ZOMATO)"
                             oninput="debouncedAdminSearch(this.value)">
                         <button class="vsl-btn-small" style="background:#f1f5f9; min-width:80px;" data-i18n="btn_search"
                             onclick="debouncedAdminSearch(document.getElementById('admin_product_search').value)">Search</button>

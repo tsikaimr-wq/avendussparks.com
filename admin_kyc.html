@@ -2840,7 +2840,7 @@
             }).map(m => {
                 const isAdmin = m.sender === 'Admin';
                 return `
-                <div style="align-self: ${isAdmin ? 'flex-end' : 'flex-start'};
+                <div data-message-id="${m.id || ''}" style="align-self: ${isAdmin ? 'flex-end' : 'flex-start'};
                                 background: ${isAdmin ? '#3b82f6' : 'white'};
             color: ${isAdmin ? 'white' : '#1e293b'};
             padding: 10px 16px; border-radius: ${isAdmin ? '18px 18px 2px 18px' : '18px 18px 18px 2px'};
@@ -2859,8 +2859,11 @@
         function appendChatMessage(m) {
             try { JSON.parse(m.message); return; } catch (e) { }
             const hist = document.getElementById('chatHistory');
+            if (!hist) return;
+            if (m && m.id && hist.querySelector(`[data-message-id="${m.id}"]`)) return;
             const div = document.createElement('div');
             const isAdmin = m.sender === 'Admin';
+            if (m && m.id) div.dataset.messageId = m.id;
             div.style.cssText = `align-self: ${isAdmin ? 'flex-end' : 'flex-start'};
             background: ${isAdmin ? '#3b82f6' : 'white'};
             color: ${isAdmin ? 'white' : '#1e293b'}; padding: 10px 16px;
@@ -2888,7 +2891,10 @@
             if (!msg || !currentChatUser) return;
 
             input.value = '';
-            await DB.sendMessage(currentChatUser.id, msg, 'Admin');
+            const res = await DB.sendMessage(currentChatUser.id, msg, 'Admin');
+            if (res && res.success && res.data) {
+                appendChatMessage(res.data);
+            }
         }
 
         function filterChatUsers() {

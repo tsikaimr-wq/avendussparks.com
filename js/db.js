@@ -1429,9 +1429,11 @@ window.DB = {
 
         const { data, error } = await client
             .from('messages')
-            .insert([{ user_id: numericId, message, sender }]);
+            .insert([{ user_id: numericId, message, sender }])
+            .select()
+            .single();
 
-        return { success: !error, error };
+        return { success: !error, error, data: data || null };
     },
 
     // New: Send Notice

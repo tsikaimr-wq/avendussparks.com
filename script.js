@@ -1924,6 +1924,7 @@ window.openCS = function () {
         window.maximizeCS();
     }
     localStorage.setItem('avendus_cs_open', 'true');
+    if (window.startChatListener) window.startChatListener();
     loadCSMessages();
 };
 
@@ -2070,13 +2071,21 @@ function renderMessages(msgs) {
     }
 }
 
+function isCSMessageAlreadyRendered(messageId) {
+    const targetBox = document.getElementById('chatBox');
+    if (!targetBox || !messageId) return false;
+    return !!targetBox.querySelector(`[data-message-id="${messageId}"]`);
+}
+
 function appendSingleMessage(m) {
     const targetBox = document.getElementById('chatBox');
     if (!targetBox) return;
+    if (m && m.id && isCSMessageAlreadyRendered(m.id)) return;
 
     const div = document.createElement('div');
     const isUser = m.sender === 'User' || m.sender === 'user';
     div.className = `chat-bubble ${isUser ? 'user' : 'support'}`;
+    if (m && m.id) div.dataset.messageId = m.id;
 
     let content = m.message || '';
     try {
@@ -2129,10 +2138,17 @@ window.sendCSMessage = async () => {
     }
 
     if (window.DB && window.DB.sendMessage) {
-        const { success, error } = await window.DB.sendMessage(user.id, messageData, 'User');
+        const { success, error, data } = await window.DB.sendMessage(user.id, messageData, 'User');
         if (!success) {
             console.error("Chat Error:", error);
             await window.CustomUI.alert("Message failed to send. Please try again.", "Send Error");
+            return;
+        }
+
+        if (data) {
+            appendSingleMessage(data);
+        } else {
+            await loadCSMessages();
         }
     }
 };

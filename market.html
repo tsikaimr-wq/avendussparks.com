@@ -328,6 +328,16 @@
             margin-bottom: 2rem;
         }
 
+        .chart-container-realtime a[href*="tradingview.com"],
+        .chart-container-realtime .tradingview-widget-copyright,
+        .chart-container-realtime [title*="TradingView"],
+        .chart-container-realtime [aria-label*="TradingView"] {
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
         .news-section h3 {
             margin-bottom: 1rem;
         }
@@ -6159,10 +6169,11 @@
         let currentYahooChart = null;
         let yahooUpdateTimer = null;
         let yahooResizeObserver = null;
-        const CHART_LABEL_LOCALE = 'hi-IN';
-        const HINDI_MONTH_NAMES = ['जनवरी', 'फ़रवरी', 'मार्च', 'अप्रैल', 'मई', 'जून', 'जुलाई', 'अगस्त', 'सितंबर', 'अक्टूबर', 'नवंबर', 'दिसंबर'];
-        const HINDI_MONTH_SHORT_NAMES = ['जन', 'फ़र', 'मार्च', 'अप्रै', 'मई', 'जून', 'जुल', 'अग', 'सित', 'अक्टू', 'नव', 'दिस'];
-        const DEVANAGARI_DIGITS = ['०', '१', '२', '३', '४', '५', '६', '७', '८', '९'];
+        const CHART_LABEL_LOCALE = 'en-US';
+        const CHART_MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short' });
+        const CHART_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short' });
+        const CHART_FULL_DATE_FORMATTER = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+        const CHART_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
 
         function toChartDateValue(time) {
             if (typeof time === 'number' && Number.isFinite(time)) return new Date(time * 1000);
@@ -6180,18 +6191,18 @@
         }
 
         function toHindiDigits(value) {
-            return String(value).replace(/\d/g, (digit) => DEVANAGARI_DIGITS[Number(digit)] ?? digit);
+            return String(value ?? '');
         }
 
         function formatHindiClock(date) {
-            return `${toHindiDigits(String(date.getHours()).padStart(2, '0'))}:${toHindiDigits(String(date.getMinutes()).padStart(2, '0'))}`;
+            return CHART_TIME_FORMATTER.format(date);
         }
 
         function formatHindiDate(date, { includeDay = true, includeMonth = true, includeYear = false, shortMonth = true } = {}) {
             const parts = [];
-            if (includeDay) parts.push(toHindiDigits(date.getDate()));
-            if (includeMonth) parts.push((shortMonth ? HINDI_MONTH_SHORT_NAMES : HINDI_MONTH_NAMES)[date.getMonth()]);
-            if (includeYear) parts.push(toHindiDigits(date.getFullYear()));
+            if (includeDay) parts.push(String(date.getDate()));
+            if (includeMonth) parts.push(shortMonth ? CHART_MONTH_FORMATTER.format(date) : CHART_FULL_DATE_FORMATTER.format(date).replace(/^\d+\s/, '').replace(/,\s*\d{4}$/, ''));
+            if (includeYear) parts.push(String(date.getFullYear()));
             return parts.join(' ');
         }
 
@@ -6201,7 +6212,7 @@
             const TickMarkType = window.LightweightCharts?.TickMarkType || {};
 
             if (tickMarkType === TickMarkType.Year) {
-                return toHindiDigits(date.getFullYear());
+                return String(date.getFullYear());
             }
             if (tickMarkType === TickMarkType.Month) {
                 return formatHindiDate(date, { includeDay: false, includeMonth: true, includeYear: true, shortMonth: true });
@@ -6218,10 +6229,38 @@
                 timeFormatter: (time) => {
                     const date = toChartDateValue(time);
                     return date && !Number.isNaN(date.getTime())
-                        ? formatHindiDate(date, { includeDay: true, includeMonth: true, includeYear: true, shortMonth: false })
+                        ? CHART_FULL_DATE_FORMATTER.format(date)
                         : '';
                 }
             };
+        }
+
+        function cleanupChartBranding(container) {
+            if (!container) return;
+            const selectors = [
+                'a[href*="tradingview.com"]',
+                '.tradingview-widget-copyright',
+                '[title*="TradingView"]',
+                '[aria-label*="TradingView"]'
+            ];
+            container.querySelectorAll(selectors.join(',')).forEach(node => {
+                try { node.remove(); } catch (_) {
+                    node.style.display = 'none';
+                    node.style.visibility = 'hidden';
+                    node.style.pointerEvents = 'none';
+                }
+            });
+        }
+
+        function watchChartBranding(container) {
+            if (!container || typeof MutationObserver === 'undefined') return;
+            try {
+                if (container._chartBrandingObserver) container._chartBrandingObserver.disconnect();
+            } catch (_) { }
+            cleanupChartBranding(container);
+            const observer = new MutationObserver(() => cleanupChartBranding(container));
+            observer.observe(container, { childList: true, subtree: true });
+            container._chartBrandingObserver = observer;
         }
 
         async function loadYahooChart(symbol, containerId, options = {}) {
@@ -6238,6 +6277,7 @@
             }
             currentYahooChart = null;
             container.innerHTML = '<div style="display:flex; height:100%; align-items:center; justify-content:center; color:#94a3b8; font-family: Outfit, sans-serif;">Loading realtime chart...</div>';
+            watchChartBranding(container);
 
             if (!window.LightweightCharts) {
                 container.innerHTML = '<div style="color:#ef4444; text-align:center;">Library Error: Lightweight Charts not loaded.</div>';
@@ -6659,6 +6699,7 @@
                 chart.timeScale().fitContent();
 
                 currentYahooChart = chart;
+                cleanupChartBranding(container);
 
                 // Pull latest quote from local API to keep the line/candle moving.
                 yahooUpdateTimer = setInterval(async () => {
