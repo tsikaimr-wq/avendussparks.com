@@ -6693,6 +6693,430 @@
             }
         }
 
+        let _adminProductSearchRequestId = 0;
+
+        function parseAdminNumericValue(value) {
+            const cleaned = String(value ?? '')
+                .replace(/,/g, '')
+                .replace(/[^\d.+-]/g, '')
+                .trim();
+            if (!cleaned) return null;
+            const parsed = Number(cleaned);
+            return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        function hasAdminPositivePrice(value) {
+            const parsed = parseAdminNumericValue(value);
+            return Number.isFinite(parsed) && parsed > 0;
+        }
+
+        function isAdminListedSearchCandidate(data) {
+            const rawType = String(data?.type || data?.quoteType || '').trim().toLowerCase();
+            const exchStr = String(data?.exch || data?.exchange || '').trim().toUpperCase();
+            const sym = String(data?.symbol || '').trim().toUpperCase();
+            return rawType === 'stock'
+                || rawType === 'etf'
+                || rawType === 'fund'
+                || rawType === 'index'
+                || sym.endsWith('.NS')
+                || sym.endsWith('.BO')
+                || exchStr.includes('NSE')
+                || exchStr.includes('BSE')
+                || exchStr.includes('BOM')
+                || exchStr.includes('NASDAQ')
+                || exchStr.includes('NYSE');
+        }
+
+        function normalizeAdminSearchResults(rows = []) {
+            const allRows = Array.isArray(rows) ? rows.filter(Boolean) : [];
+            const preferred = allRows.filter(isAdminListedSearchCandidate);
+            return preferred.length > 0 ? preferred : allRows;
+        }
+
+        function dedupeAdminSearchResults(rows = []) {
+            const seen = new Set();
+            const deduped = [];
+            (Array.isArray(rows) ? rows : []).forEach(row => {
+                if (!row) return;
+                const sourceKey = String(row._source || 'market').trim().toLowerCase();
+                const key = [
+                    sourceKey,
+                    String(row.symbol || '').trim().toUpperCase(),
+                    String(row.name || '').trim().toUpperCase()
+                ].join('|');
+                if (seen.has(key)) return;
+                seen.add(key);
+                deduped.push(row);
+            });
+            return deduped;
+        }
+
+        function getAdminDatabaseProductSearchScore(product, normalizedQuery) {
+            const query = String(normalizedQuery || '').trim().toUpperCase();
+            const symbol = String(product?.market_symbol || product?.symbol || '').trim().toUpperCase();
+            const name = String(product?.name || '').trim().toUpperCase();
+            if (!query) return 0;
+            if (symbol === query) return 100;
+            if (name === query) return 95;
+            if (symbol.startsWith(query)) return 80;
+            if (name.startsWith(query)) return 70;
+            if (symbol.includes(query)) return 60;
+            if (name.includes(query)) return 50;
+            return 10;
+        }
+
+        function normalizeAdminDatabaseProductResult(product) {
+            const liveLikePrice = parseAdminNumericValue(product?.subscription_price ?? product?.price);
+            const estProfit = parseAdminNumericValue(product?.est_profit_percent ?? product?.profit);
+            return {
+                _source: 'saved_product',
+                id: product?.id,
+                name: product?.name || product?.market_symbol || product?.symbol || 'Unnamed Product',
+                symbol: product?.market_symbol || product?.symbol || '',
+                exch: product?.exchange || '--',
+                type: product?.product_type || '',
+                product_type: product?.product_type || '',
+                price: liveLikePrice,
+                subscription_price: liveLikePrice,
+                changePercent: estProfit,
+                listingDate: product?.listing_date || '',
+                start_date: product?.start_date || '',
+                end_date: product?.end_date || '',
+                allotment_date: product?.allotment_date || product?.allocation_date || '',
+                lockup_days: product?.lockup_days || 0,
+                min_invest: product?.min_invest || '',
+                max_invest: product?.max_invest || '',
+                total_shares: product?.total_shares || '',
+                available_shares: product?.available_shares || '',
+                description: product?.description || '',
+                is_premium: !!product?.is_premium
+            };
+        }
+
+        async function fetchAdminDatabaseSearchResults(query) {
+            const normalizedQuery = String(query || '').trim().toUpperCase();
+            if (!normalizedQuery || !(window.DB && typeof window.DB.getProducts === 'function')) return [];
+
+            const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
+            const createdBy = auth.role === 'csr' ? auth.id : null;
+            const products = await window.DB.getProducts(createdBy);
+            return (Array.isArray(products) ? products : [])
+                .filter(product => {
+                    const haystack = [
+                        product?.name,
+                        product?.market_symbol,
+                        product?.symbol,
+                        product?.exchange,
+                        product?.product_type
+                    ].map(value => String(value || '').trim().toUpperCase()).join(' ');
+                    return haystack.includes(normalizedQuery);
+                })
+                .sort((left, right) => getAdminDatabaseProductSearchScore(right, normalizedQuery) - getAdminDatabaseProductSearchScore(left, normalizedQuery))
+                .slice(0, 10)
+                .map(normalizeAdminDatabaseProductResult);
+        }
+
+        async function fetchAdminSearchResults(query) {
+            const normalizedQuery = String(query || '').trim();
+            if (!normalizedQuery) return [];
+
+            const savedResults = await fetchAdminDatabaseSearchResults(normalizedQuery);
+            let results = [];
+            if (window.DB && typeof window.DB.searchStocksViaJina === 'function') {
+                try {
+                    results = normalizeAdminSearchResults(await window.DB.searchStocksViaJina(normalizedQuery, true));
+                } catch (error) {
+                    console.error("Admin Jina search failed:", error);
+                }
+            }
+
+            if ((!results || !results.length) && window.DB && typeof window.DB.searchStocks === 'function') {
+                results = normalizeAdminSearchResults(await window.DB.searchStocks(normalizedQuery, true));
+            }
+
+            return dedupeAdminSearchResults([...(savedResults || []), ...(results || [])]);
+        }
+
+        function getAdminDetectedProductType(data) {
+            const rawType = String(data?.type || data?.quoteType || '').trim().toLowerCase();
+            const exchStr = String(data?.exch || data?.exchange || '').trim().toUpperCase();
+
+            const isOtcExch = exchStr.includes('OTC')
+                || exchStr.includes('PINK')
+                || exchStr.includes('PNK')
+                || exchStr.includes('OBB')
+                || exchStr.includes('PHX')
+                || exchStr.includes('OTHER');
+
+            if (rawType === 'otc' || isOtcExch) {
+                return 'OTC';
+            }
+
+            if (isAdminListedSearchCandidate(data) || hasAdminPositivePrice(data?.price)) {
+                return 'Ins.stocks';
+            }
+
+            return 'IPO';
+        }
+
+        async function enrichAdminSelectedProduct(data) {
+            const enriched = { ...(data || {}) };
+            if (String(enriched?._source || '').trim().toLowerCase() === 'saved_product') {
+                return enriched;
+            }
+            if (!isAdminListedSearchCandidate(enriched) || hasAdminPositivePrice(enriched.price)) {
+                return enriched;
+            }
+
+            if (!(window.DB && typeof window.DB.getMarketPrice === 'function')) {
+                return enriched;
+            }
+
+            try {
+                const quote = await window.DB.getMarketPrice(enriched.symbol, enriched.name || '');
+                if (quote && quote.status !== 'error' && hasAdminPositivePrice(quote.price)) {
+                    enriched.price = Number(quote.price);
+                    enriched.change = parseAdminNumericValue(quote.change);
+                    enriched.changePercent = parseAdminNumericValue(quote.changePercent);
+                    enriched.previousClose = parseAdminNumericValue(quote.previousClose ?? quote.prevClose);
+                }
+            } catch (error) {
+                console.warn("Admin product quote enrichment failed:", error);
+            }
+
+            return enriched;
+        }
+
+        function fillProductFormFromSavedProduct(product) {
+            const resolvedType = product?.product_type || getAdminDetectedProductType(product);
+            const symbol = product?.symbol || product?.market_symbol || '';
+            const exchange = product?.exch || product?.exchange || 'NSE';
+            const buyPrice = parseAdminNumericValue(product?.subscription_price ?? product?.price);
+            const profit = parseAdminNumericValue(product?.changePercent ?? product?.est_profit_percent ?? product?.profit);
+
+            if (document.getElementById('p_data_source')) {
+                document.getElementById('p_data_source').value = 'manual';
+                applyProductDataSourceUI('manual');
+            }
+            document.getElementById('p_product_type').value = resolvedType;
+            document.getElementById('p_exchange').value = exchange;
+            document.getElementById('p_name').value = product?.name || '';
+            document.getElementById('p_market_symbol').value = symbol;
+            document.getElementById('p_price').value = Number.isFinite(buyPrice) ? String(buyPrice) : '';
+            document.getElementById('p_sub_price').value = Number.isFinite(buyPrice) ? String(buyPrice) : '';
+            document.getElementById('p_listing').value = product?.listingDate || product?.listing_date || '';
+            document.getElementById('p_start').value = product?.start_date ? String(product.start_date).substring(0, 16) : '';
+            document.getElementById('p_end').value = product?.end_date ? String(product.end_date).substring(0, 16) : '';
+            document.getElementById('p_allotment').value = String(product?.allotment_date || '').substring(0, 10);
+            document.getElementById('p_lockup').value = product?.lockup_days || '0';
+            document.getElementById('p_min').value = product?.min_invest || '';
+            document.getElementById('p_max').value = product?.max_invest || '';
+            document.getElementById('p_shares').value = product?.total_shares || '';
+            document.getElementById('p_desc').value = product?.description || '';
+            document.getElementById('p_premium').checked = !!product?.is_premium;
+            document.getElementById('p_profit').value = Number.isFinite(profit) ? String(profit) : '';
+
+            applyProductTypeFillRules(resolvedType, {
+                ...product,
+                symbol,
+                price: buyPrice,
+                changePercent: profit,
+                exch: exchange
+            });
+        }
+
+        window.debouncedAdminSearch = function (query) {
+            const resultsDiv = document.getElementById('admin_search_results');
+            const currentType = getProductFormType();
+            if (currentType !== 'Ins.stocks') {
+                if (resultsDiv) resultsDiv.style.display = 'none';
+                return;
+            }
+            if (!query || query.length < 2) {
+                _adminProductSearchRequestId += 1;
+                if (resultsDiv) resultsDiv.style.display = 'none';
+                return;
+            }
+
+            clearTimeout(_searchTimeout);
+            const requestId = ++_adminProductSearchRequestId;
+            _searchTimeout = setTimeout(async () => {
+                if (!resultsDiv || requestId !== _adminProductSearchRequestId) return;
+                resultsDiv.innerHTML = '<div style="padding:1rem; color:#64748b; font-size:0.85rem;">Searching...</div>';
+                resultsDiv.style.display = 'block';
+
+                try {
+                    const results = await fetchAdminSearchResults(query);
+                    if (requestId !== _adminProductSearchRequestId) return;
+                    if (results && results.length > 0) {
+                        resultsDiv.innerHTML = results.map(r => {
+                            const safeData = JSON.stringify(r).replace(/"/g, '&quot;');
+                            const hasPrice = hasAdminPositivePrice(r.price);
+                            const changePercent = parseAdminNumericValue(r.changePercent);
+                            const isSavedProduct = String(r._source || '').trim().toLowerCase() === 'saved_product';
+                            const sourceBadge = isSavedProduct
+                                ? '<span style="display:inline-flex; align-items:center; gap:4px; margin-left:8px; font-size:0.65rem; font-weight:700; color:#1d4ed8; background:#dbeafe; border:1px solid #bfdbfe; border-radius:999px; padding:2px 8px;">Saved Product</span>'
+                                : '';
+                            const metaText = isSavedProduct
+                                ? `${r.symbol} • ${r.exch || '--'} • ${r.product_type || r.type || 'Saved'}`
+                                : `${r.symbol} • ${r.exch || '--'}`;
+                            return `
+                            <div class="search-item" onclick="selectYahooProduct(${safeData})" 
+                                 style="padding:0.75rem 1rem; cursor:pointer; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; transition:background 0.2s;"
+                                 onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='white'">
+                                <div>
+                                    <div style="font-weight:600; color:#1e293b; font-size:0.9rem; display:flex; align-items:center; flex-wrap:wrap;">${r.name || r.symbol}${sourceBadge}</div>
+                                    <div style="font-size:0.75rem; color:#64748b;">${metaText}</div>
+                                </div>
+                                ${hasPrice ? `<div style="text-align:right;">
+                                    <div style="font-weight:700; color:#1e293b; font-size:0.9rem;">₹${parseAdminNumericValue(r.price).toLocaleString('en-IN')}</div>
+                                    <div style="font-size:0.75rem; color:${Number.isFinite(changePercent) && changePercent < 0 ? '#ef4444' : '#10b981'};">
+                                        ${Number.isFinite(changePercent) ? `${changePercent >= 0 ? '+' : ''}${changePercent}%` : ''}
+                                    </div>
+                                </div>` : ''}
+                            </div>
+                        `;
+                        }).join('');
+                    } else {
+                        resultsDiv.innerHTML = '<div style="padding:1rem; color:#64748b; font-size:0.85rem;">No results found.</div>';
+                    }
+                } catch (error) {
+                    if (requestId !== _adminProductSearchRequestId) return;
+                    console.error("Admin search error:", error);
+                    resultsDiv.innerHTML = '<div style="padding:1rem; color:#ef4444; font-size:0.85rem;">Search failed.</div>';
+                }
+            }, 250);
+        };
+
+        window.selectYahooProduct = async function (data) {
+            const enrichedData = await enrichAdminSelectedProduct(data);
+            console.log("Selected Product:", enrichedData);
+
+            if (String(enrichedData?._source || '').trim().toLowerCase() === 'saved_product') {
+                window._lastSelectedYahooData = enrichedData;
+                fillProductFormFromSavedProduct(enrichedData);
+                const savedResultsDiv = document.getElementById('admin_search_results');
+                if (savedResultsDiv) savedResultsDiv.style.display = 'none';
+                document.getElementById('admin_product_search').value = enrichedData.symbol || enrichedData.name || '';
+                return;
+            }
+
+            window._lastSelectedYahooData = enrichedData;
+            if (document.getElementById('p_data_source')) {
+                const currentSource = normalizeProductDataSource(document.getElementById('p_data_source').value || getDefaultProductDataSource(getProductFormType()));
+                document.getElementById('p_data_source').value = currentSource;
+                applyProductDataSourceUI(currentSource);
+            }
+
+            const detectedType = getAdminDetectedProductType(enrichedData);
+            const exchStr = String(enrichedData.exch || '').toUpperCase();
+            const sym = String(enrichedData.symbol || '').toUpperCase();
+
+            document.getElementById('p_product_type').value = detectedType;
+
+            let mappedExch = 'NSE';
+            if (exchStr.includes('BSE') || exchStr.includes('BOM') || sym.endsWith('.BO')) {
+                mappedExch = 'BSE';
+            } else if (exchStr.includes('NSE') || exchStr.includes('NSI') || sym.endsWith('.NS')) {
+                mappedExch = 'NSE';
+            }
+
+            document.getElementById('p_exchange').value = mappedExch;
+            document.getElementById('p_name').value = enrichedData.name || '';
+            document.getElementById('p_market_symbol').value = enrichedData.symbol || '';
+
+            if (enrichedData.listingDate) {
+                document.getElementById('p_listing').value = enrichedData.listingDate;
+            }
+
+            applyProductTypeFillRules(detectedType, enrichedData);
+
+            const resultsDiv = document.getElementById('admin_search_results');
+            if (resultsDiv) resultsDiv.style.display = 'none';
+            document.getElementById('admin_product_search').value = enrichedData.symbol || '';
+        };
+
+        function applyProductTypeFillRules(type, data) {
+            const priceInput = document.getElementById('p_price');
+            const subPriceInput = document.getElementById('p_sub_price');
+            const profitInput = document.getElementById('p_profit');
+            const sellLockGroup = document.getElementById('p_sell_lock_group');
+            const sellLockInput = document.getElementById('p_sell_locked');
+            const canLockSell = type === 'IPO' || type === 'OTC';
+            applyProductDataSourceUI(document.getElementById('p_data_source')?.value || getDefaultProductDataSource(type));
+
+            if (sellLockGroup) sellLockGroup.style.display = canLockSell ? 'flex' : 'none';
+            if (!canLockSell && sellLockInput) sellLockInput.checked = false;
+
+            if (type === 'Ins.stocks') {
+                console.log("Applying Ins.stocks market-driven rules.");
+
+                if (priceInput) priceInput.readOnly = true;
+                if (subPriceInput) subPriceInput.readOnly = true;
+                if (profitInput) profitInput.readOnly = true;
+
+                const livePrice = parseAdminNumericValue(data?.price);
+                const liveChangePercent = parseAdminNumericValue(data?.changePercent);
+                const currentPrice = parseAdminNumericValue(priceInput?.value);
+                const currentSubPrice = parseAdminNumericValue(subPriceInput?.value);
+
+                if (Number.isFinite(livePrice) && livePrice > 0) {
+                    if (priceInput) {
+                        priceInput.value = String(livePrice);
+                        priceInput.placeholder = 'e.g. 1648.88';
+                    }
+                    if (subPriceInput) {
+                        subPriceInput.value = String(livePrice);
+                        subPriceInput.placeholder = 'e.g. 1648.88';
+                    }
+                } else {
+                    if (priceInput && !Number.isFinite(currentPrice)) {
+                        priceInput.value = '';
+                        priceInput.placeholder = 'Loading / Unavailable';
+                    }
+                    if (subPriceInput && !Number.isFinite(currentSubPrice)) {
+                        subPriceInput.value = '';
+                        subPriceInput.placeholder = 'Loading / Unavailable';
+                    }
+                }
+
+                if (profitInput) {
+                    if (Number.isFinite(liveChangePercent)) {
+                        profitInput.value = Math.abs(liveChangePercent);
+                    } else if (!profitInput.value) {
+                        profitInput.value = '';
+                    }
+                }
+
+                const now = new Date();
+                const yearLater = new Date();
+                yearLater.setFullYear(now.getFullYear() + 1);
+                const formatDT = (d) => d.toISOString().slice(0, 16);
+
+                document.getElementById('p_start').value = formatDT(now);
+                document.getElementById('p_end').value = formatDT(yearLater);
+            } else {
+                console.log(`Applying ${type || 'Standard'} rules (Manual Edit Enabled).`);
+
+                if (priceInput) {
+                    priceInput.readOnly = false;
+                    priceInput.placeholder = 'e.g. 1648.88';
+                }
+                if (subPriceInput) {
+                    subPriceInput.readOnly = false;
+                    subPriceInput.placeholder = 'e.g. 1648.88';
+                }
+                if (profitInput) profitInput.readOnly = false;
+
+                if (!data) {
+                    if (priceInput) priceInput.value = '';
+                    if (subPriceInput) subPriceInput.value = '';
+                    if (profitInput) profitInput.value = '';
+                    document.getElementById('p_start').value = '';
+                }
+            }
+        }
+
         const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
         const USER_SELL_LOCKS_KEY = 'user_sell_locks';
         let cachedProductSellLockMap = null;
@@ -7324,8 +7748,8 @@
             const p = {
                 name: document.getElementById('p_name').value,
                 market_symbol: processedSymbol,
-                price: parseFloat(document.getElementById('p_price').value) || 0,
-                subscription_price: parseFloat(document.getElementById('p_sub_price').value) || 0,
+                price: parseAdminNumericValue(document.getElementById('p_price').value) || 0,
+                subscription_price: parseAdminNumericValue(document.getElementById('p_sub_price').value) || 0,
                 start_date: document.getElementById('p_start').value,
                 end_date: document.getElementById('p_end').value,
                 allotment_date: document.getElementById('p_allotment').value,
@@ -7349,6 +7773,10 @@
             if (!p.name) { showAlert('warning', "Product Name is required!"); return; }
             if (!p.market_symbol || p.market_symbol.length < 3) {
                 showAlert('warning', "Invalid Market Symbol! Must be at least 3 characters.");
+                return;
+            }
+            if (p.product_type === 'Ins.stocks' && (p.price <= 0 || p.subscription_price <= 0)) {
+                showAlert('warning', "Live market price is unavailable for this Ins.Stock. Please search again or choose a Turbo product before saving.");
                 return;
             }
             if (p.subscription_price <= 0) { showAlert('warning', "Subscription Price is required!"); return; }
