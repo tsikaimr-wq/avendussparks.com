@@ -6517,11 +6517,6 @@
         let _searchTimeout = null;
         window.debouncedAdminSearch = async function (query) {
             const resultsDiv = document.getElementById('admin_search_results');
-            const currentType = getProductFormType();
-            if (currentType !== 'Ins.stocks') {
-                if (resultsDiv) resultsDiv.style.display = 'none';
-                return;
-            }
             if (!query || query.length < 2) {
                 resultsDiv.style.display = 'none';
                 return;
@@ -6734,21 +6729,36 @@
         }
 
         function dedupeAdminSearchResults(rows = []) {
-            const seen = new Set();
+            const priorityOf = (row) => {
+                const sourceKey = String(row?._source || 'market').trim().toLowerCase();
+                if (sourceKey === 'saved_product') return 3;
+                if (sourceKey === 'turbo_product') return 2;
+                return 1;
+            };
+
+            const indexByKey = new Map();
             const deduped = [];
             (Array.isArray(rows) ? rows : []).forEach(row => {
                 if (!row) return;
-                const sourceKey = String(row._source || 'market').trim().toLowerCase();
                 const key = [
-                    sourceKey,
-                    String(row.symbol || '').trim().toUpperCase(),
+                    String(row.symbol || row.market_symbol || '').trim().toUpperCase(),
                     String(row.name || '').trim().toUpperCase()
                 ].join('|');
-                if (seen.has(key)) return;
-                seen.add(key);
-                deduped.push(row);
+                if (!key.replace(/\|/g, '')) return;
+
+                if (!indexByKey.has(key)) {
+                    indexByKey.set(key, deduped.length);
+                    deduped.push(row);
+                    return;
+                }
+
+                const existingIndex = indexByKey.get(key);
+                const existing = deduped[existingIndex];
+                if (priorityOf(row) > priorityOf(existing)) {
+                    deduped[existingIndex] = row;
+                }
             });
-            return deduped;
+            return deduped.filter(Boolean);
         }
 
         function getAdminDatabaseProductSearchScore(product, normalizedQuery) {
@@ -6793,15 +6803,81 @@
             };
         }
 
-        async function fetchAdminDatabaseSearchResults(query) {
+        function denormalizeAdminProductType(value) {
+            const normalized = normalizeAdminProductType(value);
+            if (normalized === 'INS.STOCKS') return 'Ins.stocks';
+            if (normalized === 'OTC') return 'OTC';
+            return 'IPO';
+        }
+
+        function getAdminProductIdentityKey(product, typeHint = '') {
+            const normalizedType = normalizeAdminProductType(product?.product_type || product?.type || typeHint || currentProductFilter);
+            const symbol = String(product?.market_symbol || product?.symbol || '').trim().toUpperCase();
+            const name = String(product?.name || '').trim().toUpperCase();
+            return [normalizedType, symbol, name].join('|');
+        }
+
+        function getAdminTurboSearchScore(product, normalizedQuery) {
+            const query = String(normalizedQuery || '').trim().toUpperCase();
+            const symbol = String(product?.symbol || '').trim().toUpperCase();
+            const marketSymbol = String(product?.market_symbol || '').trim().toUpperCase();
+            const formatted = String(formatTurboSymbol(product) || '').trim().toUpperCase();
+            const name = String(product?.name || '').trim().toUpperCase();
+            if (!query) return 0;
+            if (symbol === query || marketSymbol === query || formatted === query) return 100;
+            if (name === query) return 95;
+            if (symbol.startsWith(query) || marketSymbol.startsWith(query) || formatted.startsWith(query)) return 80;
+            if (name.startsWith(query)) return 70;
+            if (symbol.includes(query) || marketSymbol.includes(query) || formatted.includes(query)) return 60;
+            if (name.includes(query)) return 50;
+            return 10;
+        }
+
+        function normalizeAdminTurboProductResult(product, typeHint = '') {
+            const resolvedType = denormalizeAdminProductType(product?.product_type || product?.type || typeHint || currentProductFilter);
+            const displaySymbol = formatTurboSymbol(product) || product?.market_symbol || product?.symbol || '';
+            const rawProfit = product?.changePercent ?? product?.est_profit_percent ?? product?.est_profit ?? product?.profit;
+            return {
+                ...(product || {}),
+                _source: 'turbo_product',
+                id: product?.id || `turbo_${getTurboItemKey(product)}`,
+                name: product?.name || displaySymbol || 'Unnamed Product',
+                symbol: product?.symbol || displaySymbol,
+                market_symbol: displaySymbol,
+                exch: product?.exchange || '--',
+                exchange: product?.exchange || '--',
+                type: resolvedType,
+                product_type: resolvedType,
+                price: parseAdminNumericValue(product?.price ?? product?.subscription_price),
+                subscription_price: parseAdminNumericValue(product?.subscription_price ?? product?.price),
+                changePercent: parseAdminNumericValue(rawProfit),
+                listingDate: product?.listingDate || product?.listing_date || '',
+                listing_date: product?.listing_date || '',
+                start_date: product?.start_date || '',
+                end_date: product?.end_date || '',
+                allotment_date: product?.allotment_date || product?.allocation_date || '',
+                min_invest: product?.min_invest || '',
+                max_invest: product?.max_invest || '',
+                total_shares: product?.total_shares || 0,
+                available_shares: product?.available_shares || 0,
+                description: product?.description || '',
+                status: product?.status || 'Turbo Template',
+                is_premium: !!product?.is_premium
+            };
+        }
+
+        async function fetchAdminDatabaseSearchResults(query, typeHint = '') {
             const normalizedQuery = String(query || '').trim().toUpperCase();
             if (!normalizedQuery || !(window.DB && typeof window.DB.getProducts === 'function')) return [];
 
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
             const createdBy = auth.role === 'csr' ? auth.id : null;
             const products = await window.DB.getProducts(createdBy);
+            const expectedType = normalizeAdminProductType(typeHint || getProductFormType());
             return (Array.isArray(products) ? products : [])
                 .filter(product => {
+                    const productType = normalizeAdminProductType(product?.product_type || product?.type || 'IPO');
+                    if (productType !== expectedType) return false;
                     const haystack = [
                         product?.name,
                         product?.market_symbol,
@@ -6816,13 +6892,41 @@
                 .map(normalizeAdminDatabaseProductResult);
         }
 
+        async function fetchAdminTurboSearchResults(query, typeHint = '') {
+            const normalizedQuery = String(query || '').trim().toUpperCase();
+            if (!normalizedQuery || !(window.DB && typeof window.DB.getTurboMarketData === 'function')) return [];
+
+            const turboType = getTurboCategoryForType(typeHint || getProductFormType());
+            const results = await window.DB.getTurboMarketData(turboType);
+            return (Array.isArray(results) ? results : [])
+                .filter(product => {
+                    const haystack = [
+                        product?.name,
+                        product?.symbol,
+                        product?.market_symbol,
+                        formatTurboSymbol(product),
+                        product?.exchange,
+                        turboType
+                    ].map(value => String(value || '').trim().toUpperCase()).join(' ');
+                    return haystack.includes(normalizedQuery);
+                })
+                .sort((left, right) => getAdminTurboSearchScore(right, normalizedQuery) - getAdminTurboSearchScore(left, normalizedQuery))
+                .slice(0, 10)
+                .map(product => normalizeAdminTurboProductResult(product, turboType));
+        }
+
         async function fetchAdminSearchResults(query) {
             const normalizedQuery = String(query || '').trim();
             if (!normalizedQuery) return [];
 
-            const savedResults = await fetchAdminDatabaseSearchResults(normalizedQuery);
+            const productType = getProductFormType();
+            const [savedResults, turboResults] = await Promise.all([
+                fetchAdminDatabaseSearchResults(normalizedQuery, productType),
+                fetchAdminTurboSearchResults(normalizedQuery, productType)
+            ]);
+
             let results = [];
-            if (window.DB && typeof window.DB.searchStocksViaJina === 'function') {
+            if (normalizeAdminProductType(productType) === 'INS.STOCKS' && window.DB && typeof window.DB.searchStocksViaJina === 'function') {
                 try {
                     results = normalizeAdminSearchResults(await window.DB.searchStocksViaJina(normalizedQuery, true));
                 } catch (error) {
@@ -6830,11 +6934,11 @@
                 }
             }
 
-            if ((!results || !results.length) && window.DB && typeof window.DB.searchStocks === 'function') {
+            if ((!results || !results.length) && normalizeAdminProductType(productType) === 'INS.STOCKS' && window.DB && typeof window.DB.searchStocks === 'function') {
                 results = normalizeAdminSearchResults(await window.DB.searchStocks(normalizedQuery, true));
             }
 
-            return dedupeAdminSearchResults([...(savedResults || []), ...(results || [])]);
+            return dedupeAdminSearchResults([...(savedResults || []), ...(turboResults || []), ...(results || [])]);
         }
 
         function getAdminDetectedProductType(data) {
@@ -6927,11 +7031,6 @@
 
         window.debouncedAdminSearch = function (query) {
             const resultsDiv = document.getElementById('admin_search_results');
-            const currentType = getProductFormType();
-            if (currentType !== 'Ins.stocks') {
-                if (resultsDiv) resultsDiv.style.display = 'none';
-                return;
-            }
             if (!query || query.length < 2) {
                 _adminProductSearchRequestId += 1;
                 if (resultsDiv) resultsDiv.style.display = 'none';
@@ -6991,12 +7090,22 @@
         window.selectYahooProduct = async function (data) {
             const enrichedData = await enrichAdminSelectedProduct(data);
             console.log("Selected Product:", enrichedData);
+            const sourceKey = String(enrichedData?._source || '').trim().toLowerCase();
 
-            if (String(enrichedData?._source || '').trim().toLowerCase() === 'saved_product') {
+            if (sourceKey === 'saved_product') {
                 window._lastSelectedYahooData = enrichedData;
                 fillProductFormFromSavedProduct(enrichedData);
                 const savedResultsDiv = document.getElementById('admin_search_results');
                 if (savedResultsDiv) savedResultsDiv.style.display = 'none';
+                document.getElementById('admin_product_search').value = enrichedData.symbol || enrichedData.name || '';
+                return;
+            }
+
+            if (sourceKey === 'turbo_product') {
+                window._lastSelectedTurboData = enrichedData;
+                fillProductFormFromTurbo(enrichedData, { reopenModal: false, showFeedback: false, closeFinder: false });
+                const turboResultsDiv = document.getElementById('admin_search_results');
+                if (turboResultsDiv) turboResultsDiv.style.display = 'none';
                 document.getElementById('admin_product_search').value = enrichedData.symbol || enrichedData.name || '';
                 return;
             }
@@ -7481,13 +7590,13 @@
             const helpBlock = document.getElementById('p_source_help');
             const searchResults = document.getElementById('admin_search_results');
             const productType = getProductFormType();
-            const showMarketSearch = productType === 'Ins.stocks';
+            const showProductSearch = true;
 
             if (document.getElementById('p_data_source')) {
                 document.getElementById('p_data_source').value = resolvedSource;
             }
 
-            if (yahooBlock) yahooBlock.style.display = showMarketSearch ? 'block' : 'none';
+            if (yahooBlock) yahooBlock.style.display = showProductSearch ? 'block' : 'none';
             if (turboBlock) turboBlock.style.display = resolvedSource === 'turbo' ? 'block' : 'none';
             if (searchResults) searchResults.style.display = 'none';
             if (turboBlock) {
@@ -7514,13 +7623,13 @@
             const helpBlock = document.getElementById('p_source_help');
             const searchResults = document.getElementById('admin_search_results');
             const productType = getProductFormType();
-            const showMarketSearch = productType === 'Ins.stocks';
+            const showProductSearch = true;
 
             if (document.getElementById('p_data_source')) {
                 document.getElementById('p_data_source').value = resolvedSource;
             }
 
-            if (yahooBlock) yahooBlock.style.display = showMarketSearch ? 'block' : 'none';
+            if (yahooBlock) yahooBlock.style.display = showProductSearch ? 'block' : 'none';
             if (turboBlock) turboBlock.style.display = resolvedSource === 'turbo' ? 'block' : 'none';
             if (searchResults) searchResults.style.display = 'none';
             if (turboBlock) {
@@ -7530,14 +7639,14 @@
 
             if (helpBlock) {
                 const label = productType === 'Ins.stocks' ? 'Ins.Stock' : productType;
-                if (showMarketSearch && resolvedSource === 'turbo') {
+                if (productType === 'Ins.stocks' && resolvedSource === 'turbo') {
                     helpBlock.innerText = `Current source: Turbo Database + Realtime Market Search. Search a live symbol like the frontend, or choose a Turbo preset to auto-fill ${label}.`;
-                } else if (showMarketSearch) {
+                } else if (productType === 'Ins.stocks') {
                     helpBlock.innerText = `Current source: Manual Entry + Realtime Market Search. Search a live symbol first, then fine-tune the ${label} fields manually.`;
                 } else if (resolvedSource === 'turbo') {
-                    helpBlock.innerText = `Current source: Turbo Database. Select a ${label} template to auto-fill the product form.`;
+                    helpBlock.innerText = `Current source: Turbo Database. Search saved or Turbo ${label} products above, or choose a template below to auto-fill the form.`;
                 } else {
-                    helpBlock.innerText = `Current source: Manual Entry. Fill in the ${label} product fields manually.`;
+                    helpBlock.innerText = `Current source: Manual Entry. Search saved ${label} products above, or fill in the form manually.`;
                 }
             }
 
@@ -7836,6 +7945,50 @@
             if (!list) return;
             list.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;">${message}</td></tr>`;
         }
+
+        async function getAdminVisibleProducts(typeHint = '', createdBy = null) {
+            const normalizedType = normalizeAdminProductType(typeHint || currentProductFilter);
+            const resolvedType = denormalizeAdminProductType(normalizedType);
+            const dbProducts = (window.DB && typeof window.DB.getProducts === 'function')
+                ? await window.DB.getProducts(createdBy)
+                : [];
+
+            const visibleProducts = (Array.isArray(dbProducts) ? dbProducts : [])
+                .filter(product => normalizeAdminProductType(product?.product_type || product?.type || 'IPO') === normalizedType)
+                .map(product => ({ ...product, _source: 'saved_product' }));
+
+            if (!(window.DB && typeof window.DB.getTurboMarketData === 'function')) {
+                return visibleProducts;
+            }
+
+            try {
+                const turboProducts = await window.DB.getTurboMarketData(resolvedType);
+                const seen = new Set(visibleProducts.map(product => getAdminProductIdentityKey(product, resolvedType)));
+                (Array.isArray(turboProducts) ? turboProducts : []).forEach(product => {
+                    const normalizedProduct = normalizeAdminTurboProductResult(product, resolvedType);
+                    const key = getAdminProductIdentityKey(normalizedProduct, resolvedType);
+                    if (seen.has(key)) return;
+                    seen.add(key);
+                    visibleProducts.push(normalizedProduct);
+                });
+            } catch (error) {
+                console.warn(`Admin visible product merge failed for ${resolvedType}:`, error);
+            }
+
+            return visibleProducts;
+        }
+
+        window.useTurboProductFromAdminList = function (encodedPayload) {
+            try {
+                const payload = JSON.parse(decodeURIComponent(encodedPayload || ''));
+                openAddProductModal();
+                fillProductFormFromTurbo(payload, { reopenModal: false, showFeedback: false, closeFinder: false });
+            } catch (error) {
+                console.error("Failed to load Turbo product into form:", error);
+                showAlert('error', "Failed to load Turbo product into the form.");
+            }
+        };
+
         window.setProductFilter = function (type) {
             currentProductFilter = type;
             const ipoBtn = document.getElementById('btn_product_ipo');
@@ -7867,54 +8020,54 @@
             const sellLockMap = await loadProductSellLockMap();
             if (requestId !== productRenderRequestId) return;
 
-            // Filter if CSR (Instruction 4 & 7)
-            let dbProducts = await window.DB.getProducts(isCsr ? auth.id : null);
-            if (requestId !== productRenderRequestId) return;
-
-            // 4. Filter by IPO vs OTC vs Ins.stocks tab
-            dbProducts = dbProducts.filter(p => {
-                const pType = (p.product_type || p.type || 'IPO');
-                return normalizeAdminProductType(pType) === normalizeAdminProductType(currentProductFilter);
-            });
+            const dbProducts = await getAdminVisibleProducts(currentProductFilter, isCsr ? auth.id : null);
             if (requestId !== productRenderRequestId) return;
 
             if (dbProducts.length === 0) {
                 const emptyMsg = isCsr
                     ? window.i18n('no_products_csr', 'No products created yet. Add one to see it here.')
-                    : window.i18n('no_products_admin', 'No products found in database. Add one to see it here.');
+                    : window.i18n('no_products_admin', 'No products found in database or Turbo source.');
                 list.innerHTML = `<tr><td colspan="6" style="text-align:center; padding:40px; color:#94a3b8;" data-i18n="${isCsr ? 'no_products_csr' : 'no_products_admin'}">${emptyMsg}</td></tr>`;
                 return;
             }
             const rowsHtml = dbProducts.map(p => {
+                const sourceKey = String(p._source || 'saved_product').trim().toLowerCase();
+                const isTurboOnly = sourceKey === 'turbo_product';
                 const statusLower = (p.status || 'Active').toLowerCase();
                 const isActive = statusLower === 'active';
-                const badgeClass = isActive ? 'active' : 'inactive';
+                const badgeClass = isTurboOnly ? 'active' : (isActive ? 'active' : 'inactive');
                 const statusKey = isActive ? 'status_active' : 'status_inactive';
-                const displayStatus = window.i18n(statusKey, isActive ? 'Active' : 'Inactive');
-                const sellLockEntry = getProductSellLockEntry(p, sellLockMap);
+                const displayStatus = isTurboOnly ? 'Turbo Template' : window.i18n(statusKey, isActive ? 'Active' : 'Inactive');
+                const sellLockEntry = isTurboOnly ? null : getProductSellLockEntry(p, sellLockMap);
                 const sellLockBadge = sellLockEntry?.locked
                     ? `<div style="margin-top:6px; font-size:0.68rem; color:#991b1b; font-weight:700;">SELL LOCKED</div>`
                     : '';
-
-                const toggleBtn = isActive
-                    ? `<button class="btn-toggle-inactive" onclick="toggleProductStatus(${p.id}, 'Inactive')" data-i18n="lbl_deactivate">${window.i18n('lbl_deactivate', 'Deactivate')}</button>`
-                    : `<button class="btn-toggle-active" onclick="toggleProductStatus(${p.id}, 'Active')" data-i18n="lbl_activate">${window.i18n('lbl_activate', 'Activate')}</button>`;
+                const safeTurboPayload = encodeURIComponent(JSON.stringify(p));
+                const safeProductId = JSON.stringify(p.id);
+                const actionButtons = isTurboOnly
+                    ? `<button class="btn-toggle-active" onclick="useTurboProductFromAdminList('${safeTurboPayload}')" style="background:#10b981; color:white; border-color:#10b981;">Import</button>`
+                    : `${isActive
+                        ? `<button class="btn-toggle-inactive" onclick="toggleProductStatus(${safeProductId}, 'Inactive')" data-i18n="lbl_deactivate">${window.i18n('lbl_deactivate', 'Deactivate')}</button>`
+                        : `<button class="btn-toggle-active" onclick="toggleProductStatus(${safeProductId}, 'Active')" data-i18n="lbl_activate">${window.i18n('lbl_activate', 'Activate')}</button>`}
+                                <button class="btn-toggle-active" onclick="editProduct(${safeProductId})" style="background:#6366f1; color:white; border-color:#6366f1;" data-i18n="lbl_edit">Edit</button>
+                                <button class="btn-delete-outline" onclick="deleteProduct(${safeProductId})" style="font-weight:500;" data-i18n="lbl_delete">${window.i18n('lbl_delete', 'Delete')}</button>`;
+                const nameNote = isTurboOnly
+                    ? `<div style="margin-top:4px; font-size:0.68rem; color:#166534; font-weight:700;">Frontend Turbo</div>`
+                    : '';
 
                 return `
                     <tr>
-                        <td>${p.name}</td>
+                        <td><div style="font-weight:600;">${p.name}</div>${nameNote}</td>
                         <td>${p.market_symbol || '-'}</td>
                         <td style="font-size:0.75rem;">
                            <div style="font-weight:700;">${(p.available_shares || 0).toLocaleString()}</div>
                            <div style="color:#64748b;">Tot: ${(p.total_shares || 0).toLocaleString()}</div>
                         </td>
                         <td>${p.listing_date || ''}</td>
-                        <td><span class="pm-badge ${badgeClass}" data-i18n="${statusKey}">${displayStatus}</span>${sellLockBadge}</td>
+                        <td><span class="pm-badge ${badgeClass}" data-i18n="${isTurboOnly ? '' : statusKey}">${displayStatus}</span>${sellLockBadge}</td>
                         <td>
                             <div style="display:flex; gap:5px;">
-                                ${toggleBtn}
-                                <button class="btn-toggle-active" onclick="editProduct(${p.id})" style="background:#6366f1; color:white; border-color:#6366f1;" data-i18n="lbl_edit">Edit</button>
-                                <button class="btn-delete-outline" onclick="deleteProduct(${p.id})" style="font-weight:500;" data-i18n="lbl_delete">${window.i18n('lbl_delete', 'Delete')}</button>
+                                ${actionButtons}
                             </div>
                         </td>
                     </tr>

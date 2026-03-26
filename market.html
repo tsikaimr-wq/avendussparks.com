@@ -5096,6 +5096,25 @@
             return headers;
         }
 
+        const DETAIL_MARKET_REQUEST_TIMEOUT_MS = 3500;
+
+        async function fetchDetailMarketWithTimeout(url, options = {}, timeoutMs = DETAIL_MARKET_REQUEST_TIMEOUT_MS) {
+            const requestOptions = { ...(options || {}) };
+            if (typeof AbortController !== 'function') {
+                return fetch(url, requestOptions);
+            }
+
+            const controller = new AbortController();
+            const timerId = setTimeout(() => controller.abort(), timeoutMs);
+            requestOptions.signal = controller.signal;
+
+            try {
+                return await fetch(url, requestOptions);
+            } finally {
+                clearTimeout(timerId);
+            }
+        }
+
         const MARKET_FUNDAMENTALS_DISABLED_STORAGE_KEY = 'avendus_market_fundamentals_disabled_until';
         const MARKET_FUNDAMENTALS_DISABLED_TTL_MS = 60 * 60 * 1000;
         let marketFundamentalsDisabledLogged = false;
@@ -5219,13 +5238,13 @@
                         const baseUrl = String(base || '').replace(/\/$/, '');
                         const isFnBase = /\/functions\/v1$/i.test(baseUrl);
                         const response = isFnBase
-                            ? await fetch(`${baseUrl}/get-market-price`, {
+                            ? await fetchDetailMarketWithTimeout(`${baseUrl}/get-market-price`, {
                                 method: 'POST',
                                 headers: detailEdgeHeaders(),
                                 body: JSON.stringify({ symbol: sym }),
                                 cache: 'no-store'
                             })
-                            : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(sym)}`, { cache: 'no-store' });
+                            : await fetchDetailMarketWithTimeout(`${baseUrl}/quote?symbol=${encodeURIComponent(sym)}`, { cache: 'no-store' });
                         if (!response.ok) continue;
                         const payload = await response.json();
                         const price = toFiniteNumber(payload?.price);
@@ -5305,6 +5324,19 @@
                 return rows;
             };
 
+            const isUnlistedSnapshot = /UNLISTED/i.test(`${exchangeHint || ''} ${fallbackProduct?.exchange || ''}`);
+            if (isUnlistedSnapshot) {
+                const productFallbackPrice = toFiniteNumber(fallbackProduct?.price) ?? toFiniteNumber(fallbackProduct?.subscription_price);
+                if (productFallbackPrice !== null && productFallbackPrice > 0) {
+                    const syntheticRows = buildSyntheticRowsFromPrice(productFallbackPrice);
+                    const syntheticSymbol = String(fallbackProduct?.market_symbol || fallbackProduct?.symbol || rawSymbol || '').trim().toUpperCase();
+                    const chartResult = buildChartSnapshotFromRows(syntheticRows, syntheticSymbol || rawSymbol);
+                    if (chartResult) {
+                        return { chartResult, yahooSymbol: syntheticSymbol || rawSymbol, candidates };
+                    }
+                }
+            }
+
             for (const sym of candidates) {
                 for (const base of detailMarketApiBases()) {
                     for (const win of klineWindows) {
@@ -5314,7 +5346,7 @@
                             const url = isFnBase
                                 ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(win.period)}&interval=${encodeURIComponent(win.interval)}`
                                 : `${baseUrl}/kline?symbol=${encodeURIComponent(sym)}&period=${encodeURIComponent(win.period)}&interval=${encodeURIComponent(win.interval)}`;
-                            const response = await fetch(url, {
+                            const response = await fetchDetailMarketWithTimeout(url, {
                                 cache: 'no-store',
                                 headers: isFnBase ? detailEdgeHeaders() : undefined
                             });
@@ -5374,7 +5406,7 @@
                 for (const base of workerBases) {
                     try {
                         const url = `${base}/fundamentals?symbol=${encodeURIComponent(sym)}`;
-                        const response = await fetch(url, { cache: 'no-store' });
+                        const response = await fetchDetailMarketWithTimeout(url, { cache: 'no-store' });
                         if (response.status === 404) {
                             disableMarketFundamentals('endpoint returned 404');
                             return null;
@@ -5673,13 +5705,13 @@
                             const baseUrl = String(base || '').replace(/\/$/, '');
                             const isFnBase = /\/functions\/v1$/i.test(baseUrl);
                             const response = isFnBase
-                                ? await fetch(`${baseUrl}/get-market-price`, {
+                                ? await fetchDetailMarketWithTimeout(`${baseUrl}/get-market-price`, {
                                     method: 'POST',
                                     headers: detailEdgeHeaders(),
                                     body: JSON.stringify({ symbol: candidate, name: rawName || undefined }),
                                     cache: 'no-store'
                                 })
-                                : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(candidate)}${rawName ? `&name=${encodeURIComponent(rawName)}` : ''}`, {
+                                : await fetchDetailMarketWithTimeout(`${baseUrl}/quote?symbol=${encodeURIComponent(candidate)}${rawName ? `&name=${encodeURIComponent(rawName)}` : ''}`, {
                                     cache: 'no-store'
                                 });
                             if (!response.ok) continue;
@@ -5741,12 +5773,13 @@
                     || window.MarketEngine?.getProduct?.(compact)
                     || window.MarketEngine?.getProduct?.(`${compact}.NS`)
                     || window.MarketEngine?.getProduct?.(`${compact}.BO`);
+                const isUnlistedDetail = /UNLISTED/i.test(String(detailProduct?.exchange || ''));
                 const isDetailInsStock = isInsStockType(detailProduct?.type);
                 const insFallbackQuote = isDetailInsStock
                     ? getInsStockFallbackQuote(detailProduct || lookupSymbol, { productId: currentProductId, snapshotPrice: detailStatsSnapshot?.currentPrice })
                     : null;
-                const directQuote = await fetchDetailQuoteDirect(lookupSymbol, name);
-                const liveQuote = directQuote || ((window.DB && typeof window.DB.getMarketPrice === 'function')
+                const directQuote = isUnlistedDetail ? null : await fetchDetailQuoteDirect(lookupSymbol, name);
+                const liveQuote = directQuote || ((!isUnlistedDetail && window.DB && typeof window.DB.getMarketPrice === 'function')
                     ? await window.DB.getMarketPrice(lookupSymbol, name)
                     : null);
                 const livePriceValue = toFiniteNumber(liveQuote?.price);
@@ -6437,7 +6470,7 @@
                                 const url = isFnBase
                                     ? `${baseUrl}/get-market-kline?symbol=${encodeURIComponent(candidate)}&period=${encodeURIComponent(requestWindow.period)}&interval=${encodeURIComponent(requestWindow.interval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`
                                     : `${baseUrl}/kline?symbol=${encodeURIComponent(candidate)}&period=${encodeURIComponent(requestWindow.period)}&interval=${encodeURIComponent(requestWindow.interval)}${name ? `&name=${encodeURIComponent(name)}` : ''}`;
-                                const response = await fetch(url, {
+                                const response = await fetchDetailMarketWithTimeout(url, {
                                     cache: 'no-store',
                                     headers: isFnBase ? edgeHeaders() : undefined
                                 });
@@ -6507,13 +6540,13 @@
                             const baseUrl = String(base || '').replace(/\/$/, '');
                             const isFnBase = /\/functions\/v1$/i.test(baseUrl);
                             const response = isFnBase
-                                ? await fetch(`${baseUrl}/get-market-price`, {
+                                ? await fetchDetailMarketWithTimeout(`${baseUrl}/get-market-price`, {
                                     method: 'POST',
                                     headers: edgeHeaders(),
                                     body: JSON.stringify({ symbol: candidate, name: name || undefined }),
                                     cache: 'no-store'
                                 })
-                                : await fetch(`${baseUrl}/quote?symbol=${encodeURIComponent(candidate)}${name ? `&name=${encodeURIComponent(name)}` : ''}`, { cache: 'no-store' });
+                                : await fetchDetailMarketWithTimeout(`${baseUrl}/quote?symbol=${encodeURIComponent(candidate)}${name ? `&name=${encodeURIComponent(name)}` : ''}`, { cache: 'no-store' });
                             if (!response.ok) continue;
                             const data = await response.json();
                             const price = Number(data?.price);
@@ -6574,8 +6607,12 @@
             try {
                 const baseSymbol = normalizeApiSymbol(symbol);
                 const routeSymbol = options.originalSymbol || symbol;
-                const baseProduct = window.MarketEngine?.getProduct?.(symbol) || window.MarketEngine?.getProduct?.(baseSymbol);
+                const baseProduct = window.MarketEngine?.getProduct?.(symbol)
+                    || window.MarketEngine?.getProduct?.(baseSymbol)
+                    || window.MarketEngine?.getProduct?.(routeSymbol)
+                    || window.MarketEngine?.getProduct?.(String(routeSymbol || '').trim().toUpperCase());
                 const isInsStockChart = isInsStockType(options.productType || baseProduct?.type);
+                const isUnlistedChart = /UNLISTED/i.test(`${options.exchangeHint || ''} ${baseProduct?.exchange || ''}`);
                 const uniqCandidates = [...new Set([
                     ...getApiSymbolCandidates(routeSymbol),
                     baseSymbol
@@ -6583,18 +6620,28 @@
 
                 let klinePayload = null;
                 let usedSymbol = uniqCandidates[0] || normalizeApiSymbol(routeSymbol) || baseSymbol || symbol;
-                for (const candidate of uniqCandidates) {
-                    const result = await fetchKlineFromLocalApi(
-                        candidate,
-                        window.MarketEngine?.getProduct?.(candidate)?.name
-                        || window.MarketEngine?.getProduct?.(baseSymbol)?.name
-                        || baseProduct?.name
-                        || ''
-                    );
-                    if (result?.payload) {
-                        klinePayload = result.payload;
-                        usedSymbol = result.payload.symbol || candidate;
-                        break;
+                if (!isInsStockChart && isUnlistedChart) {
+                    const unlistedSeed = toFiniteNumber(baseProduct?.price)
+                        ?? toFiniteNumber(baseProduct?.configured_price)
+                        ?? toFiniteNumber(baseProduct?.subscription_price);
+                    if (unlistedSeed !== null && unlistedSeed > 0) {
+                        klinePayload = buildSyntheticKline(unlistedSeed, usedSymbol);
+                    }
+                }
+                if (!klinePayload) {
+                    for (const candidate of uniqCandidates) {
+                        const result = await fetchKlineFromLocalApi(
+                            candidate,
+                            window.MarketEngine?.getProduct?.(candidate)?.name
+                            || window.MarketEngine?.getProduct?.(baseSymbol)?.name
+                            || baseProduct?.name
+                            || ''
+                        );
+                        if (result?.payload) {
+                            klinePayload = result.payload;
+                            usedSymbol = result.payload.symbol || candidate;
+                            break;
+                        }
                     }
                 }
 
@@ -6702,26 +6749,28 @@
                 cleanupChartBranding(container);
 
                 // Pull latest quote from local API to keep the line/candle moving.
-                yahooUpdateTimer = setInterval(async () => {
-                    try {
-                        const quote = await fetchQuoteFromLocalApi(usedSymbol);
-                        if (!quote || !Number.isFinite(quote.price)) return;
-                        const nowTs = Math.floor(Date.now() / 1000);
-                        if (seriesType === 'line') {
-                            mainSeries.update({ time: nowTs, value: quote.price });
-                        } else {
-                            mainSeries.update({
-                                time: nowTs,
-                                open: quote.price,
-                                high: quote.price,
-                                low: quote.price,
-                                close: quote.price,
-                            });
+                if (!isUnlistedChart) {
+                    yahooUpdateTimer = setInterval(async () => {
+                        try {
+                            const quote = await fetchQuoteFromLocalApi(usedSymbol);
+                            if (!quote || !Number.isFinite(quote.price)) return;
+                            const nowTs = Math.floor(Date.now() / 1000);
+                            if (seriesType === 'line') {
+                                mainSeries.update({ time: nowTs, value: quote.price });
+                            } else {
+                                mainSeries.update({
+                                    time: nowTs,
+                                    open: quote.price,
+                                    high: quote.price,
+                                    low: quote.price,
+                                    close: quote.price,
+                                });
+                            }
+                        } catch (e) {
+                            console.warn("Realtime quote update failed:", e);
                         }
-                    } catch (e) {
-                        console.warn("Realtime quote update failed:", e);
-                    }
-                }, 10000);
+                    }, 10000);
+                }
 
                 yahooResizeObserver = new ResizeObserver(entries => {
                     if (entries.length === 0 || !entries[0].contentRect) return;
