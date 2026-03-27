@@ -1129,7 +1129,7 @@ window.loadUserAssets = async function (userId) {
     }
 
     try {
-        const { data: dbUser, error } = await client
+        const { data: fetchedUser, error } = await client
             .from('users')
             .select('*')
             .eq('id', userId)
@@ -1142,9 +1142,32 @@ window.loadUserAssets = async function (userId) {
 
         // console.log("Assets response:", dbUser); // Security: do not log full user object
 
-        if (!dbUser) {
+        if (!fetchedUser) {
             console.error("User not found.");
             return;
+        }
+
+        let dbUser = { ...fetchedUser };
+        let resolvedAvatar = '';
+        if (window.DB && typeof window.DB.extractAvatarSource === 'function') {
+            resolvedAvatar = window.DB.extractAvatarSource(fetchedUser.avatar_url || fetchedUser.profile_image || '');
+        }
+
+        const cachedUser = window.DB && typeof window.DB.getCurrentUser === 'function'
+            ? window.DB.getCurrentUser()
+            : null;
+        const cachedAvatar = (window.DB && typeof window.DB.extractAvatarSource === 'function')
+            ? window.DB.extractAvatarSource(cachedUser?.avatar_url || cachedUser?.profile_image || '')
+            : '';
+
+        if (!resolvedAvatar && window.DB && typeof window.DB.getUserAvatar === 'function') {
+            resolvedAvatar = await window.DB.getUserAvatar(userId);
+        }
+
+        resolvedAvatar = resolvedAvatar || cachedAvatar;
+        if (resolvedAvatar) {
+            dbUser.avatar_url = resolvedAvatar;
+            dbUser.profile_image = resolvedAvatar;
         }
 
         // --- Update Local Storage to prevent stale data in other parts of the app ---
