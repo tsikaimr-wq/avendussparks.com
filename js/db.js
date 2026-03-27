@@ -33,7 +33,7 @@ window.DB = {
     // Local Storage Keys
     CURRENT_USER_KEY: 'avendus_current_user',
     PENDING_REGISTRATION_KEY: 'avendus_pending_registration',
-    USER_PROFILE_SELECT_FIELDS: 'id, mobile, email, username, auth_id, kyc, credit_score, vip, balance, invested, frozen, outstanding, full_name, id_number, address, dob, gender, withdrawal_pin, loan_enabled, created_at, csr_id, invitation_code',
+    USER_PROFILE_SELECT_FIELDS: 'id, mobile, email, username, auth_id, kyc, credit_score, vip, balance, invested, frozen, outstanding, full_name, id_number, address, dob, gender, withdrawal_pin, loan_enabled, avatar_url, profile_image, created_at, csr_id, invitation_code',
     APP_CURRENCY_CODE: window.APP_CURRENCY_CODE,
     APP_CURRENCY_SYMBOL: window.APP_CURRENCY_SYMBOL,
     APP_CURRENCY_LOCALE: window.APP_CURRENCY_LOCALE,

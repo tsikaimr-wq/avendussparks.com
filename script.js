@@ -810,9 +810,10 @@ window.openAvatarModal = function () {
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
     const previewImg = document.getElementById('avatarPreviewImg');
     const placeholderIcon = document.getElementById('avatarPlaceholderIcon');
+    const activeAvatar = String(user?.avatar_url || user?.profile_image || '').trim();
 
-    if (user && user.avatar_url && previewImg) {
-        previewImg.src = user.avatar_url;
+    if (activeAvatar && previewImg) {
+        previewImg.src = activeAvatar;
         previewImg.style.display = 'block';
         if (placeholderIcon) placeholderIcon.style.display = 'none';
     } else if (placeholderIcon) {
@@ -847,7 +848,7 @@ window.previewAvatar = function (input) {
 window.uploadAvatar = async function () {
     const previewImg = document.getElementById('avatarPreviewImg');
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
-    const saveBtn = document.querySelector('.btn-primary');
+    const saveBtn = document.querySelector('#avatarModal .btn-primary');
 
     if (!user) { await window.CustomUI.alert('Please login first.', 'Authentication Required'); return; }
 
@@ -860,19 +861,40 @@ window.uploadAvatar = async function () {
         }
 
         try {
-            // Try saving to DB
-            const result = await window.DB.updateUser(user.id, {
+            let result = await window.DB.updateUser(user.id, {
                 avatar_url: newSrc
             });
+            const updateErrorMessage = String(result?.error?.message || result?.error || '');
 
-            // Update local state regardless for immediate feedback
+            if (!result?.success && window.DB && typeof window.DB.updateUser === 'function') {
+                const fallbackResult = await window.DB.updateUser(user.id, {
+                    profile_image: newSrc
+                });
+                if (fallbackResult?.success) {
+                    result = fallbackResult;
+                } else {
+                    console.warn("Avatar fallback save failed:", updateErrorMessage, fallbackResult?.error?.message || fallbackResult?.error || '');
+                }
+            }
+
             user.avatar_url = newSrc;
+            user.profile_image = newSrc;
             localStorage.setItem('avendus_current_user', JSON.stringify(user));
 
-            document.querySelectorAll('.user-avatar, .avatar-circle, .me-p-avatar').forEach(el => {
+            document.querySelectorAll('.user-avatar, .avatar-circle, .me-p-avatar, #settingsAvatar').forEach(el => {
                 el.innerHTML = `<img src="${newSrc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
                 el.style.background = 'none';
+                el.style.overflow = 'hidden';
             });
+
+            if (window.DB && typeof window.DB.refreshCurrentUser === 'function') {
+                const refreshedUser = await window.DB.refreshCurrentUser();
+                if (refreshedUser) {
+                    refreshedUser.avatar_url = refreshedUser.avatar_url || newSrc;
+                    refreshedUser.profile_image = refreshedUser.profile_image || newSrc;
+                    localStorage.setItem('avendus_current_user', JSON.stringify(refreshedUser));
+                }
+            }
 
             if (result.success) {
                 await window.CustomUI.alert('Avatar updated successfully!', 'Success');
@@ -1305,18 +1327,20 @@ window.loadUserAssets = async function (userId) {
         if (sPhone) sPhone.style.display = 'none';
 
         // Update Avatar Displays across pages
-        const activeAvatar = dbUser.avatar_url || dbUser.profile_image;
+        const activeAvatar = String(dbUser.avatar_url || dbUser.profile_image || '').trim();
         const avatarEls = document.querySelectorAll('.user-avatar, .avatar-circle, .me-p-avatar, #settingsAvatar');
 
         avatarEls.forEach(el => {
             if (activeAvatar && activeAvatar.length > 10 && !activeAvatar.includes('placeholder')) {
                 el.innerHTML = `<img src="${activeAvatar}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
                 el.style.background = 'none';
+                el.style.overflow = 'hidden';
                 el.style.display = 'flex';
                 el.style.alignItems = 'center';
                 el.style.justifyContent = 'center';
             } else {
                 el.innerHTML = initials; // Fallback to initials
+                el.style.background = '';
             }
         });
 
