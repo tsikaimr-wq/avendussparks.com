@@ -33,7 +33,7 @@ window.DB = {
     // Local Storage Keys
     CURRENT_USER_KEY: 'avendus_current_user',
     PENDING_REGISTRATION_KEY: 'avendus_pending_registration',
-    USER_PROFILE_SELECT_FIELDS: 'id, mobile, email, username, auth_id, kyc, credit_score, vip, balance, invested, frozen, outstanding, full_name, id_number, address, dob, gender, withdrawal_pin, loan_enabled, avatar_url, profile_image, created_at, csr_id, invitation_code',
+    USER_PROFILE_SELECT_FIELDS: 'id, mobile, email, username, auth_id, kyc, credit_score, vip, balance, invested, frozen, outstanding, full_name, id_number, address, dob, gender, withdrawal_pin, loan_enabled, created_at, csr_id, invitation_code',
     APP_CURRENCY_CODE: window.APP_CURRENCY_CODE,
     APP_CURRENCY_SYMBOL: window.APP_CURRENCY_SYMBOL,
     APP_CURRENCY_LOCALE: window.APP_CURRENCY_LOCALE,
@@ -1161,6 +1161,60 @@ window.DB = {
         }
     },
 
+    getUserAvatarSettingKey(userId) {
+        const normalizedId = parseInt(userId, 10);
+        return Number.isFinite(normalizedId) && normalizedId > 0 ? `user_avatar_${normalizedId}` : '';
+    },
+
+    extractAvatarSource(value) {
+        if (!value) return '';
+        if (typeof value === 'string') return value.trim();
+        if (typeof value === 'object') {
+            return String(value.src || value.avatar_url || value.profile_image || value.url || '').trim();
+        }
+        return '';
+    },
+
+    async getUserAvatar(userId) {
+        const key = this.getUserAvatarSettingKey(userId);
+        if (!key) return '';
+        const value = await this.getPlatformSettings(key);
+        return this.extractAvatarSource(value);
+    },
+
+    async saveUserAvatar(userId, avatarSrc) {
+        const key = this.getUserAvatarSettingKey(userId);
+        const src = this.extractAvatarSource(avatarSrc);
+        if (!key || !src) {
+            return { success: false, error: { message: 'Invalid avatar payload.' } };
+        }
+        return this.updatePlatformSettings(key, {
+            src,
+            updated_at: new Date().toISOString()
+        });
+    },
+
+    async attachUserAvatar(user) {
+        if (!user || typeof user !== 'object') return user;
+        const existingAvatar = this.extractAvatarSource(user.avatar_url || user.profile_image || user.avatar);
+        if (existingAvatar) {
+            return {
+                ...user,
+                avatar_url: existingAvatar,
+                profile_image: existingAvatar
+            };
+        }
+
+        const storedAvatar = await this.getUserAvatar(user.id);
+        if (!storedAvatar) return user;
+
+        return {
+            ...user,
+            avatar_url: storedAvatar,
+            profile_image: storedAvatar
+        };
+    },
+
     getUserProfileIdentity(profile = {}) {
         const currentUser = this.getCurrentUser() || {};
         const pending = this.getPendingRegistrationData() || {};
@@ -1227,7 +1281,7 @@ window.DB = {
             );
             if (!row) continue;
             if (!hasStrongIdentity || this.doesUserMatchIdentity(row, identity)) {
-                return row;
+                return await this.attachUserAvatar(row);
             }
         }
 
@@ -1235,14 +1289,14 @@ window.DB = {
             const row = await readSingle(
                 client.from('users').select(selectFields).eq('auth_id', identity.authId).maybeSingle()
             );
-            if (row) return row;
+            if (row) return await this.attachUserAvatar(row);
         }
 
         if (identity.email) {
             const row = await readSingle(
                 client.from('users').select(selectFields).eq('email', identity.email).maybeSingle()
             );
-            if (row) return row;
+            if (row) return await this.attachUserAvatar(row);
         }
 
         const mobileCandidates = this.buildMobileCandidates(identity.mobileRaw || identity.mobile);
@@ -1251,7 +1305,7 @@ window.DB = {
                 client.from('users').select(selectFields).in('mobile', mobileCandidates).limit(1),
                 true
             );
-            if (row) return row;
+            if (row) return await this.attachUserAvatar(row);
         }
 
         return null;
@@ -3281,6 +3335,10 @@ window.DB = {
             .single();
 
         if (error) {
+            const message = String(error.message || '');
+            if (error.code === 'PGRST116' || message.includes('0 rows')) {
+                return null;
+            }
             console.error(`Error fetching setting ${key}:`, error);
             return null;
         }

@@ -845,6 +845,58 @@ window.previewAvatar = function (input) {
     }
 };
 
+window.renderAvatarImage = function (src) {
+    const resolvedSrc = String(src || '').trim();
+    if (!resolvedSrc) return;
+    document.querySelectorAll('.user-avatar, .avatar-circle, .me-p-avatar, #settingsAvatar').forEach(el => {
+        el.innerHTML = `<img src="${resolvedSrc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+        el.style.background = 'none';
+        el.style.overflow = 'hidden';
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
+    });
+};
+
+window.optimizeAvatarSource = function (src) {
+    return new Promise((resolve) => {
+        const originalSrc = String(src || '').trim();
+        if (!/^data:image\/(png|jpe?g|webp);base64,/i.test(originalSrc)) {
+            resolve(originalSrc);
+            return;
+        }
+
+        const img = new Image();
+        img.onload = function () {
+            try {
+                const maxDimension = 512;
+                const longestSide = Math.max(img.width || 0, img.height || 0) || maxDimension;
+                const scale = longestSide > maxDimension ? (maxDimension / longestSide) : 1;
+                const canvas = document.createElement('canvas');
+                canvas.width = Math.max(1, Math.round((img.width || maxDimension) * scale));
+                canvas.height = Math.max(1, Math.round((img.height || maxDimension) * scale));
+
+                const ctx = canvas.getContext('2d');
+                if (!ctx) {
+                    resolve(originalSrc);
+                    return;
+                }
+
+                ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                const optimizedSrc = canvas.toDataURL('image/jpeg', 0.82);
+                resolve(optimizedSrc && optimizedSrc.length < originalSrc.length ? optimizedSrc : originalSrc);
+            } catch (error) {
+                console.warn('Avatar optimization failed, using original image.', error);
+                resolve(originalSrc);
+            }
+        };
+        img.onerror = function () {
+            resolve(originalSrc);
+        };
+        img.src = originalSrc;
+    });
+};
+
 window.uploadAvatar = async function () {
     const previewImg = document.getElementById('avatarPreviewImg');
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
@@ -853,39 +905,33 @@ window.uploadAvatar = async function () {
     if (!user) { await window.CustomUI.alert('Please login first.', 'Authentication Required'); return; }
 
     if (previewImg && previewImg.src && previewImg.style.display !== 'none') {
-        const newSrc = previewImg.src;
-
         if (saveBtn) {
             saveBtn.disabled = true;
             saveBtn.textContent = 'Saving...';
         }
 
         try {
-            let result = await window.DB.updateUser(user.id, {
-                avatar_url: newSrc
-            });
-            const updateErrorMessage = String(result?.error?.message || result?.error || '');
+            const newSrc = await window.optimizeAvatarSource(previewImg.src);
+            let result = { success: false, error: { message: 'Avatar save is unavailable.' } };
 
-            if (!result?.success && window.DB && typeof window.DB.updateUser === 'function') {
-                const fallbackResult = await window.DB.updateUser(user.id, {
-                    profile_image: newSrc
-                });
-                if (fallbackResult?.success) {
-                    result = fallbackResult;
-                } else {
-                    console.warn("Avatar fallback save failed:", updateErrorMessage, fallbackResult?.error?.message || fallbackResult?.error || '');
-                }
+            if (window.DB && typeof window.DB.saveUserAvatar === 'function') {
+                result = await window.DB.saveUserAvatar(user.id, newSrc);
+            }
+
+            if (!result?.success) {
+                const errorMessage = String(result?.error?.message || result?.error || 'Avatar save failed.');
+                console.warn("Avatar cloud save failed:", errorMessage);
+                await window.CustomUI.alert(`Unable to save avatar: ${errorMessage}`, 'Save Failed');
+                return;
             }
 
             user.avatar_url = newSrc;
             user.profile_image = newSrc;
             localStorage.setItem('avendus_current_user', JSON.stringify(user));
 
-            document.querySelectorAll('.user-avatar, .avatar-circle, .me-p-avatar, #settingsAvatar').forEach(el => {
-                el.innerHTML = `<img src="${newSrc}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
-                el.style.background = 'none';
-                el.style.overflow = 'hidden';
-            });
+            if (window.renderAvatarImage) {
+                window.renderAvatarImage(newSrc);
+            }
 
             if (window.DB && typeof window.DB.refreshCurrentUser === 'function') {
                 const refreshedUser = await window.DB.refreshCurrentUser();
@@ -896,14 +942,8 @@ window.uploadAvatar = async function () {
                 }
             }
 
-            if (result.success) {
-                await window.CustomUI.alert('Avatar updated successfully!', 'Success');
-            } else {
-                await window.CustomUI.alert('Success: Profile updated locally. (Note: Cloud sync may be pending)', 'Partial Success');
-                console.warn("Avatar saved locally but failed to sync to cloud. If this persists, run the SQL command provided to add the avatar_url column.", result.error?.message);
-            }
-
-            if (window.syncUserData) window.syncUserData();
+            await window.CustomUI.alert('Avatar updated successfully!', 'Success');
+            if (window.syncUserData) await window.syncUserData();
             window.closeAvatarModal();
         } catch (e) {
             console.error(e);
