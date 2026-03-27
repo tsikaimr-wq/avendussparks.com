@@ -67,6 +67,53 @@ window.DB = {
             || message.includes("Could not find the table 'public.market_cache'");
     },
 
+    getSchemaMissingColumn(error, tableName) {
+        const message = String(error?.message || '');
+        const match = message.match(new RegExp(`Could not find the '([^']+)' column of '${tableName}'`, 'i'));
+        return match ? match[1] : '';
+    },
+
+    sanitizeWithdrawalInsertData(withdrawalData, missingColumns = []) {
+        const nextData = { ...withdrawalData };
+        const missingSet = new Set(
+            Array.isArray(missingColumns)
+                ? missingColumns.filter(Boolean).map(column => String(column).trim())
+                : []
+        );
+
+        if (!missingSet.size) return nextData;
+
+        const bankLabel = String(withdrawalData?.bank_name || 'Bank Withdrawal').trim() || 'Bank Withdrawal';
+        const fallbackMeta = [];
+        const rawAccountNumber = String(withdrawalData?.account_number || '').trim();
+        const accountSuffix = rawAccountNumber ? rawAccountNumber.slice(-4) : '';
+        const ifsc = String(withdrawalData?.ifsc || '').trim();
+        const fullName = String(withdrawalData?.full_name || '').trim();
+
+        if (missingSet.has('account_number')) {
+            delete nextData.account_number;
+            if (accountSuffix) fallbackMeta.push(`A/C ****${accountSuffix}`);
+        }
+
+        if (missingSet.has('ifsc')) {
+            delete nextData.ifsc;
+            if (ifsc) fallbackMeta.push(`IFSC ${ifsc}`);
+        }
+
+        if (missingSet.has('full_name')) {
+            delete nextData.full_name;
+            if (fullName) fallbackMeta.push(fullName);
+        }
+
+        if (missingSet.has('bank_name')) {
+            delete nextData.bank_name;
+        } else if (fallbackMeta.length) {
+            nextData.bank_name = `${bankLabel} | ${fallbackMeta.join(' | ')}`.slice(0, 240);
+        }
+
+        return nextData;
+    },
+
     disableMarketCache(reason = '') {
         window.DISABLE_MARKET_DB = true;
         try {
@@ -2398,13 +2445,36 @@ window.DB = {
 
     async submitWithdrawal(withdrawalData) {
         const client = this.getClient();
-        const { data, error } = await client
-            .from('withdrawals')
-            .insert([withdrawalData])
-            .select()
-            .single();
+        const missingColumns = new Set();
+        let payload = { ...withdrawalData };
+        let data = null;
+        let error = null;
 
-        return { success: !error, data, error };
+        for (let attempt = 0; attempt < 4; attempt++) {
+            const result = await client
+                .from('withdrawals')
+                .insert([payload])
+                .select()
+                .single();
+
+            data = result.data || null;
+            error = result.error || null;
+
+            if (!error) {
+                return { success: true, data, error: null };
+            }
+
+            const missingColumn = this.getSchemaMissingColumn(error, 'withdrawals');
+            if (!missingColumn || missingColumns.has(missingColumn)) {
+                break;
+            }
+
+            missingColumns.add(missingColumn);
+            payload = this.sanitizeWithdrawalInsertData(withdrawalData, Array.from(missingColumns));
+            console.warn(`Retrying withdrawal insert without unsupported column: ${missingColumn}`);
+        }
+
+        return { success: false, data, error };
     },
 
     // --- TRADING ---
