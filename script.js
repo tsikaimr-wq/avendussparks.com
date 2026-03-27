@@ -1942,6 +1942,7 @@ let csPollingTimer = null;
 let csPollingInFlight = false;
 let csKnownMessageIds = new Set();
 let csHistorySignature = '';
+let csUnreadSupportCount = 0;
 
 function isChatNotificationPayload(rawMessage) {
     if (!rawMessage || typeof rawMessage !== 'string' || !rawMessage.trim().startsWith('{')) return false;
@@ -1980,15 +1981,59 @@ function isCSModalOpen() {
     return getComputedStyle(modal).display !== 'none' && modal.style.display !== 'none';
 }
 
-function bumpCSBadges(amount = 1) {
-    if (!Number.isFinite(amount) || amount <= 0) return;
+function setCSBadgeCount(count = 0) {
+    const safeCount = Math.max(0, parseInt(count, 10) || 0);
+    csUnreadSupportCount = safeCount;
+    const text = safeCount > 99 ? '99+' : String(safeCount);
     const badges = [document.getElementById('csrMsgBadge'), document.getElementById('csrHeaderBadge')];
     badges.forEach(badge => {
         if (!badge) return;
-        const current = parseInt(badge.textContent || '0', 10) || 0;
-        badge.textContent = String(current + amount);
-        badge.style.display = 'block';
+        if (safeCount > 0) {
+            badge.textContent = text;
+            badge.style.display = 'block';
+        } else {
+            badge.textContent = '0';
+            badge.style.display = 'none';
+        }
     });
+}
+
+async function syncCSBadgesFromDB(userId = null) {
+    const resolvedUserId = userId || (window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser()?.id : null);
+    if (!resolvedUserId || !(window.DB && typeof window.DB.getUnreadSupportMessageCount === 'function')) {
+        setCSBadgeCount(0);
+        return 0;
+    }
+
+    try {
+        const count = await window.DB.getUnreadSupportMessageCount(resolvedUserId);
+        setCSBadgeCount(count);
+        return count;
+    } catch (error) {
+        console.error("Sync CS badges failed:", error);
+        return csUnreadSupportCount;
+    }
+}
+
+async function markCSMessagesRead(userId = null) {
+    const resolvedUserId = userId || (window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser()?.id : null);
+    if (!resolvedUserId || !(window.DB && typeof window.DB.markSupportMessagesRead === 'function')) {
+        setCSBadgeCount(0);
+        return { success: true, count: 0 };
+    }
+
+    setCSBadgeCount(0);
+    try {
+        const result = await window.DB.markSupportMessagesRead(resolvedUserId);
+        if (!result?.success && result?.error) {
+            console.error("Mark CS messages read failed:", result.error);
+        }
+        await syncCSBadgesFromDB(resolvedUserId);
+        return result;
+    } catch (error) {
+        console.error("Mark CS messages read failed:", error);
+        return { success: false, error };
+    }
 }
 
 async function pollCSMessages({ forceRender = false } = {}) {
@@ -2014,11 +2059,15 @@ async function pollCSMessages({ forceRender = false } = {}) {
                     targetBox.scrollTop = targetBox.scrollHeight;
                 }
             }
+            const unreadSupport = newMessages.filter(m => m.sender !== 'User' && m.sender !== 'user').length;
+            if (unreadSupport > 0) {
+                await markCSMessagesRead(user.id);
+            }
         } else {
             const incomingSupportCount = newMessages.filter(m => m.sender !== 'User' && m.sender !== 'user').length;
             if (incomingSupportCount > 0) {
                 playNotificationSound();
-                bumpCSBadges(incomingSupportCount);
+                await syncCSBadgesFromDB(user.id);
             }
         }
 
@@ -2106,14 +2155,7 @@ async function loadCSMessages() {
         renderMessages(renderable);
     }
 
-    // Clear badges when chat is opened
-    const badges = [document.getElementById('csrMsgBadge'), document.getElementById('csrHeaderBadge')];
-    badges.forEach(b => {
-        if (b) {
-            b.style.display = 'none';
-            b.textContent = '0';
-        }
-    });
+    await markCSMessagesRead(user.id);
 
     targetBox.scrollTop = targetBox.scrollHeight;
 }
@@ -2170,14 +2212,11 @@ window.startChatListener = async function () {
             // Notify if from Support
             if (!isUser) {
                 playNotificationSound();
-                const badges = [document.getElementById('csrMsgBadge'), document.getElementById('csrHeaderBadge')];
-                badges.forEach(badge => {
-                    if (badge && (modal && modal.style.display !== 'flex')) {
-                        const count = parseInt(badge.textContent || '0') + 1;
-                        badge.textContent = count;
-                        badge.style.display = 'block';
-                    }
-                });
+                if (modal && modal.style.display === 'flex') {
+                    markCSMessagesRead(user.id);
+                } else {
+                    syncCSBadgesFromDB(user.id);
+                }
             }
         }).subscribe();
 
@@ -2424,6 +2463,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (window.startChatListener) window.startChatListener();
             if (window.startNotificationListener) window.startNotificationListener();
             startCSPolling();
+            syncCSBadgesFromDB();
             // Update CSR visibility
             const btn = document.getElementById('floatingCSR');
             if (btn) btn.style.display = 'flex';

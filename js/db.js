@@ -1399,6 +1399,61 @@ window.DB = {
         return data || [];
     },
 
+    async getUnreadSupportMessages(userId) {
+        const client = this.getClient();
+        const numericId = await this._getNumericUserId(userId);
+        if (numericId === null || numericId === undefined || numericId === '') return [];
+
+        const { data, error } = await client
+            .from('messages')
+            .select('id, user_id, message, sender, is_read, created_at')
+            .eq('user_id', numericId)
+            .eq('is_read', false)
+            .neq('sender', 'User')
+            .neq('sender', 'user')
+            .neq('sender', 'System')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error("Get Unread Support Messages Error:", error);
+            return [];
+        }
+
+        return (data || []).filter(row => {
+            const rawMessage = String(row?.message || '').trim();
+            if (!rawMessage.startsWith('{')) return true;
+            try {
+                const payload = JSON.parse(rawMessage);
+                return payload?.is_notification !== true && payload?.title === undefined;
+            } catch (_) {
+                return true;
+            }
+        });
+    },
+
+    async getUnreadSupportMessageCount(userId) {
+        const rows = await this.getUnreadSupportMessages(userId);
+        return Array.isArray(rows) ? rows.length : 0;
+    },
+
+    async markSupportMessagesRead(userId) {
+        const client = this.getClient();
+        const unreadRows = await this.getUnreadSupportMessages(userId);
+        const ids = (Array.isArray(unreadRows) ? unreadRows : [])
+            .map(row => row?.id)
+            .filter(id => id !== null && id !== undefined && id !== '');
+
+        if (!ids.length) return { success: true, count: 0, data: [] };
+
+        const { data, error } = await client
+            .from('messages')
+            .update({ is_read: true })
+            .in('id', ids)
+            .select('id');
+
+        return { success: !error, error, count: ids.length, data: data || [] };
+    },
+
     // New: Get Notices (System Messages)
     async getNotices(userId) {
         const client = this.getClient();
