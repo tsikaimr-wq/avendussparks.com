@@ -1,6 +1,6 @@
 # StockTV Proxy (Cloudflare Worker)
 
-This Worker proxies StockTV India APIs so the frontend never exposes the key.
+This Worker proxies market-data upstreams so the frontend never exposes vendor keys.
 
 ## Setup
 
@@ -8,6 +8,7 @@ This Worker proxies StockTV India APIs so the frontend never exposes the key.
 cd d:/work/AvendusCapital-main/stocktv-worker
 npm install
 npx wrangler secret put STOCKTV_KEY
+npx wrangler secret put INFOWAY_API_KEY
 ```
 
 Optional:
@@ -16,6 +17,12 @@ npx wrangler secret put STOCKTV_COUNTRY_ID   # default 14
 npx wrangler secret put STOCKTV_EXCHANGE_ID  # default 46
 npx wrangler secret put STOCKTV_MAX_PAGES    # default 5
 ```
+
+`INFOWAY_API_KEY` is used as a fallback for:
+
+- US stocks / ETFs like `NSEP`
+- India stocks via `*.IN` resolution inside the Worker
+- fundamentals fallback when Yahoo fails
 
 Deploy:
 ```bash

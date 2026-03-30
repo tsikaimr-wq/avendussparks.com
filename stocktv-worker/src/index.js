@@ -1,4 +1,5 @@
 const API_BASE = 'https://api.stocktv.top';
+const INFOWAY_BASE = 'https://data.infoway.io';
 const YAHOO_BASES = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
 const BROWSER_LIKE_HEADERS = {
   Accept: 'application/json, text/plain, */*',
@@ -152,6 +153,9 @@ const buildIndexLookup = () => {
 const INDEX_ALIAS_LOOKUP = buildIndexLookup();
 const LAST_GOOD_INDEX_QUOTES = new Map();
 const LAST_GOOD_INDEX_TTL_MS = 12 * 60 * 60 * 1000;
+const INFOWAY_CACHE = new Map();
+const INFOWAY_MIN_INTERVAL_MS = 1100;
+let infowayNextRequestAt = 0;
 
 const withTimeout = async (url, init = undefined, timeoutMs = 4500) => {
   const controller = new AbortController();
@@ -161,6 +165,31 @@ const withTimeout = async (url, init = undefined, timeoutMs = 4500) => {
   } finally {
     clearTimeout(timer);
   }
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const getCachedValue = (cache, key, ttlMs, allowStale = false) => {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  const expired = ttlMs > 0 && (Date.now() - entry.ts) > ttlMs;
+  if (expired && !allowStale) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.value;
+};
+
+const setCachedValue = (cache, key, value) => {
+  if (!key || value == null) return value;
+  cache.set(key, { ts: Date.now(), value });
+  return value;
+};
+
+const waitForInfowaySlot = async () => {
+  const waitMs = infowayNextRequestAt - Date.now();
+  if (waitMs > 0) await sleep(waitMs);
+  infowayNextRequestAt = Date.now() + INFOWAY_MIN_INTERVAL_MS;
 };
 
 const json = async (url, init = undefined, retries = 1) => {
@@ -199,6 +228,13 @@ const toNum = (v) => {
   const normalized = typeof v === 'string' ? v.replace(/,/g, '').trim() : v;
   const n = Number(normalized);
   return Number.isFinite(n) ? n : null;
+};
+
+const toPercentNum = (value) => {
+  if (typeof value === 'string') {
+    return toNum(value.replace(/%/g, ''));
+  }
+  return toNum(value);
 };
 
 function normalizeMatch(v) {
@@ -293,6 +329,14 @@ const mapYahooInterval = (raw) => {
 
 const normalizeSymbol = (s = '') =>
   String(s).toUpperCase().replace(/^NSE:|^BSE:/, '').replace(/\.(NS|BO)$/, '');
+
+const normalizeTickerBase = (value = '') =>
+  String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/^(NSE|BSE|NASDAQ|NYSEARCA|NYSE|AMEX|ARCA):/, '')
+    .replace(/\.(NS|BO|IN|US|NSE|BSE|NASDAQ|NYSEARCA|NYSE|AMEX|ARCA)$/, '')
+    .replace(/[^A-Z0-9-]/g, '');
 
 const listStocks = async (env, page = 1, pageSize = 500, { exchangeId, symbol } = {}) => {
   const url = new URL(`${API_BASE}/stock/stocks`);
@@ -650,6 +694,463 @@ const isExplicitIndiaMarketSymbol = (value) => {
   const upper = String(value || '').trim().toUpperCase();
   if (!upper) return false;
   return upper.startsWith('NSE:') || upper.startsWith('BSE:') || upper.endsWith('.NS') || upper.endsWith('.BO');
+};
+
+const isExplicitUsMarketSymbol = (value) => {
+  const upper = String(value || '').trim().toUpperCase();
+  if (!upper) return false;
+  return (
+    upper.startsWith('NASDAQ:') ||
+    upper.startsWith('NYSE:') ||
+    upper.startsWith('AMEX:') ||
+    upper.startsWith('ARCA:') ||
+    upper.startsWith('NYSEARCA:') ||
+    upper.endsWith('.US')
+  );
+};
+
+const INDIA_SYMBOL_LOOKUP = new Set(
+  INDIA_SEARCH_FALLBACKS.flatMap((item) => [
+    normalizeMatch(item.symbol),
+    normalizeMatch(String(item.symbol || '').replace(/\.(NS|BO)$/i, '')),
+    normalizeMatch(item.name),
+  ])
+);
+
+const isLikelyIndiaSymbol = (value) => {
+  const upper = String(value || '').trim().toUpperCase();
+  const key = normalizeMatch(upper);
+  if (!key) return false;
+  if (upper.endsWith('.IN') || isExplicitIndiaMarketSymbol(upper)) return true;
+  if (INDIA_SYMBOL_LOOKUP.has(key)) return true;
+  const aliases = YAHOO_SYMBOL_ALIAS[key] || [];
+  return aliases.some((alias) => /\.NS$|\.BO$/i.test(String(alias || '')));
+};
+
+const pushUnique = (arr, value) => {
+  if (!value || arr.includes(value)) return;
+  arr.push(value);
+};
+
+const getInfowayCandidates = ({ symbol, name } = {}) => {
+  const indiaCodes = [];
+  const usCodes = [];
+  const rawCandidates = [];
+  const addRaw = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw || rawCandidates.includes(raw)) return;
+    rawCandidates.push(raw);
+  };
+  addRaw(symbol);
+  addRaw(resolvePreferredYahooSymbol({ symbol, name }));
+  addRaw(name);
+  for (const probe of [symbol, name]) {
+    const aliases = YAHOO_SYMBOL_ALIAS[normalizeMatch(probe)] || [];
+    for (const alias of aliases) addRaw(alias);
+  }
+
+  for (const raw of rawCandidates) {
+    const upper = String(raw || '').trim().toUpperCase();
+    if (!upper || upper.startsWith('^')) continue;
+    const explicit = looksLikeExplicitTicker(upper) || isExplicitIndiaMarketSymbol(upper) || isExplicitUsMarketSymbol(upper) || upper.endsWith('.IN');
+    if (!explicit) continue;
+    const base = normalizeTickerBase(upper);
+    if (!base) continue;
+
+    if (upper.endsWith('.IN') || isExplicitIndiaMarketSymbol(upper)) {
+      pushUnique(indiaCodes, `${base}.IN`);
+      continue;
+    }
+    if (isExplicitUsMarketSymbol(upper)) {
+      pushUnique(usCodes, `${base}.US`);
+      continue;
+    }
+
+    if (isLikelyIndiaSymbol(upper)) {
+      pushUnique(indiaCodes, `${base}.IN`);
+      pushUnique(usCodes, `${base}.US`);
+    } else {
+      pushUnique(usCodes, `${base}.US`);
+      pushUnique(indiaCodes, `${base}.IN`);
+    }
+  }
+
+  return { indiaCodes, usCodes };
+};
+
+const getInfowayAppSymbol = (code, info = null) => {
+  const upper = String(code || '').trim().toUpperCase();
+  const base = upper.replace(/\.(IN|US)$/i, '');
+  if (upper.endsWith('.IN')) {
+    const exchange = String(info?.exchange || '').trim().toUpperCase();
+    return `${base}.${exchange === 'BSE' ? 'BO' : 'NS'}`;
+  }
+  return base;
+};
+
+const getInfowayExchangeLabel = (market, info = null) => {
+  const exchange = String(info?.exchange || '').trim();
+  if (exchange) return exchange;
+  return market === 'IN' ? 'NSE' : 'US';
+};
+
+const mapInfowayKlineType = (raw) => {
+  const value = String(raw || '').trim().toLowerCase();
+  const table = {
+    '1m': 1,
+    '2m': 1,
+    '3m': 1,
+    '5m': 2,
+    '15m': 3,
+    '30m': 4,
+    '45m': 5,
+    '60m': 5,
+    '1h': 5,
+    '2h': 6,
+    '4h': 7,
+    '1d': 8,
+    '5d': 8,
+    '1w': 9,
+    '1wk': 9,
+    '1mo': 10,
+    '3mo': 11,
+    '1y': 12,
+  };
+  return table[value] || 8;
+};
+
+const estimateInfowayKlineNum = (period, intervalRaw) => {
+  const range = String(period || '').trim().toLowerCase();
+  const klineType = mapInfowayKlineType(intervalRaw);
+  const intraday = klineType <= 7;
+  if (intraday) {
+    const table = {
+      '1d': 80,
+      '5d': 220,
+      '1mo': 320,
+      '3mo': 480,
+      '6mo': 500,
+      '1y': 500,
+    };
+    return Math.max(2, Math.min(500, table[range] || 120));
+  }
+  const table = {
+    '1d': 2,
+    '5d': 5,
+    '1mo': 30,
+    '3mo': 66,
+    '6mo': 132,
+    '1y': 260,
+    '2y': 500,
+    '5y': 500,
+    '10y': 500,
+    ytd: 260,
+    max: 500,
+  };
+  return Math.max(2, Math.min(500, table[range] || 60));
+};
+
+const infowayErrorMessage = (payload) => {
+  if (!payload) return null;
+  if (payload.ret != null && Number(payload.ret) !== 200) return payload.msg || payload.message || 'upstream error';
+  if (payload.code != null && Number(payload.code) !== 200) return payload.message || payload.msg || 'upstream error';
+  return null;
+};
+
+const infowayJson = async (env, url, init = undefined, { cacheKey = '', ttlMs = 0 } = {}) => {
+  if (!env.INFOWAY_API_KEY) return null;
+  const fresh = cacheKey ? getCachedValue(INFOWAY_CACHE, cacheKey, ttlMs) : null;
+  if (fresh) return fresh;
+
+  await waitForInfowaySlot();
+  let payload = null;
+  let status = 0;
+  try {
+    const res = await withTimeout(url, {
+      ...(init || {}),
+      headers: {
+        Accept: 'application/json, text/plain, */*',
+        ...(init?.headers || {}),
+        apiKey: env.INFOWAY_API_KEY,
+      },
+    }, 8000);
+    status = Number(res?.status || 0);
+    const payloadText = await res.text();
+    payload = payloadText ? JSON.parse(payloadText) : null;
+  } catch (_) {
+    payload = null;
+  }
+
+  if (!payload || infowayErrorMessage(payload)) {
+    if (status === 429 && cacheKey) {
+      return getCachedValue(INFOWAY_CACHE, cacheKey, ttlMs, true);
+    }
+    return null;
+  }
+
+  if (cacheKey) setCachedValue(INFOWAY_CACHE, cacheKey, payload);
+  return payload;
+};
+
+const sortInfowayRows = (rows) =>
+  [...(Array.isArray(rows) ? rows : [])].sort((left, right) => Number(left?.t || 0) - Number(right?.t || 0));
+
+const buildKlineFromInfowayRows = ({ market, code, rows, info = null }) => {
+  const sorted = sortInfowayRows(rows);
+  const data = sorted
+    .map((row) => {
+      const ts = Number(row?.t || 0);
+      const c = toNum(row?.c);
+      if (!Number.isFinite(ts) || c == null) return null;
+      const o = toNum(row?.o) ?? c;
+      const h = toNum(row?.h) ?? c;
+      const l = toNum(row?.l) ?? c;
+      return {
+        t: new Date(ts * 1000).toISOString(),
+        o,
+        h,
+        l,
+        c,
+        v: toNum(row?.v) ?? 0,
+      };
+    })
+    .filter(Boolean);
+  if (!data.length) return null;
+  return {
+    success: true,
+    symbol: getInfowayAppSymbol(code, info),
+    source: market === 'IN' ? 'infoway_india' : 'infoway_stock',
+    data,
+  };
+};
+
+const buildQuoteFromInfowayRows = ({ market, code, rows, info = null, fallbackName = '' }) => {
+  const sorted = sortInfowayRows(rows);
+  const latest = sorted[sorted.length - 1];
+  if (!latest) return null;
+  const price = toNum(latest.c);
+  if (price == null) return null;
+  const previousRow = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+  let change = toNum(latest.pca);
+  let changePercent = toPercentNum(latest.pc);
+  let previousClose = change != null
+    ? price - change
+    : (changePercent != null ? (price / (1 + (changePercent / 100))) : null);
+  const previousRowClose = toNum(previousRow?.c);
+  if (previousClose == null && previousRowClose != null) previousClose = previousRowClose;
+  if (change == null && previousClose != null) change = price - previousClose;
+  if (changePercent == null && previousClose) changePercent = (change / previousClose) * 100;
+  return {
+    success: true,
+    symbol: getInfowayAppSymbol(code, info),
+    pid: null,
+    name: fallbackName || info?.name_en || info?.name || getInfowayAppSymbol(code, info),
+    price,
+    previousClose,
+    change,
+    changePercent,
+    open: toNum(latest.o),
+    high: toNum(latest.h),
+    low: toNum(latest.l),
+    exchange: getInfowayExchangeLabel(market, info),
+    currency: info?.currency || (market === 'IN' ? 'INR' : 'USD'),
+    source: market === 'IN' ? 'infoway_india' : 'infoway_stock',
+  };
+};
+
+const adaptInfowayFundamentals = (market, row) => {
+  if (!row) return null;
+  return {
+    success: true,
+    symbol: getInfowayAppSymbol(row.symbol, row),
+    source: market === 'IN' ? 'infoway_india' : 'infoway_stock',
+    data: {
+      summaryDetail: {
+        dividendYield: toNum(row.dividend_yield),
+        currency: row.currency || (market === 'IN' ? 'INR' : 'USD'),
+      },
+      defaultKeyStatistics: {
+        sharesOutstanding: toNum(row.total_shares),
+        floatShares: toNum(row.circulating_shares),
+        trailingEps: toNum(row.eps_ttm ?? row.eps),
+      },
+      financialData: {
+        currentPrice: toNum(row.price),
+      },
+      assetProfile: {
+        sector: row.board || '',
+      },
+      price: {
+        exchangeName: row.exchange || getInfowayExchangeLabel(market, row),
+        currency: row.currency || (market === 'IN' ? 'INR' : 'USD'),
+        longName: row.name_en || row.name || getInfowayAppSymbol(row.symbol, row),
+        shortName: row.name_en || row.name || getInfowayAppSymbol(row.symbol, row),
+      },
+    },
+  };
+};
+
+const fetchInfowaySymbolRows = async (env, market, codes, { detailed = false } = {}) => {
+  const normalizedCodes = [...new Set((codes || []).filter(Boolean).map((code) => String(code).trim().toUpperCase()))];
+  if (!normalizedCodes.length) return [];
+  const type = market === 'IN' ? 'STOCK_IN' : 'STOCK_US';
+  const endpoint = detailed ? '/common/basic/symbols/info' : '/common/basic/symbols';
+  const url = new URL(`${INFOWAY_BASE}${endpoint}`);
+  url.searchParams.set('type', type);
+  url.searchParams.set('symbols', normalizedCodes.join(','));
+  const cacheKey = `infoway:${detailed ? 'info' : 'symbols'}:${market}:${normalizedCodes.join(',')}`;
+  const payload = await infowayJson(env, url, undefined, { cacheKey, ttlMs: detailed ? 6 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000 });
+  return Array.isArray(payload?.data) ? payload.data : [];
+};
+
+const fetchInfowayKlineByCode = async (env, market, code, { period = '1d', interval = '5m' } = {}) => {
+  const endpoint = market === 'IN' ? '/india/v2/batch_kline' : '/stock/v2/batch_kline';
+  const klineType = mapInfowayKlineType(interval);
+  const body = JSON.stringify({
+    klineType,
+    klineNum: estimateInfowayKlineNum(period, interval),
+    codes: String(code || '').trim().toUpperCase(),
+  });
+  const cacheTtlMs = klineType <= 7 ? 15 * 1000 : 5 * 60 * 1000;
+  const cacheKey = `infoway:kline:${market}:${code}:${period}:${interval}`;
+  const payload = await infowayJson(env, `${INFOWAY_BASE}${endpoint}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body,
+  }, { cacheKey, ttlMs: cacheTtlMs });
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  const target = rows.find((item) => normalizeMatch(item?.s) === normalizeMatch(code)) || rows[0];
+  return Array.isArray(target?.respList) ? target.respList : [];
+};
+
+const fetchInfowayTradeByCode = async (env, market, code) => {
+  const upperCode = String(code || '').trim().toUpperCase();
+  if (!upperCode) return null;
+  const endpoint = market === 'IN' ? `/india/batch_trade/${encodeURIComponent(upperCode)}` : `/stock/batch_trade/${encodeURIComponent(upperCode)}`;
+  const cacheKey = `infoway:trade:${market}:${upperCode}`;
+  const payload = await infowayJson(env, `${INFOWAY_BASE}${endpoint}`, undefined, {
+    cacheKey,
+    ttlMs: 8 * 1000,
+  });
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  return rows.find((item) => normalizeMatch(item?.s) === normalizeMatch(upperCode)) || rows[0] || null;
+};
+
+const fetchInfowayKline = async (env, { symbol, name, period = '1d', interval = '5m', withInfo = false } = {}) => {
+  const { indiaCodes, usCodes } = getInfowayCandidates({ symbol, name });
+  const marketPlans = [
+    { market: 'IN', codes: indiaCodes },
+    { market: 'US', codes: usCodes },
+  ];
+  for (const plan of marketPlans) {
+    for (const code of plan.codes) {
+      const rows = await fetchInfowayKlineByCode(env, plan.market, code, { period, interval });
+      if (!rows.length) continue;
+      let info = null;
+      if (withInfo) {
+        info = (await fetchInfowaySymbolRows(env, plan.market, [code], { detailed: true }))[0] || null;
+      }
+      return {
+        market: plan.market,
+        code,
+        rows,
+        info,
+      };
+    }
+  }
+  return null;
+};
+
+const fetchInfowayQuote = async (env, { symbol, name }) => {
+  const { indiaCodes, usCodes } = getInfowayCandidates({ symbol, name });
+  const plans = [
+    { market: 'IN', codes: indiaCodes },
+    { market: 'US', codes: usCodes },
+  ];
+
+  for (const plan of plans) {
+    for (const code of plan.codes) {
+      const trade = await fetchInfowayTradeByCode(env, plan.market, code);
+      if (!trade) continue;
+
+      const rows = [];
+      const tradePrice = toNum(trade?.p);
+      if (tradePrice != null) {
+        rows.push({
+          t: Math.floor((Number(trade?.t || Date.now())) / 1000),
+          o: tradePrice,
+          h: tradePrice,
+          l: tradePrice,
+          c: tradePrice,
+          v: toNum(trade?.v) ?? 0,
+        });
+      }
+
+      const dailyRows = await fetchInfowayKlineByCode(env, plan.market, code, { period: '5d', interval: '1d' });
+      if (Array.isArray(dailyRows) && dailyRows.length) {
+        rows.push(...dailyRows);
+      }
+
+      let info = null;
+      if (!name || plan.market === 'IN') {
+        info = (await fetchInfowaySymbolRows(env, plan.market, [code], { detailed: true }))[0] || null;
+      }
+
+      const quote = buildQuoteFromInfowayRows({
+        market: plan.market,
+        code,
+        rows,
+        info,
+        fallbackName: name,
+      });
+      if (quote) return quote;
+    }
+  }
+
+  return null;
+};
+
+const fetchInfowayFundamentals = async (env, { symbol, name }) => {
+  const { indiaCodes, usCodes } = getInfowayCandidates({ symbol, name });
+  const plans = [
+    { market: 'IN', codes: indiaCodes },
+    { market: 'US', codes: usCodes },
+  ];
+  for (const plan of plans) {
+    if (!plan.codes.length) continue;
+    const rows = await fetchInfowaySymbolRows(env, plan.market, plan.codes, { detailed: true });
+    const found = rows.find((row) => plan.codes.some((code) => normalizeMatch(code) === normalizeMatch(row?.symbol)));
+    if (found) return adaptInfowayFundamentals(plan.market, found);
+  }
+  return null;
+};
+
+const searchInfowayExact = async (env, query, limit = 20) => {
+  if (!looksLikeExplicitTicker(query)) return [];
+  const { indiaCodes, usCodes } = getInfowayCandidates({ symbol: query, name: query });
+  const rows = [];
+  const plans = [
+    { market: 'IN', codes: indiaCodes },
+    { market: 'US', codes: usCodes },
+  ];
+  for (const plan of plans) {
+    if (!plan.codes.length) continue;
+    const items = await fetchInfowaySymbolRows(env, plan.market, plan.codes, { detailed: false });
+    for (const item of items) {
+      const symbol = getInfowayAppSymbol(item.symbol, item);
+      rows.push({
+        symbol,
+        name: item.name_en || item.name || symbol,
+        exch: getInfowayExchangeLabel(plan.market, item),
+        type: 'stock',
+        score: 1150000,
+      });
+      if (rows.length >= limit) return rows;
+    }
+  }
+  return rows;
 };
 
 const buildSearchRowFromQuote = (quote, score = 900000) => ({
@@ -1382,6 +1883,7 @@ export default {
       const preferredYahooSymbol = resolvePreferredYahooSymbol({ symbol, name });
       const canUseSearchDiscovery = !looksLikeExplicitTicker(preferredYahooSymbol || symbol) || !!name;
       const preferIndiaFastPath = isExplicitIndiaMarketSymbol(preferredYahooSymbol || symbol);
+      const preferInfowayFastPath = !preferIndiaFastPath && looksLikeExplicitTicker(preferredYahooSymbol || symbol);
 
       if (path === '/quote') {
         const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
@@ -1396,6 +1898,11 @@ export default {
           if (fastNseQuote) return jsonResponse(fastNseQuote);
         }
 
+        if (preferInfowayFastPath) {
+          const infowayQuoteFast = await fetchInfowayQuote(env, { symbol: preferredYahooSymbol || symbol, name });
+          if (infowayQuoteFast) return jsonResponse(infowayQuoteFast);
+        }
+
         const yahooQuote = await fetchYahooQuote({ symbol: preferredYahooSymbol || symbol, name });
         if (yahooQuote) return jsonResponse(yahooQuote);
 
@@ -1404,6 +1911,9 @@ export default {
 
         const directNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
         if (directNseQuote) return jsonResponse(directNseQuote);
+
+        const infowayQuote = await fetchInfowayQuote(env, { symbol: preferredYahooSymbol || symbol, name });
+        if (infowayQuote) return jsonResponse(infowayQuote);
 
         if (canUseSearchDiscovery) {
           const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
@@ -1443,10 +1953,10 @@ export default {
           return jsonResponse({ success: false, message: 'fundamentals unavailable for index' }, 404);
         }
         const fundamentals = await fetchYahooFundamentals({ symbol: preferredYahooSymbol || symbol, name });
-        if (!fundamentals) {
-          return jsonResponse({ success: false, message: 'fundamentals not found' }, 404);
-        }
-        return jsonResponse(fundamentals);
+        if (fundamentals) return jsonResponse(fundamentals);
+        const infowayFundamentals = await fetchInfowayFundamentals(env, { symbol: preferredYahooSymbol || symbol, name });
+        if (infowayFundamentals) return jsonResponse(infowayFundamentals);
+        return jsonResponse({ success: false, message: 'fundamentals not found' }, 404);
       }
 
       if (path === '/debug/list') {
@@ -1566,6 +2076,13 @@ export default {
         }
 
         let results = mergeSearchRows(resultSets.flat(), limit);
+        if (!results.length && looksLikeExplicitTicker(query)) {
+          const infowayResults = await searchInfowayExact(env, query, limit);
+          if (Array.isArray(infowayResults) && infowayResults.length) {
+            resultSets.push(infowayResults);
+          }
+          results = mergeSearchRows(resultSets.flat(), limit);
+        }
         if (!results.length) {
           const yahooResults = await searchYahoo(query, { limit });
           if (Array.isArray(yahooResults) && yahooResults.length) {
@@ -1598,16 +2115,35 @@ export default {
           return jsonResponse({ success: false, message: 'index kline unavailable' }, 404);
         }
 
+        let fastNseKline = null;
         if (preferIndiaFastPath) {
           const fastNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-          const fastNseKline = buildSingleCandleKline({
+          fastNseKline = buildSingleCandleKline({
             symbol: fastNseQuote?.symbol || (preferredYahooSymbol || symbol),
             open: fastNseQuote?.open,
             high: fastNseQuote?.high,
             low: fastNseQuote?.low,
             close: fastNseQuote?.price,
           });
-          if (fastNseKline) return jsonResponse(fastNseKline);
+        }
+
+        if (preferInfowayFastPath) {
+          const infowaySnapshotFast = await fetchInfowayKline(env, {
+            symbol: preferredYahooSymbol || symbol,
+            name,
+            period,
+            interval: intervalRaw,
+            withInfo: false,
+          });
+          if (infowaySnapshotFast) {
+            const infowayKlineFast = buildKlineFromInfowayRows({
+              market: infowaySnapshotFast.market,
+              code: infowaySnapshotFast.code,
+              rows: infowaySnapshotFast.rows,
+              info: infowaySnapshotFast.info,
+            });
+            if (infowayKlineFast) return jsonResponse(infowayKlineFast);
+          }
         }
 
         const yahooKline = await fetchYahooKline({
@@ -1654,6 +2190,25 @@ export default {
             }
           }
         }
+
+        const infowaySnapshot = await fetchInfowayKline(env, {
+          symbol: preferredYahooSymbol || symbol,
+          name,
+          period,
+          interval: intervalRaw,
+          withInfo: false,
+        });
+        if (infowaySnapshot) {
+          const infowayKline = buildKlineFromInfowayRows({
+            market: infowaySnapshot.market,
+            code: infowaySnapshot.code,
+            rows: infowaySnapshot.rows,
+            info: infowaySnapshot.info,
+          });
+          if (infowayKline) return jsonResponse(infowayKline);
+        }
+
+        if (fastNseKline) return jsonResponse(fastNseKline);
 
         const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
         const nseKline = buildSingleCandleKline({
