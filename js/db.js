@@ -825,7 +825,7 @@ window.DB = {
                 code: normalizedKyc === 'rejected' ? 'KYC_REJECTED' : 'KYC_PENDING',
                 message: normalizedKyc === 'rejected'
                     ? 'KYC verification has not been approved. Please contact support.'
-                    : 'KYC verification is under review. Please wait for backend approval before logging in.',
+                    : 'KYC verification is under review. Please wait while it is being reviewed before logging in.',
                 user: data
             };
         }

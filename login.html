@@ -1511,7 +1511,7 @@
             const params = new URLSearchParams(window.location.search);
             if (params.get('kyc_pending') === 'true') {
                 setTimeout(() => {
-                    showAlert('warning', 'KYC verification is under review. Please wait for backend approval before logging in.', 'Verification Required');
+                    showAlert('warning', 'KYC verification is under review. Please wait while it is being reviewed before logging in.', 'Verification Required');
                 }, 150);
             } else if (params.get('kyc_rejected') === 'true') {
                 setTimeout(() => {
