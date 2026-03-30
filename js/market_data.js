@@ -651,14 +651,14 @@
         async syncIndicesWithYahoo() {
             if (this.shouldPauseBackgroundMarketApi()) return;
             console.log("MarketEngine: syncing indices with market API...");
-            for (let idx of this.indices) {
+            await Promise.allSettled(this.indices.map(async (idx) => {
                 const yahooSymbol = this.indexYahooSymbols[idx.symbol] || this.indexYahooSymbols[idx.name];
                 if (yahooSymbol) {
                     try {
                         const data = await window.DB.getMarketPrice(yahooSymbol);
                         if (data && data.price) {
                             const latestPrice = parseFloat(data.price);
-                            if (!Number.isFinite(latestPrice) || latestPrice <= 0) continue;
+                            if (!Number.isFinite(latestPrice) || latestPrice <= 0) return;
                             const status = this.describeQuoteStatus(data);
 
                             const remotePrevClose = parseFloat(data.previousClose ?? data.prevClose);
@@ -669,13 +669,13 @@
                                 const spikePct = Math.abs(((latestPrice - baselinePrevClose) / baselinePrevClose) * 100);
                                 if (spikePct > 40) {
                                     console.warn(`Skipping abnormal index quote for ${idx.symbol}: ${latestPrice} vs prevClose ${baselinePrevClose}`);
-                                    continue;
+                                    return;
                                 }
                             }
 
                             if (this.shouldRejectIndexQuote(idx, data, latestPrice, status)) {
                                 console.warn(`Skipping low-confidence index quote for ${idx.symbol}: ${latestPrice} vs current ${idx.price}`);
-                                continue;
+                                return;
                             }
 
                             idx.price = latestPrice;
@@ -704,7 +704,7 @@
                         console.error(`Failed to sync index ${idx.symbol}:`, e);
                     }
                 }
-            }
+            }));
         }
 
         async fetchMarketPrice(symbol) {

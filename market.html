@@ -5101,7 +5101,7 @@
             return headers;
         }
 
-        const DETAIL_MARKET_REQUEST_TIMEOUT_MS = 3500;
+        const DETAIL_MARKET_REQUEST_TIMEOUT_MS = 12000;
 
         async function fetchDetailMarketWithTimeout(url, options = {}, timeoutMs = DETAIL_MARKET_REQUEST_TIMEOUT_MS) {
             const requestOptions = { ...(options || {}) };
@@ -5412,10 +5412,7 @@
                     try {
                         const url = `${base}/fundamentals?symbol=${encodeURIComponent(sym)}`;
                         const response = await fetchDetailMarketWithTimeout(url, { cache: 'no-store' });
-                        if (response.status === 404) {
-                            disableMarketFundamentals('endpoint returned 404');
-                            return null;
-                        }
+                        if (response.status === 404) continue;
                         if (!response.ok) continue;
                         const payload = await response.json();
                         if (payload?.success && payload?.data) return payload.data;
@@ -6182,7 +6179,7 @@
                 seriesType: isIndexLike ? 'line' : 'candlestick'
             };
             syncDetailChartIntervalButtons();
-            await loadCurrentDetailChart();
+            loadCurrentDetailChart().catch(e => console.error("detail chart load failed:", e));
 
             window.scrollTo(0, 0);
             renderDetailHoldings();
@@ -7018,7 +7015,7 @@
                 .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
         }
 
-        function resolveRouteStockDetail(stockParam, exchangeHint = '') {
+        async function resolveRouteStockDetail(stockParam, exchangeHint = '') {
             const raw = String(stockParam || '').trim();
             const normalized = normalizeRouteStockSymbol(raw);
             if (!normalized) return null;
@@ -7046,6 +7043,75 @@
                         id: product.id || null,
                         minInvest: Number(product.min_investment ?? product.minInvest ?? product.minimum_amount ?? 0) || 0
                     };
+                }
+            }
+
+            const workerBases = detailMarketApiBases()
+                .map(base => String(base || '').replace(/\/$/, ''))
+                .filter(base => base && !/\/functions\/v1$/i.test(base));
+
+            const buildResolvedRoutePayload = (payload, fallbackExchange = '', fallbackName = '') => {
+                const priceValue = toFiniteNumber(payload?.price);
+                if (priceValue === null || priceValue <= 0) return null;
+                const pctChange = toFiniteNumber(payload?.changePercent ?? payload?.change);
+                const liveSymbol = String(payload?.symbol || raw).trim().toUpperCase();
+                const liveName = String(payload?.name || fallbackName || raw).trim() || raw;
+                const resolvedExchange = inferExchangeFromStockParam(liveSymbol, payload?.exchange || fallbackExchange || exchangeHint);
+                return {
+                    lookupKey: liveSymbol || raw,
+                    name: liveName,
+                    exchange: resolvedExchange,
+                    priceText: `₹${priceValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    changeText: pctChange !== null ? `${pctChange >= 0 ? '+' : ''}${pctChange.toFixed(2)}%` : '0.00%',
+                    color: pctChange !== null ? (pctChange >= 0 ? '#10b981' : '#ef4444') : '#10b981',
+                    type: 'stock',
+                    id: null,
+                    minInvest: 0
+                };
+            };
+
+            const routeQueries = [...new Set([raw, normalized].filter(Boolean))];
+            for (const query of routeQueries) {
+                for (const base of workerBases) {
+                    try {
+                        const searchResponse = await fetchDetailMarketWithTimeout(
+                            `${base}/search?query=${encodeURIComponent(query)}&limit=8`,
+                            { cache: 'no-store' },
+                            2500
+                        );
+                        if (!searchResponse.ok) continue;
+                        const searchPayload = await searchResponse.json();
+                        const searchRows = Array.isArray(searchPayload?.results) ? searchPayload.results : [];
+                        const exactRow = searchRows.find(row => normalizeRouteStockSymbol(row?.symbol || row?.name) === normalized) || searchRows[0];
+                        if (!exactRow) continue;
+
+                        const quoteResponse = await fetchDetailMarketWithTimeout(
+                            `${base}/quote?symbol=${encodeURIComponent(exactRow.symbol || query)}${exactRow.name ? `&name=${encodeURIComponent(exactRow.name)}` : ''}`,
+                            { cache: 'no-store' },
+                            2500
+                        );
+                        if (!quoteResponse.ok) continue;
+                        const quotePayload = await quoteResponse.json();
+                        const resolved = buildResolvedRoutePayload(quotePayload, exactRow.exch || '', exactRow.name || raw);
+                        if (resolved) return resolved;
+                    } catch (_) { }
+                }
+            }
+
+            const directCandidates = [...new Set([raw, normalized, ...buildYahooSymbolCandidates(raw, exchangeHint || inferExchangeFromStockParam(raw, exchangeHint))])];
+            for (const candidate of directCandidates) {
+                for (const base of workerBases) {
+                    try {
+                        const quoteResponse = await fetchDetailMarketWithTimeout(
+                            `${base}/quote?symbol=${encodeURIComponent(candidate)}`,
+                            { cache: 'no-store' },
+                            2500
+                        );
+                        if (!quoteResponse.ok) continue;
+                        const quotePayload = await quoteResponse.json();
+                        const resolved = buildResolvedRoutePayload(quotePayload, exchangeHint, raw);
+                        if (resolved) return resolved;
+                    } catch (_) { }
                 }
             }
 
@@ -7114,7 +7180,7 @@
             });
         }
 
-        function openStockDetailFromRoute(push = false, options = {}) {
+        async function openStockDetailFromRoute(push = false, options = {}) {
             const routeOptions = (options && typeof options === 'object') ? options : {};
             const forceReload = routeOptions.force === true;
             const requireReady = routeOptions.requireReady === true;
@@ -7132,7 +7198,7 @@
                 return true;
             }
 
-            const resolved = resolveRouteStockDetail(stock, exchange);
+            const resolved = await resolveRouteStockDetail(stock, exchange);
             if (!resolved) return false;
             activeRouteStockKey = routeKey || String(stock).trim().toUpperCase();
 
@@ -7151,7 +7217,7 @@
             return true;
         }
 
-        document.addEventListener("DOMContentLoaded", function () {
+        document.addEventListener("DOMContentLoaded", async function () {
             const params = new URLSearchParams(window.location.search);
             const view = params.get("view");
 
@@ -7165,14 +7231,14 @@
                 showMarketView(false);
             }
 
-            openStockDetailFromRoute(false, { requireReady: true });
+            await openStockDetailFromRoute(false, { requireReady: true });
         });
 
-        window.addEventListener("popstate", function () {
+        window.addEventListener("popstate", async function () {
             const params = new URLSearchParams(window.location.search);
             const view = params.get("view");
 
-            if (openStockDetailFromRoute(false)) {
+            if (await openStockDetailFromRoute(false)) {
                 return;
             } else {
                 activeRouteStockKey = '';
@@ -8540,7 +8606,7 @@
             } else {
                 showMarketView();
             }
-            openStockDetailFromRoute(false, { force: true });
+            await openStockDetailFromRoute(false, { force: true });
         });
 
         window.transactionData = {
@@ -9650,14 +9716,14 @@
         renderFundRecords('all');
 
         // Handle URL 'view' parameter for navigation from Home
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const urlParams = new URLSearchParams(window.location.search);
             const view = urlParams.get('view');
             if (view === 'discover') showDiscoverView();
             else if (view === 'portfolio') showPortfolioView();
             else if (view === 'me') showMeView();
             else showMarketView();
-            openStockDetailFromRoute(false, { requireReady: true });
+            await openStockDetailFromRoute(false, { requireReady: true });
         });
 
         // Customer Service Logic handled by script.js
