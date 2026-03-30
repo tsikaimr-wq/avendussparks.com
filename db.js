@@ -3460,169 +3460,108 @@ window.DB = {
      */
     async getTurboMarketData(type = 'IPO') {
         const data = {
-            'IPO': [
-                {
-                    name: "Hyundai Motor India Ltd",
-                    symbol: "HYUNDAI",
-                    exchange: "NSE",
-                    price: 1850,
-                    listing_date: "2024-10-22",
-                    start_date: "2024-10-15T10:00",
-                    end_date: "2024-10-17T17:00",
-                    description: "India's largest passenger car exporter and second largest manufacturer.",
-                    min_invest: 14800,
-                    est_profit: 35
-                },
-                {
-                    name: "Waaree Energies Ltd",
-                    symbol: "WAAREEENRG",
-                    exchange: "NSE",
-                    price: 1503,
-                    listing_date: "2024-10-28",
-                    start_date: "2024-10-21T10:00",
-                    end_date: "2024-10-23T17:00",
-                    description: "India's largest solar module manufacturer.",
-                    min_invest: 13527,
-                    est_profit: 55
-                },
-                {
-                    name: "Bajaj Housing Finance",
-                    symbol: "BAJAJHFL",
-                    exchange: "NSE",
-                    price: 70,
-                    listing_date: "2024-09-16",
-                    start_date: "2024-09-09T10:00",
-                    end_date: "2024-09-11T17:00",
-                    description: "A 100% subsidiary of Bajaj Finance Limited.",
-                    min_invest: 14980,
-                    est_profit: 135
-                },
-                {
-                    name: "Ola Electric Mobility",
-                    symbol: "OLAELEC",
-                    exchange: "NSE",
-                    price: 76,
-                    listing_date: "2024-08-09",
-                    start_date: "2024-08-02T10:00",
-                    end_date: "2024-08-06T17:00",
-                    description: "Leading EV manufacturer in India.",
-                    min_invest: 14820,
-                    est_profit: 20
-                },
-                {
-                    name: "SEDEMAC Mechatronics",
-                    symbol: "SEDEMAC",
-                    exchange: "NSE",
-                    price: 1352,
-                    listing_date: "2026-03-11",
-                    start_date: "2026-03-04T10:00",
-                    end_date: "2026-03-06T17:00",
-                    description: "Advanced mechatronics and control systems for vehicles.",
-                    min_invest: 14850,
-                    est_profit: 65
-                }
-            ],
-            'OTC': [
-                {
-                    name: "NSE India (Unlisted)",
-                    symbol: "NSE-INDIA",
-                    exchange: "NSE-UNLISTED",
-                    price: 6500,
-                    description: "National Stock Exchange of India Limited - Highly liquid Unlisted share.",
-                    min_invest: 500000,
-                    est_profit: 85
-                },
-                {
-                    name: "HDB Financial Services (HDFC Subsidiary)",
-                    symbol: "HDB-FIN",
-                    exchange: "BSE-UNLISTED",
-                    price: 1150,
-                    description: "HDFC Bank's NBFC arm - Expecting IPO soon.",
-                    min_invest: 100000,
-                    est_profit: 45
-                },
-                {
-                    name: "Reliance Retail Ltd (Unlisted)",
-                    symbol: "REL-RETAIL",
-                    exchange: "NSE-UNLISTED",
-                    price: 2850,
-                    description: "India's largest retailer, subsidiary of Reliance Industries.",
-                    min_invest: 250000,
-                    est_profit: 35
-                },
-                {
-                    name: "OpenAI (Global Tech)",
-                    symbol: "OPEN-AI",
-                    exchange: "US-OTC",
-                    price: 4500,
-                    description: "Leading AI research company (Secondary Market).",
-                    min_invest: 1000000,
-                    est_profit: 300
-                },
-                {
-                    name: "SpaceX (Starlink Global)",
-                    symbol: "SPACE-X",
-                    exchange: "US-OTC",
-                    price: 210,
-                    description: "Aerospace and satellite giant (Secondary Market).",
-                    min_invest: 50000,
-                    est_profit: 120
-                },
-                {
-                    name: "Swiggy Unlisted (Secondary)",
-                    symbol: "SWIGGY",
-                    exchange: "NSE-UNLISTED",
-                    price: 480,
-                    description: "Food delivery giant - Secondary market trade.",
-                    min_invest: 25000,
-                    est_profit: 45
-                },
-                {
-                    name: "Pharmeasy (API Holdings)",
-                    symbol: "PHARMEASY",
-                    exchange: "NSE-UNLISTED",
-                    price: 25,
-                    description: "India's largest healthcare ecosystem.",
-                    min_invest: 15000,
-                    est_profit: 150
-                },
-                {
-                    name: "OYO Rooms (Unlisted)",
-                    symbol: "OYO-UNLISTED",
-                    exchange: "GLOBAL-OTC",
-                    price: 65,
-                    description: "Global hospitality chain - Pre-IPO shares.",
-                    min_invest: 20000,
-                    est_profit: 90
-                }
-            ],
+            'IPO': [],
+            'OTC': [],
             'Ins.stocks': [
                 {
-                    name: "NTPC Green Energy (Anchor)",
-                    symbol: "NTPCGREEN.NS",
+                    name: "Reliance Industries Limited",
+                    symbol: "RELIANCE",
+                    market_symbol: "RELIANCE.NS",
                     exchange: "NSE",
-                    price: 110,
-                    description: "Green energy arm of NTPC - Anchor Investor allotment.",
-                    min_invest: 1000000,
-                    est_profit: 25
+                    price: 1348.3,
+                    description: "India's largest listed company by market capitalization.",
+                    min_invest: 50000,
+                    est_profit: 0
                 },
                 {
-                    name: "HDFC Bank (Institutional Block)",
-                    symbol: "HDFCBANK.NS",
+                    name: "HDFC Bank Limited",
+                    symbol: "HDFCBANK",
+                    market_symbol: "HDFCBANK.NS",
                     exchange: "NSE",
-                    price: 1640.50,
-                    description: "Institutional block allotment for accredited investors.",
-                    min_invest: 1000000,
-                    est_profit: 12
+                    price: 735,
+                    description: "India's leading private sector bank and blue-chip financial stock.",
+                    min_invest: 50000,
+                    est_profit: 0
                 },
                 {
-                    name: "Zomato Ltd (Anchor Tranche)",
-                    symbol: "ZOMATO.NS",
+                    name: "Bharti Airtel Limited",
+                    symbol: "BHARTIARTL",
+                    market_symbol: "BHARTIARTL.NS",
                     exchange: "NSE",
-                    price: 254.20,
-                    description: "Post-IPO anchor lock-in release tranche.",
-                    min_invest: 250000,
-                    est_profit: 18
+                    price: 1789.2,
+                    description: "Top telecom blue chip with large domestic and international operations.",
+                    min_invest: 50000,
+                    est_profit: 0
+                },
+                {
+                    name: "State Bank of India",
+                    symbol: "SBIN",
+                    market_symbol: "SBIN.NS",
+                    exchange: "NSE",
+                    price: 980.8,
+                    description: "India's largest public sector bank and a core market heavyweight.",
+                    min_invest: 50000,
+                    est_profit: 0
+                },
+                {
+                    name: "ICICI Bank Limited",
+                    symbol: "ICICIBANK",
+                    market_symbol: "ICICIBANK.NS",
+                    exchange: "NSE",
+                    price: 1211.8,
+                    description: "Major Indian banking blue chip with strong retail and corporate franchises.",
+                    min_invest: 50000,
+                    est_profit: 0
+                },
+                {
+                    name: "Tata Consultancy Services Limited",
+                    symbol: "TCS",
+                    market_symbol: "TCS.NS",
+                    exchange: "NSE",
+                    price: 2365,
+                    description: "Flagship Tata IT services company and one of India's top market-cap stocks.",
+                    min_invest: 50000,
+                    est_profit: 0
+                },
+                {
+                    name: "Bajaj Finance Limited",
+                    symbol: "BAJFINANCE",
+                    market_symbol: "BAJFINANCE.NS",
+                    exchange: "NSE",
+                    price: 802,
+                    description: "Blue-chip non-banking financial company with broad consumer finance reach.",
+                    min_invest: 50000,
+                    est_profit: 0
+                },
+                {
+                    name: "Infosys Limited",
+                    symbol: "INFY",
+                    market_symbol: "INFY.NS",
+                    exchange: "NSE",
+                    price: 1247.8,
+                    description: "Global IT services leader and one of India's most recognized large caps.",
+                    min_invest: 50000,
+                    est_profit: 0
+                },
+                {
+                    name: "Hindustan Unilever Limited",
+                    symbol: "HINDUNILVR",
+                    market_symbol: "HINDUNILVR.NS",
+                    exchange: "NSE",
+                    price: 2057,
+                    description: "Consumer staples blue chip with strong household brand leadership.",
+                    min_invest: 50000,
+                    est_profit: 0
+                },
+                {
+                    name: "Larsen & Toubro Limited",
+                    symbol: "LT",
+                    market_symbol: "LT.NS",
+                    exchange: "NSE",
+                    price: 3505,
+                    description: "Large-cap engineering and infrastructure leader in India.",
+                    min_invest: 50000,
+                    est_profit: 0
                 }
             ]
         };

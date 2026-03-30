@@ -7376,6 +7376,48 @@
 
         let tradesTabRenderRequestId = 0;
 
+        async function getHomepageBluechipTrades() {
+            if (!window.DB || typeof window.DB.getTurboMarketData !== 'function') return [];
+
+            try {
+                const rows = await window.DB.getTurboMarketData('Ins.stocks');
+                if (!Array.isArray(rows) || rows.length === 0) return [];
+
+                return rows.map((item, index) => {
+                    const rawMarketSymbol = String(item.market_symbol || item.symbol || '').trim().toUpperCase();
+                    const displaySymbol = rawMarketSymbol
+                        .replace(/^NSE:|^BSE:/, '')
+                        .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '') || `STOCK${index + 1}`;
+                    const configuredPrice = toFiniteNumber(item.price) ?? 0;
+                    const subscriptionPrice = toFiniteNumber(item.subscription_price) ?? configuredPrice;
+                    const livePrice = toFiniteNumber(item.live_price) ?? configuredPrice;
+
+                    return {
+                        id: item.id || `homepage_bluechip_${displaySymbol}_${index}`,
+                        name: item.name || displaySymbol,
+                        symbol: displaySymbol,
+                        market_symbol: rawMarketSymbol || displaySymbol,
+                        exchange: item.exchange || 'NSE',
+                        price: livePrice,
+                        configured_price: configuredPrice,
+                        subscription_price: subscriptionPrice,
+                        min_invest: toFiniteNumber(item.min_invest ?? item.minInvest) ?? 0,
+                        yield: '0.00%',
+                        estimated_profit: 0,
+                        est_profit_percent: 0,
+                        type: 'INS.STOCKS',
+                        prevClose: toFiniteNumber(item.prevClose),
+                        change: toFiniteNumber(item.change) ?? 0,
+                        changePercent: toFiniteNumber(item.changePercent),
+                        description: item.description || ''
+                    };
+                });
+            } catch (error) {
+                console.warn('Failed to load homepage bluechip trades:', error);
+                return [];
+            }
+        }
+
         async function switchTradesTab(el, type) {
             if (!el) return;
             const requestId = ++tradesTabRenderRequestId;
@@ -7401,7 +7443,14 @@
                 }
             }
 
-            if (type === 'all') {
+            const homepageBluechips = await getHomepageBluechipTrades();
+            const normalizedBluechips = homepageBluechips.map(s => ({ ...s, type: 'INS.STOCKS' }));
+
+            if ((type === 'all' || type === 'stocks') && normalizedBluechips.length > 0) {
+                data = normalizedBluechips;
+            } else if ((type === 'otc' || type === 'ipo') && normalizedBluechips.length > 0) {
+                data = [];
+            } else if (type === 'all') {
                 data = [
                     ...MarketEngine.getAllStocks().map(s => ({ ...s, type: s.type || 'stock' })),
                     ...MarketEngine.getOTC().map(s => ({ ...s, type: 'OTC' })),

@@ -7040,6 +7040,48 @@
 
         let tradesTabRenderRequestId = 0;
 
+        async function getHomepageBluechipTrades() {
+            if (!window.DB || typeof window.DB.getTurboMarketData !== 'function') return [];
+
+            try {
+                const rows = await window.DB.getTurboMarketData('Ins.stocks');
+                if (!Array.isArray(rows) || rows.length === 0) return [];
+
+                return rows.map((item, index) => {
+                    const rawMarketSymbol = String(item.market_symbol || item.symbol || '').trim().toUpperCase();
+                    const displaySymbol = rawMarketSymbol
+                        .replace(/^NSE:|^BSE:/, '')
+                        .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '') || `STOCK${index + 1}`;
+                    const configuredPrice = toFiniteNumber(item.price) ?? 0;
+                    const subscriptionPrice = toFiniteNumber(item.subscription_price) ?? configuredPrice;
+                    const livePrice = toFiniteNumber(item.live_price) ?? configuredPrice;
+
+                    return {
+                        id: item.id || `homepage_bluechip_${displaySymbol}_${index}`,
+                        name: item.name || displaySymbol,
+                        symbol: displaySymbol,
+                        market_symbol: rawMarketSymbol || displaySymbol,
+                        exchange: item.exchange || 'NSE',
+                        price: livePrice,
+                        configured_price: configuredPrice,
+                        subscription_price: subscriptionPrice,
+                        min_invest: toFiniteNumber(item.min_invest ?? item.minInvest) ?? 0,
+                        yield: '0.00%',
+                        estimated_profit: 0,
+                        est_profit_percent: 0,
+                        type: 'INS.STOCKS',
+                        prevClose: toFiniteNumber(item.prevClose),
+                        change: toFiniteNumber(item.change) ?? 0,
+                        changePercent: toFiniteNumber(item.changePercent),
+                        description: item.description || ''
+                    };
+                });
+            } catch (error) {
+                console.warn('Failed to load homepage bluechip trades:', error);
+                return [];
+            }
+        }
+
         async function switchTradesTab(el, type) {
             if (!el) return;
             const requestId = ++tradesTabRenderRequestId;
@@ -7052,7 +7094,14 @@
 
             // MAINTENANCE CHECK for Institutional Stocks
             if (type === 'stocks' || type === 'all') {
-                const config = await window.DB.getPlatformSettings('institutional_config');
+                let config = null;
+                if (window.DB && typeof window.DB.getPlatformSettings === 'function') {
+                    try {
+                        config = await window.DB.getPlatformSettings('institutional_config');
+                    } catch (error) {
+                        console.warn('Failed to load institutional_config for discover trades:', error);
+                    }
+                }
                 if (requestId !== tradesTabRenderRequestId) return;
                 if (config && config.status === 'Maintenance' && type === 'stocks') {
                     listContainer.innerHTML = `
@@ -7065,7 +7114,14 @@
                 }
             }
 
-            if (type === 'all') {
+            const homepageBluechips = await getHomepageBluechipTrades();
+            const normalizedBluechips = homepageBluechips.map(s => ({ ...s, type: 'INS.STOCKS' }));
+
+            if ((type === 'all' || type === 'stocks') && normalizedBluechips.length > 0) {
+                data = normalizedBluechips;
+            } else if ((type === 'otc' || type === 'ipo') && normalizedBluechips.length > 0) {
+                data = [];
+            } else if (type === 'all') {
                 data = [
                     ...MarketEngine.getAllStocks().map(s => ({ ...s, type: s.type || 'stock' })),
                     ...MarketEngine.getOTC().map(s => ({ ...s, type: 'OTC' })),
@@ -7151,7 +7207,12 @@
                         : subscriptionPrice;
                     const vipLv = (isIPO && s.level) ? s.level : (isIPO ? "Lv &ge;2" : "Lv &ge;1");
                     const isLocked = false; // Allow all IPOs to be viewable for now as requested
-                    const exchange = s.symbol.includes('NSE') ? 'NSE' : 'BSE';
+                    const exchange = String(
+                        s.exchange
+                        || (String(s.market_symbol || '').toUpperCase().includes('.NS') ? 'NSE' : '')
+                        || (String(s.market_symbol || '').toUpperCase().includes('.BO') ? 'BSE' : '')
+                        || (String(s.symbol || '').toUpperCase().includes('NSE') ? 'NSE' : '')
+                    ) || 'BSE';
 
                     if ((s.type === 'stock' || isInsStock) && (type === 'all' || type === 'stocks')) {
                         const liveProduct = typeof me?.getProduct === 'function'
@@ -8131,10 +8192,12 @@
 
         // Initialize Discover Trades and View Routing
         document.addEventListener('DOMContentLoaded', async () => {
-            const waitForDB = () => {
+            const waitForDB = (timeoutMs = 5000) => {
                 return new Promise(resolve => {
+                    const startedAt = Date.now();
                     const check = () => {
-                        if (window.DB && window.DB_READY) resolve();
+                        if (window.DB && (window.DB_READY || typeof window.DB.getTurboMarketData === 'function')) resolve();
+                        else if ((Date.now() - startedAt) >= timeoutMs) resolve();
                         else setTimeout(check, 100);
                     };
                     check();
@@ -8153,7 +8216,7 @@
             }
 
             const allTab = document.querySelector('.discover-tabs .d-tab.active');
-            if (allTab) switchTradesTab(allTab, 'all');
+            if (allTab) await switchTradesTab(allTab, 'all');
 
             // --- REALTIME LISTENER FOR BALANCE UPDATES ---
             const user = DB.getCurrentUser();
