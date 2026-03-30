@@ -35,6 +35,9 @@ const YAHOO_SYMBOL_ALIAS = {
   ETERNALNS: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
   ETERNALBO: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
   ETERNALLIMITED: ['ETERNAL.NS', 'ETERNAL.BO', 'ETERNAL'],
+  NSEP: ['NSEP'],
+  INNOVATORGROWTH100POWERBUFFER: ['NSEP'],
+  INNOVATORGROWTH100POWERBUFFERETF: ['NSEP'],
 };
 
 const YAHOO_SEARCH_ALIAS_QUOTES = {
@@ -43,7 +46,71 @@ const YAHOO_SEARCH_ALIAS_QUOTES = {
   ZOMATO: [{ symbol: 'ETERNAL.NS', longname: 'Eternal Limited', exchDisp: 'NSE', quoteType: 'EQUITY', score: 250000 }],
   ZOMATONS: [{ symbol: 'ETERNAL.NS', longname: 'Eternal Limited', exchDisp: 'NSE', quoteType: 'EQUITY', score: 250000 }],
   ZOMATOLIMITED: [{ symbol: 'ETERNAL.NS', longname: 'Eternal Limited', exchDisp: 'NSE', quoteType: 'EQUITY', score: 250000 }],
+  NSEP: [{ symbol: 'NSEP', longname: 'Innovator Growth-100 Power Buffer ETF', exchDisp: 'NYSE ARCA', quoteType: 'ETF', score: 250000 }],
+  INNOVATORGROWTH100POWERBUFFER: [{ symbol: 'NSEP', longname: 'Innovator Growth-100 Power Buffer ETF', exchDisp: 'NYSE ARCA', quoteType: 'ETF', score: 250000 }],
+  INNOVATORGROWTH100POWERBUFFERETF: [{ symbol: 'NSEP', longname: 'Innovator Growth-100 Power Buffer ETF', exchDisp: 'NYSE ARCA', quoteType: 'ETF', score: 250000 }],
 };
+
+const INDIA_SEARCH_FALLBACKS = [
+  ['RELIANCE.NS', 'Reliance Industries Limited'],
+  ['TCS.NS', 'Tata Consultancy Services Limited'],
+  ['INFY.NS', 'Infosys Limited'],
+  ['HDFCBANK.NS', 'HDFC Bank Limited'],
+  ['ICICIBANK.NS', 'ICICI Bank Limited'],
+  ['SBIN.NS', 'State Bank of India'],
+  ['BHARTIARTL.NS', 'Bharti Airtel Limited'],
+  ['LT.NS', 'Larsen & Toubro Limited'],
+  ['ITC.NS', 'ITC Limited'],
+  ['HINDUNILVR.NS', 'Hindustan Unilever Limited'],
+  ['KOTAKBANK.NS', 'Kotak Mahindra Bank Limited'],
+  ['AXISBANK.NS', 'Axis Bank Limited'],
+  ['MARUTI.NS', 'Maruti Suzuki India Limited'],
+  ['BAJFINANCE.NS', 'Bajaj Finance Limited'],
+  ['BAJAJFINSV.NS', 'Bajaj Finserv Limited'],
+  ['ASIANPAINT.NS', 'Asian Paints Limited'],
+  ['SUNPHARMA.NS', 'Sun Pharmaceutical Industries Limited'],
+  ['HCLTECH.NS', 'HCL Technologies Limited'],
+  ['WIPRO.NS', 'Wipro Limited'],
+  ['ULTRACEMCO.NS', 'UltraTech Cement Limited'],
+  ['M&M.NS', 'Mahindra & Mahindra Limited'],
+  ['TATAMOTORS.NS', 'Tata Motors Limited'],
+  ['TATASTEEL.NS', 'Tata Steel Limited'],
+  ['TATAPOWER.NS', 'Tata Power Company Limited'],
+  ['TATACONSUM.NS', 'Tata Consumer Products Limited'],
+  ['TITAN.NS', 'Titan Company Limited'],
+  ['POWERGRID.NS', 'Power Grid Corporation of India Limited'],
+  ['NTPC.NS', 'NTPC Limited'],
+  ['ONGC.NS', 'Oil & Natural Gas Corporation Limited'],
+  ['COALINDIA.NS', 'Coal India Limited'],
+  ['JSWSTEEL.NS', 'JSW Steel Limited'],
+  ['TECHM.NS', 'Tech Mahindra Limited'],
+  ['ADANIENT.NS', 'Adani Enterprises Limited'],
+  ['ADANIPORTS.NS', 'Adani Ports and Special Economic Zone Limited'],
+  ['INDUSINDBK.NS', 'IndusInd Bank Limited'],
+  ['NESTLEIND.NS', 'Nestle India Limited'],
+  ['DRREDDY.NS', 'Dr. Reddys Laboratories Limited'],
+  ['CIPLA.NS', 'Cipla Limited'],
+  ['DIVISLAB.NS', 'Divis Laboratories Limited'],
+  ['EICHERMOT.NS', 'Eicher Motors Limited'],
+  ['HEROMOTOCO.NS', 'Hero MotoCorp Limited'],
+  ['GRASIM.NS', 'Grasim Industries Limited'],
+  ['SHRIRAMFIN.NS', 'Shriram Finance Limited'],
+  ['HDFCLIFE.NS', 'HDFC Life Insurance Company Limited'],
+  ['SBILIFE.NS', 'SBI Life Insurance Company Limited'],
+  ['BRITANNIA.NS', 'Britannia Industries Limited'],
+  ['APOLLOHOSP.NS', 'Apollo Hospitals Enterprise Limited'],
+  ['BEL.NS', 'Bharat Electronics Limited'],
+  ['HAL.NS', 'Hindustan Aeronautics Limited'],
+  ['ZOMATO.NS', 'Eternal Limited'],
+  ['NYKAA.NS', 'FSN E-Commerce Ventures Limited'],
+  ['PAYTM.NS', 'One 97 Communications Limited'],
+].map(([symbol, name], index) => ({
+  symbol,
+  name,
+  exch: 'NSE',
+  type: 'stock',
+  score: 180000 - index,
+}));
 
 const INDEX_ALIAS_GROUPS = {
   '^BSESN': ['^BSESN', 'BSESN', 'SENSEX', 'BSE:SENSEX', 'BSE SENSEX'],
@@ -86,10 +153,20 @@ const INDEX_ALIAS_LOOKUP = buildIndexLookup();
 const LAST_GOOD_INDEX_QUOTES = new Map();
 const LAST_GOOD_INDEX_TTL_MS = 12 * 60 * 60 * 1000;
 
+const withTimeout = async (url, init = undefined, timeoutMs = 4500) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...(init || {}), signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const json = async (url, init = undefined, retries = 1) => {
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const res = await fetch(url, init);
+      const res = await withTimeout(url, init);
       const payloadText = await res.text();
       try {
         return JSON.parse(payloadText);
@@ -102,7 +179,7 @@ const json = async (url, init = undefined, retries = 1) => {
 const textResponse = async (url, init = undefined, retries = 1) => {
   for (let attempt = 0; attempt <= retries; attempt += 1) {
     try {
-      const res = await fetch(url, init);
+      const res = await withTimeout(url, init);
       if (!res.ok) continue;
       const payloadText = await res.text();
       if (payloadText) return payloadText;
@@ -560,7 +637,71 @@ const normalizeYahooExchange = (quote) => {
   const upper = raw.toUpperCase();
   if (upper === 'NSI' || upper.includes('NSE')) return 'NSE';
   if (upper === 'BSE' || upper === 'BOM' || upper.includes('BOMBAY') || upper.includes('BSE')) return 'BSE';
+  if (upper.includes('NYSE ARCA') || upper.includes('NYSEARCA') || upper === 'ARCA' || upper === 'PCX') return 'NYSE ARCA';
+  if (upper.includes('NASDAQ')) return 'NASDAQ';
+  if (upper.includes('NYSE')) return 'NYSE';
+  if (upper.includes('AMEX')) return 'AMEX';
+  if (upper.includes('CBOE') || upper.includes('BATS')) return 'CBOE';
   return raw;
+};
+
+const looksLikeExplicitTicker = (value) => /^[A-Z0-9^.-]{1,24}$/.test(String(value || '').trim().toUpperCase());
+const isExplicitIndiaMarketSymbol = (value) => {
+  const upper = String(value || '').trim().toUpperCase();
+  if (!upper) return false;
+  return upper.startsWith('NSE:') || upper.startsWith('BSE:') || upper.endsWith('.NS') || upper.endsWith('.BO');
+};
+
+const buildSearchRowFromQuote = (quote, score = 900000) => ({
+  symbol: String(quote?.symbol || '').trim().toUpperCase(),
+  name: String(quote?.name || quote?.symbol || '').trim(),
+  exch: normalizeYahooExchange({ exchDisp: quote?.exchange || quote?.exch || quote?.source || 'NSE' }) || 'NSE',
+  type: 'stock',
+  price: toNum(quote?.price),
+  changePercent: toNum(quote?.changePercent),
+  score,
+});
+
+const mergeSearchRows = (items, limit = 20) => {
+  const seen = new Map();
+  for (const item of (items || [])) {
+    const symbol = String(item?.symbol || '').trim().toUpperCase();
+    if (!symbol) continue;
+    const exch = String(item?.exch || item?.exchange || '').trim().toUpperCase();
+    const key = `${symbol}|${exch}`;
+    const prev = seen.get(key);
+    if (!prev || Number(item?.score || 0) > Number(prev?.score || 0)) {
+      seen.set(key, item);
+    }
+  }
+  return [...seen.values()]
+    .sort((left, right) => Number(right?.score || 0) - Number(left?.score || 0))
+    .slice(0, limit);
+};
+
+const searchIndiaCatalog = (query, limit = 20) => {
+  const qRaw = String(query || '').trim();
+  const q = normalizeMatch(qRaw);
+  if (!q) return [];
+  const rows = [];
+  for (const item of INDIA_SEARCH_FALLBACKS) {
+    const symbol = String(item.symbol || '').trim().toUpperCase();
+    const symbolBase = symbol.replace(/\.(NS|BO)$/i, '');
+    const symbolLoose = normalizeMatch(symbol);
+    const baseLoose = normalizeMatch(symbolBase);
+    const nameLoose = normalizeMatch(item.name);
+    if (!symbolLoose.includes(q) && !baseLoose.includes(q) && !nameLoose.includes(q)) continue;
+
+    let score = Number(item.score || 0);
+    if (baseLoose === q || symbolLoose === q) score += 1000000;
+    else if (baseLoose.startsWith(q) || symbolLoose.startsWith(q)) score += 500000;
+    else if (nameLoose.startsWith(q)) score += 250000;
+
+    rows.push({ ...item, score });
+  }
+  return rows
+    .sort((left, right) => Number(right.score || 0) - Number(left.score || 0))
+    .slice(0, limit);
 };
 
 const appendYahooSearchRows = (rows, seen, quotes, limit) => {
@@ -1228,77 +1369,87 @@ const jsonResponse = (body, status = 200) =>
 
 export default {
   async fetch(req, env) {
-    if (req.method === 'OPTIONS') {
-      return new Response('', { headers: corsHeaders });
-    }
-
-    const url = new URL(req.url);
-    const path = url.pathname;
-    const symbol = url.searchParams.get('symbol');
-    const pid = url.searchParams.get('pid');
-    const name = url.searchParams.get('name');
-    const preferredYahooSymbol = resolvePreferredYahooSymbol({ symbol, name });
-
-    if (path === '/quote') {
-      const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
-      if (indexSymbol) {
-        const indexQuote = await fetchIndexQuote({ symbol: indexSymbol, name });
-        if (indexQuote) return jsonResponse(indexQuote);
-        return jsonResponse({ success: false, message: 'index quote unavailable' }, 404);
+    try {
+      if (req.method === 'OPTIONS') {
+        return new Response('', { headers: corsHeaders });
       }
 
-      const yahooQuote = await fetchYahooQuote({ symbol: preferredYahooSymbol || symbol, name });
-      if (yahooQuote) return jsonResponse(yahooQuote);
+      const url = new URL(req.url);
+      const path = url.pathname;
+      const symbol = url.searchParams.get('symbol');
+      const pid = url.searchParams.get('pid');
+      const name = url.searchParams.get('name');
+      const preferredYahooSymbol = resolvePreferredYahooSymbol({ symbol, name });
+      const canUseSearchDiscovery = !looksLikeExplicitTicker(preferredYahooSymbol || symbol) || !!name;
+      const preferIndiaFastPath = isExplicitIndiaMarketSymbol(preferredYahooSymbol || symbol);
 
-      const jinaQuote = await fetchYahooQuoteViaJina({ symbol: preferredYahooSymbol || symbol, name });
-      if (jinaQuote) return jsonResponse(jinaQuote);
-
-      const directNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-      if (directNseQuote) return jsonResponse(directNseQuote);
-
-      const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
-      for (const discoveredSymbol of discoveredSymbols) {
-        const discoveredYahooQuote = await fetchYahooQuote({ symbol: discoveredSymbol });
-        if (discoveredYahooQuote) {
-          return jsonResponse({
-            ...discoveredYahooQuote,
-            source: `${discoveredYahooQuote.source}_search`,
-          });
+      if (path === '/quote') {
+        const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
+        if (indexSymbol) {
+          const indexQuote = await fetchIndexQuote({ symbol: indexSymbol, name });
+          if (indexQuote) return jsonResponse(indexQuote);
+          return jsonResponse({ success: false, message: 'index quote unavailable' }, 404);
         }
-        const discoveredJinaQuote = await fetchYahooQuoteViaJina({ symbol: discoveredSymbol });
-        if (discoveredJinaQuote) {
-          return jsonResponse({
-            ...discoveredJinaQuote,
-            source: `${discoveredJinaQuote.source}_search`,
-          });
+
+        if (preferIndiaFastPath) {
+          const fastNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+          if (fastNseQuote) return jsonResponse(fastNseQuote);
         }
+
+        const yahooQuote = await fetchYahooQuote({ symbol: preferredYahooSymbol || symbol, name });
+        if (yahooQuote) return jsonResponse(yahooQuote);
+
+        const jinaQuote = await fetchYahooQuoteViaJina({ symbol: preferredYahooSymbol || symbol, name });
+        if (jinaQuote) return jsonResponse(jinaQuote);
+
+        const directNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+        if (directNseQuote) return jsonResponse(directNseQuote);
+
+        if (canUseSearchDiscovery) {
+          const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
+          for (const discoveredSymbol of discoveredSymbols) {
+            const discoveredYahooQuote = await fetchYahooQuote({ symbol: discoveredSymbol });
+            if (discoveredYahooQuote) {
+              return jsonResponse({
+                ...discoveredYahooQuote,
+                source: `${discoveredYahooQuote.source}_search`,
+              });
+            }
+            const discoveredJinaQuote = await fetchYahooQuoteViaJina({ symbol: discoveredSymbol });
+            if (discoveredJinaQuote) {
+              return jsonResponse({
+                ...discoveredJinaQuote,
+                source: `${discoveredJinaQuote.source}_search`,
+              });
+            }
+          }
+        }
+
+        const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+        if (nseQuote) return jsonResponse(nseQuote);
+
+        const { quote: stocktvQuote, stocktvError } = await fetchStocktvQuote(env, { symbol, pid, name });
+        if (stocktvQuote) return jsonResponse(stocktvQuote);
+
+        return jsonResponse(
+          { success: false, message: stocktvError || 'symbol/pid not found' },
+          404
+        );
       }
 
-      const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-      if (nseQuote) return jsonResponse(nseQuote);
-
-      const { quote: stocktvQuote, stocktvError } = await fetchStocktvQuote(env, { symbol, pid, name });
-      if (stocktvQuote) return jsonResponse(stocktvQuote);
-
-      return jsonResponse(
-        { success: false, message: stocktvError || 'symbol/pid not found' },
-        404
-      );
-    }
-
-    if (path === '/fundamentals') {
-      const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
-      if (indexSymbol) {
-        return jsonResponse({ success: false, message: 'fundamentals unavailable for index' }, 404);
+      if (path === '/fundamentals') {
+        const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
+        if (indexSymbol) {
+          return jsonResponse({ success: false, message: 'fundamentals unavailable for index' }, 404);
+        }
+        const fundamentals = await fetchYahooFundamentals({ symbol: preferredYahooSymbol || symbol, name });
+        if (!fundamentals) {
+          return jsonResponse({ success: false, message: 'fundamentals not found' }, 404);
+        }
+        return jsonResponse(fundamentals);
       }
-      const fundamentals = await fetchYahooFundamentals({ symbol: preferredYahooSymbol || symbol, name });
-      if (!fundamentals) {
-        return jsonResponse({ success: false, message: 'fundamentals not found' }, 404);
-      }
-      return jsonResponse(fundamentals);
-    }
 
-    if (path === '/debug/list') {
+      if (path === '/debug/list') {
       if (!env.STOCKTV_KEY) {
         return jsonResponse({ success: false, message: 'Missing STOCKTV_KEY' }, 500);
       }
@@ -1321,7 +1472,7 @@ export default {
       });
     }
 
-    if (path === '/debug/query') {
+      if (path === '/debug/query') {
       if (!env.STOCKTV_KEY) {
         return jsonResponse({ success: false, message: 'Missing STOCKTV_KEY' }, 500);
       }
@@ -1352,7 +1503,7 @@ export default {
       });
     }
 
-    if (path === '/debug/search') {
+      if (path === '/debug/search') {
       if (!env.STOCKTV_KEY) {
         return jsonResponse({ success: false, message: 'Missing STOCKTV_KEY' }, 500);
       }
@@ -1394,96 +1545,138 @@ export default {
       });
     }
 
-    if (path === '/search') {
-      const query = (url.searchParams.get('query') || '').trim();
-      const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || '20') || 20, 1), 50);
-      if (!query) {
-        return jsonResponse({ success: false, message: 'query required' }, 400);
+      if (path === '/search') {
+        const query = (url.searchParams.get('query') || '').trim();
+        const limit = Math.min(Math.max(Number(url.searchParams.get('limit') || '20') || 20, 1), 50);
+        if (!query) {
+          return jsonResponse({ success: false, message: 'query required' }, 400);
+        }
+
+        const resultSets = [];
+        const indiaCatalogResults = searchIndiaCatalog(query, limit);
+        if (indiaCatalogResults.length) {
+          resultSets.push(indiaCatalogResults);
+        }
+
+        if (looksLikeExplicitTicker(query)) {
+          const exactNseQuote = await fetchNseEquityQuote({ symbol: query });
+          if (exactNseQuote) {
+            resultSets.push([buildSearchRowFromQuote(exactNseQuote, 1200000)]);
+          }
+        }
+
+        let results = mergeSearchRows(resultSets.flat(), limit);
+        if (!results.length) {
+          const yahooResults = await searchYahoo(query, { limit });
+          if (Array.isArray(yahooResults) && yahooResults.length) {
+            resultSets.push(yahooResults);
+          }
+          results = mergeSearchRows(resultSets.flat(), limit);
+        }
+
+        return jsonResponse({
+          success: true,
+          query,
+          count: results.length,
+          results,
+        });
       }
-      const results = await searchYahoo(query, { limit });
-      return jsonResponse({
-        success: true,
-        query,
-        count: results.length,
-        results,
-      });
-    }
 
-    if (path === '/kline') {
-      const period = url.searchParams.get('period') || '1d';
-      const intervalRaw = url.searchParams.get('interval') || '5m';
-      const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
+      if (path === '/kline') {
+        const period = url.searchParams.get('period') || '1d';
+        const intervalRaw = url.searchParams.get('interval') || '5m';
+        const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
 
-      if (indexSymbol) {
-        const indexKline = await fetchIndexKline({
-          symbol: indexSymbol,
+        if (indexSymbol) {
+          const indexKline = await fetchIndexKline({
+            symbol: indexSymbol,
+            name,
+            period,
+            interval: intervalRaw,
+          });
+          if (indexKline) return jsonResponse(indexKline);
+          return jsonResponse({ success: false, message: 'index kline unavailable' }, 404);
+        }
+
+        if (preferIndiaFastPath) {
+          const fastNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+          const fastNseKline = buildSingleCandleKline({
+            symbol: fastNseQuote?.symbol || (preferredYahooSymbol || symbol),
+            open: fastNseQuote?.open,
+            high: fastNseQuote?.high,
+            low: fastNseQuote?.low,
+            close: fastNseQuote?.price,
+          });
+          if (fastNseKline) return jsonResponse(fastNseKline);
+        }
+
+        const yahooKline = await fetchYahooKline({
+          symbol: preferredYahooSymbol || symbol,
           name,
           period,
           interval: intervalRaw,
         });
-        if (indexKline) return jsonResponse(indexKline);
-        return jsonResponse({ success: false, message: 'index kline unavailable' }, 404);
-      }
+        if (yahooKline) return jsonResponse(yahooKline);
 
-      const yahooKline = await fetchYahooKline({
-        symbol: preferredYahooSymbol || symbol,
-        name,
-        period,
-        interval: intervalRaw,
-      });
-      if (yahooKline) return jsonResponse(yahooKline);
-
-      const jinaKline = await fetchYahooKlineViaJina({
-        symbol: preferredYahooSymbol || symbol,
-        name,
-        period,
-        interval: intervalRaw,
-      });
-      if (jinaKline) return jsonResponse(jinaKline);
-
-      const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
-      for (const discoveredSymbol of discoveredSymbols) {
-        const discoveredYahooKline = await fetchYahooKline({
-          symbol: discoveredSymbol,
+        const jinaKline = await fetchYahooKlineViaJina({
+          symbol: preferredYahooSymbol || symbol,
+          name,
           period,
           interval: intervalRaw,
         });
-        if (discoveredYahooKline) {
-          return jsonResponse({
-            ...discoveredYahooKline,
-            source: `${discoveredYahooKline.source}_search`,
-          });
+        if (jinaKline) return jsonResponse(jinaKline);
+
+        if (canUseSearchDiscovery) {
+          const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
+          for (const discoveredSymbol of discoveredSymbols) {
+            const discoveredYahooKline = await fetchYahooKline({
+              symbol: discoveredSymbol,
+              period,
+              interval: intervalRaw,
+            });
+            if (discoveredYahooKline) {
+              return jsonResponse({
+                ...discoveredYahooKline,
+                source: `${discoveredYahooKline.source}_search`,
+              });
+            }
+
+            const discoveredJinaKline = await fetchYahooKlineViaJina({
+              symbol: discoveredSymbol,
+              period,
+              interval: intervalRaw,
+            });
+            if (discoveredJinaKline) {
+              return jsonResponse({
+                ...discoveredJinaKline,
+                source: `${discoveredJinaKline.source}_search`,
+              });
+            }
+          }
         }
 
-        const discoveredJinaKline = await fetchYahooKlineViaJina({
-          symbol: discoveredSymbol,
-          period,
-          interval: intervalRaw,
+        const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+        const nseKline = buildSingleCandleKline({
+          symbol: nseQuote?.symbol || (preferredYahooSymbol || symbol),
+          open: nseQuote?.open,
+          high: nseQuote?.high,
+          low: nseQuote?.low,
+          close: nseQuote?.price,
         });
-        if (discoveredJinaKline) {
-          return jsonResponse({
-            ...discoveredJinaKline,
-            source: `${discoveredJinaKline.source}_search`,
-          });
-        }
+        if (nseKline) return jsonResponse(nseKline);
+
+        const stocktvKline = await fetchStocktvKline(env, { symbol, pid, name, intervalRaw });
+        if (stocktvKline) return jsonResponse(stocktvKline);
+
+        return jsonResponse({ success: false, message: 'symbol/pid not found' }, 404);
       }
 
-      const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-      const nseKline = buildSingleCandleKline({
-        symbol: nseQuote?.symbol || (preferredYahooSymbol || symbol),
-        open: nseQuote?.open,
-        high: nseQuote?.high,
-        low: nseQuote?.low,
-        close: nseQuote?.price,
-      });
-      if (nseKline) return jsonResponse(nseKline);
-
-      const stocktvKline = await fetchStocktvKline(env, { symbol, pid, name, intervalRaw });
-      if (stocktvKline) return jsonResponse(stocktvKline);
-
-      return jsonResponse({ success: false, message: 'symbol/pid not found' }, 404);
+      return new Response('Not Found', { status: 404, headers: corsHeaders });
+    } catch (error) {
+      return jsonResponse({
+        success: false,
+        message: String(error?.message || 'upstream error'),
+      }, 502);
     }
-
-    return new Response('Not Found', { status: 404, headers: corsHeaders });
   },
 };

@@ -364,7 +364,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function createSearchItemHtml(m) {
         return `
-            <div class="search-item" onclick="globalSelectStock('${m.symbol}', '${m.name}', '${m.type || 'stock'}')">
+            <div class="search-item" onclick="globalSelectStock('${m.symbol}', '${m.name}', '${m.type || 'stock'}', '${m.exch || ''}')">
                 <div style="flex: 1;">
                     <div class="search-symbol">${m.symbol}</div>
                     <div class="search-name">${m.name}</div>
@@ -381,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Append global result at the bottom
         let extraHtml = `<div class="search-section-title">Global Markets</div>`;
         extraHtml += `
-            <div class="search-item" onclick="globalSelectStock('${globalItem.symbol}', '${globalItem.symbol}', 'stock')">
+            <div class="search-item" onclick="globalSelectStock('${globalItem.symbol}', '${globalItem.symbol}', 'stock', '${globalItem.exch || globalItem.exchange || ''}')">
                 <div style="flex: 1;">
                     <div class="search-symbol">${globalItem.symbol}</div>
                     <div class="search-name">${globalItem.name}</div>
@@ -392,8 +392,8 @@ document.addEventListener('DOMContentLoaded', () => {
         globalSearchResults.innerHTML += extraHtml;
     }
 
-    window.globalSelectStock = (symbol, name, type) => {
-        console.log("Global Select Stock:", symbol, name, type);
+    window.globalSelectStock = (symbol, name, type, exchange = '') => {
+        console.log("Global Select Stock:", symbol, name, type, exchange);
 
         let cleanType = (type || 'stock').toLowerCase();
         if (cleanType === 'ins.stock') cleanType = 'stock';
@@ -409,12 +409,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Need to fetch price/change/color if possible or use defaults/async fetch in detail
             // For now, pass what we have; detail view will fetch live data.
             const isUp = true; // Placeholder, detail view logic handles fetching
-            window.openStockDetail(symbol, name, 'NSE', 'Loading...', '0.00%', '#888', cleanType, true);
+            window.openStockDetail(symbol, name, exchange || '', 'Loading...', '0.00%', '#888', cleanType, true);
         } else {
             // Not on market.html, standard nav
             // User requested routing:
             // INS.STOCK -> DISCOVER BUY & SELL (market.html?view=discover&stock=...)
-            const targetUrl = `market.html?view=discover&stock=${encodeURIComponent(symbol)}`;
+            const exchangeParam = exchange ? `&exchange=${encodeURIComponent(exchange)}` : '';
+            const targetUrl = `market.html?view=discover&stock=${encodeURIComponent(symbol)}${exchangeParam}`;
             window.location.href = targetUrl;
         }
     };

@@ -875,9 +875,9 @@
                 return headers;
             };
 
-            const normalizeApiSymbol = (raw) => {
+            const normalizeApiSymbol = (raw, exchangeHint = '') => {
                 if (window.DB && typeof window.DB.getPreferredMarketApiSymbol === 'function') {
-                    const preferred = window.DB.getPreferredMarketApiSymbol(raw);
+                    const preferred = window.DB.getPreferredMarketApiSymbol(raw, exchangeHint);
                     if (preferred) return preferred;
                 }
                 const s = String(raw || '').trim().toUpperCase();
@@ -891,7 +891,12 @@
                     return prefix === 'BSE' ? `${code}.BO` : `${code}.NS`;
                 }
                 if (s.endsWith('.NS') || s.endsWith('.BO')) return s;
-                return `${s}.NS`;
+                const inferredExchange = (window.DB && typeof window.DB.inferMarketExchange === 'function')
+                    ? window.DB.inferMarketExchange(s, exchangeHint)
+                    : '';
+                if (inferredExchange === 'BSE') return `${s}.BO`;
+                if (inferredExchange === 'NSE') return `${s}.NS`;
+                return s;
             };
 
             const getApiSymbolCandidates = (raw) => {
@@ -901,7 +906,7 @@
                     if (normalized && !candidates.includes(normalized)) candidates.push(normalized);
                 };
 
-                const normalized = normalizeApiSymbol(raw);
+                const normalized = normalizeApiSymbol(raw, options.exchangeHint || '');
                 push(normalized);
 
                 if (window.DB && typeof window.DB.getMarketApiSymbolCandidates === 'function') {
@@ -1025,7 +1030,7 @@
             };
 
             try {
-                const baseSymbol = normalizeApiSymbol(symbol);
+                const baseSymbol = normalizeApiSymbol(symbol, options.exchangeHint || '');
                 const routeSymbol = options.originalSymbol || symbol;
                 const isInsStockChart = isInsStockType(currentProductType);
                 const uniqCandidates = [...new Set([
@@ -1034,7 +1039,7 @@
                 ].filter(Boolean))];
 
                 let klinePayload = null;
-                let usedSymbol = uniqCandidates[0] || normalizeApiSymbol(routeSymbol) || baseSymbol || symbol;
+                let usedSymbol = uniqCandidates[0] || normalizeApiSymbol(routeSymbol, options.exchangeHint || '') || baseSymbol || symbol;
                 for (const candidate of uniqCandidates) {
                     const result = await fetchKlineFromLocalApi(candidate, window.MarketEngine?.getProduct?.(candidate)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
                     if (result?.payload) {
@@ -1199,7 +1204,9 @@
             };
             const yahooSymbol = indexYahooMap[raw] || symbol;
             const isIndexLike = !!indexYahooMap[raw];
-            const exchangeHint = raw.startsWith('BSE:') ? 'BSE' : (raw.startsWith('KRX:') ? 'KRX' : 'NSE');
+            const exchangeHint = (window.DB && typeof window.DB.inferMarketExchange === 'function')
+                ? (window.DB.inferMarketExchange(raw) || '')
+                : (raw.startsWith('BSE:') ? 'BSE' : (raw.startsWith('KRX:') ? 'KRX' : ''));
 
             if (typeof window.loadYahooChart === 'function') {
                 window.loadYahooChart(yahooSymbol, 'tradingview_widget', {

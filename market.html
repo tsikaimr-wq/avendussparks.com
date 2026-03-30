@@ -5037,12 +5037,14 @@
             };
 
             let ticker = input;
+            let explicitExchange = '';
 
             if (input.includes(':')) {
                 const parts = input.split(':');
+                explicitExchange = window.DB?.normalizeMarketExchangeLabel?.(parts[0]) || parts[0];
                 ticker = parts[parts.length - 1] || input;
-                if (parts[0] === 'NSE') push(`${ticker}.NS`);
-                if (parts[0] === 'BSE') push(`${ticker}.BO`);
+                if (explicitExchange === 'NSE') push(`${ticker}.NS`);
+                if (explicitExchange === 'BSE') push(`${ticker}.BO`);
             } else if (input.endsWith('.NS') || input.endsWith('.BO')) {
                 ticker = input.slice(0, -3);
                 push(input);
@@ -5057,13 +5059,16 @@
                 push(input);
             }
 
-            const hint = String(exchangeHint || '').toUpperCase();
-            if (hint.includes('BSE') || hint.includes('BOM')) {
+            const hint = inferExchangeFromStockParam(input, exchangeHint);
+            if (hint === 'BSE') {
                 push(`${ticker}.BO`);
                 push(`${ticker}.NS`);
+            } else if (hint === 'NSE') {
+                push(`${ticker}.NS`);
+                push(`${ticker}.BO`);
             } else {
-                push(`${ticker}.NS`);
-                push(`${ticker}.BO`);
+                push(ticker);
+                push(input);
             }
             push(ticker);
 
@@ -5851,7 +5856,7 @@
                         const symbolEl = document.getElementById('detSymbol');
                         if (symbolEl) symbolEl.innerText = liveSymbol;
                         const exchangeEl = document.getElementById('detExchange');
-                        if (exchangeEl) exchangeEl.innerText = `${inferExchangeFromStockParam(liveSymbol)}  - IN`;
+                        if (exchangeEl) exchangeEl.innerText = formatExchangeDisplayText(liveSymbol);
                     }
 
                     if (liveName) {
@@ -5943,6 +5948,8 @@
                 normalizedType = normalizeProductType(product.type || normalizedType);
             }
 
+            const routeExchange = (product && product.exchange) ? product.exchange : (exchange || inferExchangeFromStockParam(chartSymbol, exchange));
+
             if (push) {
                 const params = new URLSearchParams(window.location.search);
                 let view = params.get("view");
@@ -5970,9 +5977,12 @@
                 }
 
                 params.set("stock", chartSymbol);
+                if (routeExchange) params.set("exchange", routeExchange);
+                else params.delete("exchange");
                 // Ensure the view param is included in the new history entry
                 try {
-                    history.pushState({}, "", `?view=${view || 'market'}&stock=${chartSymbol}`);
+                    const routeQuery = params.toString() || `view=${view || 'market'}&stock=${chartSymbol}`;
+                    history.pushState({}, "", `?${routeQuery}`);
                 } catch (e) { console.error("History push failed", e); }
             }
 
@@ -5994,7 +6004,7 @@
                 if (prod && prod.exchange) {
                     const exEl = document.getElementById('detExchange');
                     if (exEl && !exEl.innerText.includes(prod.exchange)) {
-                        exEl.innerText = `${prod.exchange}  - IN`;
+                        exEl.innerText = formatExchangeDisplayText(prod.market_symbol || prod.symbol || symbol, prod.exchange);
                     }
                 }
 
@@ -6008,9 +6018,9 @@
             document.getElementById('detName').innerText = name;
 
             // Fetch actual exchange from MarketEngine if available
-            const actualExchange = (product && product.exchange) ? product.exchange : exchange;
+            const actualExchange = (product && product.exchange) ? product.exchange : routeExchange;
             const preferredMarketSymbol = buildYahooSymbolCandidates(chartSymbol, actualExchange || exchange)[0] || chartSymbol;
-            const detailExchange = inferExchangeFromStockParam(preferredMarketSymbol) || actualExchange || exchange;
+            const detailExchange = inferExchangeFromStockParam(preferredMarketSymbol, actualExchange || exchange) || actualExchange || exchange;
             const isInsStockDetail = isInsStockType(normalizedType);
 
             const initialPriceValue = toFiniteNumber(price);
@@ -6020,7 +6030,7 @@
                 : 'Loading...';
             const initialChangeText = isInsStockDetail ? 'Unavailable' : (String(change || '').trim() || '+0.00%');
 
-            document.getElementById('detExchange').innerText = `${detailExchange}  - IN`;
+            document.getElementById('detExchange').innerText = formatExchangeDisplayText(preferredMarketSymbol, detailExchange);
             document.getElementById('detPrice').innerText = initialPriceLabel;
             document.getElementById('detChange').innerText = initialChangeText;
             document.getElementById('detChange').className = isInsStockDetail
@@ -6347,16 +6357,15 @@
                 return headers;
             };
 
-            const normalizeApiSymbol = (raw) => {
+            const normalizeApiSymbol = (raw, exchangeHint = '') => {
                 if (window.DB && typeof window.DB.getPreferredMarketApiSymbol === 'function') {
-                    const preferred = window.DB.getPreferredMarketApiSymbol(raw);
+                    const preferred = window.DB.getPreferredMarketApiSymbol(raw, exchangeHint);
                     if (preferred) return preferred;
                 }
                 if (window.DB && typeof window.DB.getMarketApiSymbolCandidates === 'function') {
-                    const resolved = window.DB.getMarketApiSymbolCandidates(raw);
+                    const resolved = window.DB.getMarketApiSymbolCandidates(raw, exchangeHint);
                     if (Array.isArray(resolved) && resolved.length > 0) {
-                        const marketQualified = resolved.find((value) => /^\^/.test(String(value || '')) || /\.(NS|BO)$/i.test(String(value || '')));
-                        return marketQualified || resolved[0];
+                        return resolved[0];
                     }
                 }
 
@@ -6371,7 +6380,10 @@
                     return prefix === 'BSE' ? `${code}.BO` : `${code}.NS`;
                 }
                 if (s.endsWith('.NS') || s.endsWith('.BO')) return s;
-                return `${s}.NS`;
+                const inferredExchange = inferExchangeFromStockParam(s, exchangeHint);
+                if (inferredExchange === 'BSE') return `${s}.BO`;
+                if (inferredExchange === 'NSE') return `${s}.NS`;
+                return s;
             };
 
             const getApiSymbolCandidates = (raw) => {
@@ -6381,7 +6393,7 @@
                     if (normalized && !candidates.includes(normalized)) candidates.push(normalized);
                 };
 
-                const normalized = normalizeApiSymbol(raw);
+                const normalized = normalizeApiSymbol(raw, options.exchangeHint || '');
                 push(normalized);
 
                 if (window.DB && typeof window.DB.getMarketApiSymbolCandidates === 'function') {
@@ -6605,7 +6617,7 @@
             };
 
             try {
-                const baseSymbol = normalizeApiSymbol(symbol);
+                const baseSymbol = normalizeApiSymbol(symbol, options.exchangeHint || '');
                 const routeSymbol = options.originalSymbol || symbol;
                 const baseProduct = window.MarketEngine?.getProduct?.(symbol)
                     || window.MarketEngine?.getProduct?.(baseSymbol)
@@ -6619,7 +6631,7 @@
                 ].filter(Boolean))];
 
                 let klinePayload = null;
-                let usedSymbol = uniqCandidates[0] || normalizeApiSymbol(routeSymbol) || baseSymbol || symbol;
+                let usedSymbol = uniqCandidates[0] || normalizeApiSymbol(routeSymbol, options.exchangeHint || '') || baseSymbol || symbol;
                 if (!isInsStockChart && isUnlistedChart) {
                     const unlistedSeed = toFiniteNumber(baseProduct?.price)
                         ?? toFiniteNumber(baseProduct?.configured_price)
@@ -6970,12 +6982,32 @@
         // --- URL SYNC FIX ---
         let activeRouteStockKey = '';
 
-        function inferExchangeFromStockParam(stockParam) {
+        function inferExchangeFromStockParam(stockParam, exchangeHint = '') {
+            if (window.DB && typeof window.DB.inferMarketExchange === 'function') {
+                return window.DB.inferMarketExchange(stockParam, exchangeHint) || '';
+            }
             const sym = String(stockParam || '').trim().toUpperCase();
-            if (!sym) return 'NSE';
+            const hint = String(exchangeHint || '').trim().toUpperCase();
+            if (!sym) return hint;
             if (sym.startsWith('BSE:') || sym.endsWith('.BO') || sym.includes('.BSE') || sym.includes('.BOM')) return 'BSE';
             if (sym.startsWith('NSE:') || sym.endsWith('.NS') || sym.includes('.NSE') || sym.includes('.NSI')) return 'NSE';
-            return 'NSE';
+            if (sym.startsWith('NASDAQ:')) return 'NASDAQ';
+            if (sym.startsWith('NYSEARCA:') || sym.startsWith('ARCA:') || sym.startsWith('PCX:')) return 'NYSE ARCA';
+            if (sym.startsWith('NYSE:')) return 'NYSE';
+            if (sym.startsWith('AMEX:')) return 'AMEX';
+            if (sym.startsWith('BATS:') || sym.startsWith('CBOE:')) return 'CBOE';
+            if (sym.startsWith('KRX:')) return 'KRX';
+            return hint;
+        }
+
+        function formatExchangeDisplayText(stockParam, exchangeHint = '') {
+            if (window.DB && typeof window.DB.formatMarketExchangeLabel === 'function') {
+                const formatted = window.DB.formatMarketExchangeLabel(stockParam, exchangeHint);
+                if (formatted) return formatted;
+            }
+            const exchange = inferExchangeFromStockParam(stockParam, exchangeHint) || String(exchangeHint || '').trim().toUpperCase();
+            if (!exchange) return 'Global';
+            return (exchange === 'NSE' || exchange === 'BSE') ? `${exchange}  - IN` : exchange;
         }
 
         function normalizeRouteStockSymbol(stockParam) {
@@ -6986,13 +7018,13 @@
                 .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
         }
 
-        function resolveRouteStockDetail(stockParam) {
+        function resolveRouteStockDetail(stockParam, exchangeHint = '') {
             const raw = String(stockParam || '').trim();
             const normalized = normalizeRouteStockSymbol(raw);
             if (!normalized) return null;
 
             if (window.MarketEngine && typeof window.MarketEngine.getProduct === 'function') {
-                const candidateSymbols = [raw, normalized, ...buildYahooSymbolCandidates(raw, inferExchangeFromStockParam(raw))];
+                const candidateSymbols = [raw, normalized, ...buildYahooSymbolCandidates(raw, exchangeHint || inferExchangeFromStockParam(raw, exchangeHint))];
                 let product = null;
                 for (const candidate of candidateSymbols) {
                     product = window.MarketEngine.getProduct(candidate) || window.MarketEngine.getProduct(normalizeRouteStockSymbol(candidate));
@@ -7004,7 +7036,7 @@
                     return {
                         lookupKey: product.id || raw,
                         name: product.name || raw,
-                        exchange: product.exchange || inferExchangeFromStockParam(product.market_symbol || product.symbol || raw),
+                        exchange: product.exchange || inferExchangeFromStockParam(product.market_symbol || product.symbol || raw, exchangeHint),
                         priceText: Number.isFinite(priceValue) && priceValue > 0
                             ? `₹${priceValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             : 'Loading...',
@@ -7043,7 +7075,7 @@
             return {
                 lookupKey: raw,
                 name: raw,
-                exchange: inferExchangeFromStockParam(raw),
+                exchange: inferExchangeFromStockParam(raw, exchangeHint),
                 priceText: 'Loading...',
                 changeText: '0.00%',
                 color: '#10b981',
@@ -7088,6 +7120,7 @@
             const requireReady = routeOptions.requireReady === true;
             const params = new URLSearchParams(window.location.search);
             const stock = params.get('stock') || params.get('symbol');
+            const exchange = params.get('exchange') || '';
             if (!stock) return false;
             if (requireReady && (!window.DB_READY || !window.MarketEngine || !window.MarketEngine.isReady)) {
                 return false;
@@ -7099,7 +7132,7 @@
                 return true;
             }
 
-            const resolved = resolveRouteStockDetail(stock);
+            const resolved = resolveRouteStockDetail(stock, exchange);
             if (!resolved) return false;
             activeRouteStockKey = routeKey || String(stock).trim().toUpperCase();
 
@@ -12772,7 +12805,7 @@
             const intervalOptions = majorChartIntervalMap[currentInterval] || majorChartIntervalMap.H;
             const yahooSymbol = indexYahooMap[raw] || symbol;
             const isIndexLike = !!indexYahooMap[raw];
-            const exchangeHint = raw.startsWith('BSE:') ? 'BSE' : (raw.startsWith('KRX:') ? 'KRX' : 'NSE');
+            const exchangeHint = inferExchangeFromStockParam(raw);
 
             if (typeof window.loadYahooChart === 'function') {
                 window.loadYahooChart(yahooSymbol, 'tradingview_widget', {

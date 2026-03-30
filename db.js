@@ -55,6 +55,9 @@ window.DB = {
     MARKET_SYMBOL_ALIAS: {
         KCEIL: 'KCEIL-SM.NS',
         ZOMATO: 'ETERNAL.NS',
+        NSEP: 'NSEP',
+        INNOVATORGROWTH100POWERBUFFER: 'NSEP',
+        INNOVATORGROWTH100POWERBUFFERETF: 'NSEP',
     },
     MARKET_SEARCH_ALIAS_RESULTS: {
         KCEIL: [{ symbol: 'KCEIL-SM.NS', name: 'KAY CEE ENERGY & INFRA L', exch: 'NSE', type: 'stock', score: 250000 }],
@@ -62,6 +65,9 @@ window.DB = {
         ZOMATO: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
         ZOMATONS: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
         ZOMATOLIMITED: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
+        NSEP: [{ symbol: 'NSEP', name: 'Innovator Growth-100 Power Buffer ETF', exch: 'NYSE ARCA', type: 'stock', score: 250000 }],
+        INNOVATORGROWTH100POWERBUFFER: [{ symbol: 'NSEP', name: 'Innovator Growth-100 Power Buffer ETF', exch: 'NYSE ARCA', type: 'stock', score: 250000 }],
+        INNOVATORGROWTH100POWERBUFFERETF: [{ symbol: 'NSEP', name: 'Innovator Growth-100 Power Buffer ETF', exch: 'NYSE ARCA', type: 'stock', score: 250000 }],
     },
     formatCurrency(value, digits = 2, fallback = '-') {
         return window.formatAppCurrency(value, digits, fallback);
@@ -220,11 +226,55 @@ window.DB = {
         return normalized;
     },
 
+    normalizeMarketExchangeLabel(exchangeHint = '') {
+        const raw = String(exchangeHint || '').trim();
+        const upper = raw.toUpperCase();
+        if (!upper) return '';
+        if (upper === 'NSI' || upper.includes('NSE')) return 'NSE';
+        if (upper === 'BSE' || upper === 'BOM' || upper.includes('BOMBAY')) return 'BSE';
+        if (upper.includes('NYSE ARCA') || upper.includes('NYSEARCA') || upper === 'ARCA' || upper === 'PCX') return 'NYSE ARCA';
+        if (upper.includes('NASDAQ')) return 'NASDAQ';
+        if (upper.includes('NYSE')) return 'NYSE';
+        if (upper.includes('AMEX') || upper === 'ASE') return 'AMEX';
+        if (upper.includes('CBOE') || upper.includes('BATS')) return 'CBOE';
+        if (upper === 'US' || upper === 'USA' || upper.includes('UNITED STATES')) return 'US';
+        if (upper.startsWith('KRX')) return 'KRX';
+        return upper;
+    },
+
+    inferMarketExchange(symbol, exchangeHint = '') {
+        const raw = String(symbol || '').trim().toUpperCase();
+        const hint = this.normalizeMarketExchangeLabel(exchangeHint);
+        if (!raw) return hint;
+        if (raw.startsWith('^')) return hint;
+        if (raw.startsWith('BSE:') || raw.endsWith('.BO') || raw.includes('.BSE') || raw.includes('.BOM')) return 'BSE';
+        if (raw.startsWith('NSE:') || raw.endsWith('.NS') || raw.includes('.NSE') || raw.includes('.NSI')) return 'NSE';
+        if (raw.startsWith('NYSEARCA:') || raw.startsWith('ARCA:') || raw.startsWith('PCX:')) return 'NYSE ARCA';
+        if (raw.startsWith('NASDAQ:')) return 'NASDAQ';
+        if (raw.startsWith('NYSE:')) return 'NYSE';
+        if (raw.startsWith('AMEX:')) return 'AMEX';
+        if (raw.startsWith('BATS:') || raw.startsWith('CBOE:')) return 'CBOE';
+        if (raw.startsWith('KRX:')) return 'KRX';
+        return hint;
+    },
+
+    isIndiaMarketExchange(symbol, exchangeHint = '') {
+        const inferred = this.inferMarketExchange(symbol, exchangeHint);
+        return inferred === 'NSE' || inferred === 'BSE';
+    },
+
+    formatMarketExchangeLabel(symbol, exchangeHint = '') {
+        const inferred = this.inferMarketExchange(symbol, exchangeHint);
+        if (!inferred) return '';
+        if (inferred === 'NSE' || inferred === 'BSE') return `${inferred}  - IN`;
+        return inferred;
+    },
+
     getMarketApiSymbolCandidates(symbol, exchangeHint = '') {
         const raw = String(symbol || '').trim().toUpperCase();
         if (!raw) return [];
 
-        const hint = String(exchangeHint || '').trim().toUpperCase();
+        const hint = this.normalizeMarketExchangeLabel(exchangeHint);
         const candidates = [];
         const push = (value) => {
             const normalized = String(value || '').trim().toUpperCase();
@@ -246,7 +296,7 @@ window.DB = {
 
             if (input.includes(':')) {
                 const parts = input.split(':');
-                explicitExchange = parts[0];
+                explicitExchange = this.normalizeMarketExchangeLabel(parts[0]);
                 ticker = parts[parts.length - 1] || input;
             }
 
@@ -274,9 +324,7 @@ window.DB = {
             const compact = ticker.replace(/[^A-Z0-9]/g, '');
             if (!compact) return;
 
-            const preferredExchange = explicitExchange
-                || (String(variantHint || '').includes('BSE') || String(variantHint || '').includes('BOM') ? 'BSE' : '')
-                || (String(variantHint || '').includes('NSE') ? 'NSE' : '');
+            const preferredExchange = explicitExchange || this.inferMarketExchange(input, variantHint);
 
             if (preferredExchange === 'BSE') {
                 push(`${compact}.BO`);
@@ -287,11 +335,28 @@ window.DB = {
                 return;
             }
 
+            if (preferredExchange === 'NYSE ARCA') {
+                push(compact);
+                push(input);
+                push(`ARCA:${compact}`);
+                push(`NYSEARCA:${compact}`);
+                return;
+            }
+
+            if (preferredExchange) {
+                push(compact);
+                push(input);
+                if (preferredExchange !== 'US') {
+                    push(`${preferredExchange.replace(/\s+/g, '')}:${compact}`);
+                }
+                return;
+            }
+
+            push(compact);
             push(`${compact}.NS`);
             push(`${compact}.BO`);
             push(`NSE:${compact}`);
             push(`BSE:${compact}`);
-            push(compact);
         };
 
         const alias = this.MARKET_SYMBOL_ALIAS[this.normalizeMarketSymbolKey(raw)];
@@ -305,19 +370,18 @@ window.DB = {
         const candidates = this.getMarketApiSymbolCandidates(symbol, exchangeHint);
         if (!Array.isArray(candidates) || candidates.length === 0) return '';
 
-        const hint = String(exchangeHint || '').trim().toUpperCase();
-        if (hint.includes('BSE') || hint.includes('BOM')) {
+        const inferred = this.inferMarketExchange(symbol, exchangeHint);
+        if (inferred === 'BSE') {
             const bse = candidates.find((value) => /\.BO$/i.test(String(value || '')));
             if (bse) return bse;
         }
 
-        if (hint.includes('NSE')) {
+        if (inferred === 'NSE') {
             const nse = candidates.find((value) => /\.NS$/i.test(String(value || '')));
             if (nse) return nse;
         }
 
-        const marketQualified = candidates.find((value) => /^\^/.test(String(value || '')) || /\.(NS|BO)$/i.test(String(value || '')));
-        return marketQualified || candidates[0] || '';
+        return candidates[0] || '';
     },
 
     getYahooSymbolCandidates(symbol) {
@@ -395,10 +459,7 @@ window.DB = {
 
     normalizeYahooSearchExchange(quote) {
         const raw = String(quote?.exchDisp || quote?.exchange || '').trim();
-        const upper = raw.toUpperCase();
-        if (upper === 'NSI' || upper.includes('NSE')) return 'NSE';
-        if (upper === 'BSE' || upper === 'BOM' || upper.includes('BOMBAY')) return 'BSE';
-        return raw;
+        return this.normalizeMarketExchangeLabel(raw) || raw;
     },
 
     normalizeYahooSearchRows(payload, limit = 20) {
