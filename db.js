@@ -726,6 +726,14 @@ window.DB = {
         return [...candidates];
     },
 
+    normalizeKycStatus(status) {
+        return String(status || '').trim().toLowerCase();
+    },
+
+    isKycApproved(status) {
+        return this.normalizeKycStatus(status) === 'approved';
+    },
+
     async login(identifier, password) {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
@@ -758,6 +766,18 @@ window.DB = {
 
         if (error || !data) {
             return { success: false, message: 'Invalid credentials.' };
+        }
+
+        const normalizedKyc = this.normalizeKycStatus(data?.kyc);
+        if (!this.isKycApproved(normalizedKyc)) {
+            return {
+                success: false,
+                code: normalizedKyc === 'rejected' ? 'KYC_REJECTED' : 'KYC_PENDING',
+                message: normalizedKyc === 'rejected'
+                    ? 'KYC verification has not been approved. Please contact support.'
+                    : 'KYC verification is under review. Please wait for backend approval before logging in.',
+                user: data
+            };
         }
 
         localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify(data));
@@ -1445,6 +1465,10 @@ window.DB = {
             return data;
         }
         return user;
+    },
+
+    clearCurrentUser() {
+        localStorage.removeItem(this.CURRENT_USER_KEY);
     },
 
     logout() {

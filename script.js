@@ -102,6 +102,54 @@ window.alert = function (message) {
     }
 };
 
+window.ENFORCE_KYC_RESTRICTIONS = window.ENFORCE_KYC_RESTRICTIONS !== false;
+
+function normalizeKycStatusValue(status) {
+    return String(status || '').trim().toLowerCase();
+}
+
+function isApprovedKycStatus(status) {
+    return normalizeKycStatusValue(status) === 'approved';
+}
+
+function isRestrictedKycUser(user) {
+    if (!user) return false;
+    return !isApprovedKycStatus(user.kyc);
+}
+
+function isKycAccessAllowedPath(pathname = window.location.pathname) {
+    const path = String(pathname || '').toLowerCase();
+    return path.includes('login.html') || path.includes('kyc.html');
+}
+
+function getKycRestrictionMessage(user) {
+    const status = normalizeKycStatusValue(user?.kyc);
+    if (status === 'rejected') {
+        return 'KYC verification has not been approved yet. Please contact support.';
+    }
+    return 'KYC verification is under review.';
+}
+
+function getKycRestrictionQuery(user) {
+    const status = normalizeKycStatusValue(user?.kyc);
+    return status === 'rejected' ? 'kyc_rejected=true' : 'kyc_pending=true';
+}
+
+function clearRestrictedUserSession() {
+    if (window.DB && typeof window.DB.clearCurrentUser === 'function') {
+        window.DB.clearCurrentUser();
+        return;
+    }
+    try {
+        localStorage.removeItem(window.DB?.CURRENT_USER_KEY || 'avendus_current_user');
+    } catch (_) { }
+}
+
+function redirectRestrictedUserToLogin(user) {
+    clearRestrictedUserSession();
+    window.location.replace(`login.html?${getKycRestrictionQuery(user)}`);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize Icons
     if (window.lucide) lucide.createIcons();
@@ -109,31 +157,26 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check Login & Update UI
     checkLoginStatus();
 
-    // KYC restrictions are disabled by default.
-    // Set window.ENFORCE_KYC_RESTRICTIONS = true to enforce pending-user restrictions.
-    const enforceKycRestrictions = window.ENFORCE_KYC_RESTRICTIONS === true;
+    const enforceKycRestrictions = window.ENFORCE_KYC_RESTRICTIONS !== false;
 
     // --- GLOBAL KYC PAGE GUARD ---
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
-    if (enforceKycRestrictions && user && user.kyc === 'Pending') {
-        const path = window.location.pathname.toLowerCase();
-        const isRestrictedPage = path.includes('market.html') ||
-            path.includes('deposit.html') ||
-            path.includes('withdraw.html') ||
-            path.includes('bank_accounts.html') ||
-            path.includes('loan_application.html');
-
-        if (isRestrictedPage) {
-            // Check if we already have a flag to prevent infinite loops (though usually home is not restricted)
-            window.location.href = 'index.html?kyc_popup=true';
+    if (enforceKycRestrictions && isRestrictedKycUser(user)) {
+        if (!isKycAccessAllowedPath()) {
+            redirectRestrictedUserToLogin(user);
+            return;
         }
     }
 
     // Handle KYC Popup from URL
     const urlParams = new URLSearchParams(window.location.search);
-    if (enforceKycRestrictions && urlParams.get('kyc_popup') === 'true') {
+    if (enforceKycRestrictions && (urlParams.get('kyc_popup') === 'true' || urlParams.get('kyc_pending') === 'true')) {
         setTimeout(() => {
             window.CustomUI.alert("KYC verification in progress.", "Verification Required");
+        }, 500);
+    } else if (enforceKycRestrictions && urlParams.get('kyc_rejected') === 'true') {
+        setTimeout(() => {
+            window.CustomUI.alert("KYC verification has not been approved yet. Please contact support.", "Verification Required");
         }, 500);
     }
 
@@ -380,6 +423,14 @@ document.addEventListener('DOMContentLoaded', () => {
 // --- UI / Login Logic ---
 function checkLoginStatus() {
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+    if (
+        window.ENFORCE_KYC_RESTRICTIONS !== false
+        && isRestrictedKycUser(user)
+        && !isKycAccessAllowedPath()
+    ) {
+        redirectRestrictedUserToLogin(user);
+        return;
+    }
     // Also check URL param for immediate feedback after login
     const urlParams = new URLSearchParams(window.location.search);
     const isLoggedIn = user || urlParams.get('logged_in') === 'true';
@@ -515,8 +566,9 @@ window.handleGuestClick = async function (url) {
     const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
     if (user) {
         // --- KYC RESTRICTION RULE ---
-        if (window.ENFORCE_KYC_RESTRICTIONS === true && user.kyc === 'Pending') {
-            await window.CustomUI.alert("KYC verification in progress.", "Verification Required");
+        if (window.ENFORCE_KYC_RESTRICTIONS !== false && isRestrictedKycUser(user)) {
+            await window.CustomUI.alert(getKycRestrictionMessage(user), "Verification Required");
+            redirectRestrictedUserToLogin(user);
             return;
         }
         if (url && url !== '#') window.location.href = url;
@@ -541,8 +593,9 @@ window.handleGuestTabClick = function (type) {
 
     // --- KYC RESTRICTION RULE for Protected Tabs ---
     const restrictedTabs = ['portfolio', 'trade', 'deposits', 'withdrawals'];
-    if (window.ENFORCE_KYC_RESTRICTIONS === true && user.kyc === 'Pending' && restrictedTabs.includes(type)) {
-        window.CustomUI.alert("KYC verification in progress.", "Verification Required");
+    if (window.ENFORCE_KYC_RESTRICTIONS !== false && isRestrictedKycUser(user) && restrictedTabs.includes(type)) {
+        window.CustomUI.alert(getKycRestrictionMessage(user), "Verification Required");
+        redirectRestrictedUserToLogin(user);
         return;
     }
 

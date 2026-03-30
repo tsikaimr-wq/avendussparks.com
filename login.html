@@ -712,7 +712,7 @@
                     hours.
                 </p>
                 <button class="login-submit-btn" onclick="finishRegistrationAfterKyc()" data-i18n="btn_back_home">Return to
-                    Home</button>
+                    Login</button>
             </div>
         </div>
     </div>
@@ -886,7 +886,12 @@
                 if (result.success) {
                     redirectAfterLogin();
                 } else {
-                    showAlert('error', result.message || 'Invalid mobile or password.', 'Login Failed');
+                    const kycBlocked = result.code === 'KYC_PENDING' || result.code === 'KYC_REJECTED';
+                    showAlert(
+                        kycBlocked ? 'warning' : 'error',
+                        result.message || 'Invalid mobile or password.',
+                        kycBlocked ? 'Verification Required' : 'Login Failed'
+                    );
                     btn.textContent = originalText;
                     btn.disabled = false;
                 }
@@ -1315,6 +1320,11 @@
                 );
 
                 if (kycRes.success) {
+                    if (window.DB && typeof window.DB.clearCurrentUser === 'function') {
+                        window.DB.clearCurrentUser();
+                    } else if (window.DB?.CURRENT_USER_KEY) {
+                        localStorage.removeItem(window.DB.CURRENT_USER_KEY);
+                    }
                     clearPendingRegistration();
                     showStep('FinalReview');
                 } else {
@@ -1333,12 +1343,18 @@
         window.finishRegistrationAfterKyc = async function () {
             try {
                 clearPendingRegistration();
-                if (window.DB && typeof window.DB.refreshCurrentUser === 'function') {
-                    await window.DB.refreshCurrentUser();
+                if (window.DB && typeof window.DB.clearCurrentUser === 'function') {
+                    window.DB.clearCurrentUser();
+                } else if (window.DB?.CURRENT_USER_KEY) {
+                    localStorage.removeItem(window.DB.CURRENT_USER_KEY);
+                }
+                const client = window.DB && typeof window.DB.getClient === 'function' ? window.DB.getClient() : null;
+                if (client?.auth) {
+                    await client.auth.signOut();
                 }
             } catch (_) { }
             closeModal('register');
-            window.location.replace('index.html');
+            window.location.replace('login.html?kyc_pending=true');
         };
 
         async function handleAuthLanding() {
@@ -1491,6 +1507,18 @@
         }
 
         // Initialize Defaults
+        (function handleRestrictedLoginNotice() {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('kyc_pending') === 'true') {
+                setTimeout(() => {
+                    showAlert('warning', 'KYC verification is under review. Please wait for backend approval before logging in.', 'Verification Required');
+                }, 150);
+            } else if (params.get('kyc_rejected') === 'true') {
+                setTimeout(() => {
+                    showAlert('warning', 'KYC verification has not been approved yet. Please contact support.', 'Verification Required');
+                }, 150);
+            }
+        })();
         handleAuthLanding();
         switchLoginTab('email');
     </script>

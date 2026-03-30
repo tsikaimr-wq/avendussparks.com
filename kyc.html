@@ -275,8 +275,8 @@
                     Your documents have been submitted and are currently being reviewed by our compliance team.
                     This usually takes 24-48 hours. We will notify you once the review is complete.
                 </div>
-                <a href="market.html" class="btn-kyc btn-next"
-                    style="display: inline-block; text-decoration: none;">Back to Dashboard</a>
+                <a href="login.html?kyc_pending=true" id="kycStatusReturnLink" class="btn-kyc btn-next"
+                    style="display: inline-block; text-decoration: none;">Back to Login</a>
             </div>
 
             <div id="kycFormView">
@@ -490,15 +490,34 @@
             document.getElementById('kycStatusView').style.display = 'block';
 
             const indicator = document.getElementById('statusIndicator');
+            const returnLink = document.getElementById('kycStatusReturnLink');
             if (status === 'Approved') {
                 indicator.className = 'status-badge status-approved';
                 indicator.innerHTML = '<i data-lucide="check-circle"></i> Verification Approved';
+                if (returnLink) {
+                    returnLink.href = 'market.html';
+                    returnLink.textContent = 'Back to Dashboard';
+                }
             } else if (status === 'Rejected') {
                 indicator.className = 'status-badge status-rejected';
                 indicator.innerHTML = '<i data-lucide="x-circle"></i> Verification Rejected';
+                if (window.DB && typeof window.DB.clearCurrentUser === 'function') {
+                    window.DB.clearCurrentUser();
+                }
+                if (returnLink) {
+                    returnLink.href = 'login.html?kyc_rejected=true';
+                    returnLink.textContent = 'Back to Login';
+                }
             } else {
                 indicator.className = 'status-badge status-pending';
                 indicator.innerHTML = '<i data-lucide="clock-3"></i> Verification Under Review';
+                if (window.DB && typeof window.DB.clearCurrentUser === 'function') {
+                    window.DB.clearCurrentUser();
+                }
+                if (returnLink) {
+                    returnLink.href = 'login.html?kyc_pending=true';
+                    returnLink.textContent = 'Back to Login';
+                }
             }
             lucide.createIcons();
         }
