@@ -7497,6 +7497,32 @@
             });
         }
 
+        function getDiscoverTradeMergeKey(item) {
+            const normalizedType = normalizeProductType(item?.type || 'stock');
+            const identity = [
+                item?.id,
+                item?.market_symbol,
+                item?.symbol,
+                item?.name
+            ]
+                .map(value => String(value || '').trim().toUpperCase())
+                .find(Boolean) || 'UNKNOWN';
+            return `${normalizedType}|${identity}`;
+        }
+
+        function mergeUniqueTradeLists(...lists) {
+            const merged = [];
+            const seen = new Set();
+            lists.flat().forEach(item => {
+                if (!item) return;
+                const key = getDiscoverTradeMergeKey(item);
+                if (seen.has(key)) return;
+                seen.add(key);
+                merged.push(item);
+            });
+            return merged;
+        }
+
         async function switchTradesTab(el, type) {
             if (!el) return;
             const requestId = ++tradesTabRenderRequestId;
@@ -7509,23 +7535,22 @@
 
             const homepageBluechips = await getHomepageBluechipTrades();
             const normalizedBluechips = homepageBluechips.map(s => ({ ...s, type: 'stock' }));
+            const allStocks = (window.MarketEngine?.getAllStocks ? window.MarketEngine.getAllStocks() : [])
+                .map(s => ({ ...s, type: s.type || 'stock' }));
+            const otcCatalog = (window.MarketEngine?.getOTC ? window.MarketEngine.getOTC() : [])
+                .map(s => ({ ...s, type: 'OTC' }));
+            const ipoCatalog = (window.MarketEngine?.getIPO ? window.MarketEngine.getIPO() : [])
+                .map(s => ({ ...s, type: 'IPO' }));
+            const stockCatalog = mergeUniqueTradeLists(normalizedBluechips, allStocks);
 
-            if ((type === 'all' || type === 'stocks') && normalizedBluechips.length > 0) {
-                data = normalizedBluechips;
-            } else if ((type === 'otc' || type === 'ipo') && normalizedBluechips.length > 0) {
-                data = [];
-            } else if (type === 'all') {
-                data = [
-                    ...MarketEngine.getAllStocks().map(s => ({ ...s, type: s.type || 'stock' })),
-                    ...MarketEngine.getOTC().map(s => ({ ...s, type: 'OTC' })),
-                    ...MarketEngine.getIPO().map(s => ({ ...s, type: 'IPO' }))
-                ];
+            if (type === 'all') {
+                data = mergeUniqueTradeLists(stockCatalog, otcCatalog, ipoCatalog);
             } else if (type === 'stocks') {
-                data = MarketEngine.getAllStocks().map(s => ({ ...s, type: s.type || 'stock' }));
+                data = stockCatalog;
             } else if (type === 'otc') {
-                data = MarketEngine.getOTC().map(s => ({ ...s, type: 'OTC' }));
+                data = otcCatalog;
             } else if (type === 'ipo') {
-                data = MarketEngine.getIPO().map(s => ({ ...s, type: 'IPO' }));
+                data = ipoCatalog;
             }
 
             if (requestId !== tradesTabRenderRequestId) return;
