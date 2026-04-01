@@ -120,6 +120,31 @@ window.DB = {
         return nextData;
     },
 
+    sanitizeTradeInsertData(tradeData, missingColumns = []) {
+        const nextData = { ...(tradeData || {}) };
+        const missingSet = new Set(
+            Array.isArray(missingColumns)
+                ? missingColumns.filter(Boolean).map(column => String(column).trim())
+                : []
+        );
+
+        [
+            'base_total_amount',
+            'base_total',
+            'baseAmount'
+        ].forEach((column) => {
+            delete nextData[column];
+        });
+
+        missingSet.forEach((column) => {
+            if (column && column in nextData) {
+                delete nextData[column];
+            }
+        });
+
+        return nextData;
+    },
+
     disableMarketCache(reason = '') {
         window.DISABLE_MARKET_DB = true;
         try {
@@ -2633,7 +2658,7 @@ window.DB = {
         const client = this.getClient();
         if (!client) return { success: false, error: { message: 'Database client not initialized' } };
 
-        let insertData = { ...tradeData };
+        let insertData = this.sanitizeTradeInsertData(tradeData);
         const removedColumns = new Set();
 
         for (let attempt = 0; attempt < 6; attempt++) {
@@ -2656,7 +2681,7 @@ window.DB = {
             }
 
             removedColumns.add(missingColumn);
-            delete insertData[missingColumn];
+            insertData = this.sanitizeTradeInsertData(tradeData, Array.from(removedColumns));
             console.warn(`submitTrade retrying without missing column: ${missingColumn}`);
         }
 
@@ -2874,12 +2899,36 @@ window.DB = {
 
         if (!Object.keys(payload).length) return { success: true };
 
-        const { error } = await client
-            .from('trades')
-            .update(payload)
-            .eq('id', numericTradeId);
+        let updatePayload = { ...payload };
+        const removedColumns = new Set();
 
-        return { success: !error, error };
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const { error } = await client
+                .from('trades')
+                .update(updatePayload)
+                .eq('id', numericTradeId);
+
+            if (!error) {
+                if (removedColumns.size) {
+                    console.warn('syncTradePricingFields schema fallback removed columns:', Array.from(removedColumns));
+                }
+                return { success: true, error: null };
+            }
+
+            const missingColumn = this.getSchemaMissingColumn(error, 'trades');
+            if (!missingColumn || removedColumns.has(missingColumn) || !(missingColumn in updatePayload)) {
+                return { success: false, error };
+            }
+
+            removedColumns.add(missingColumn);
+            delete updatePayload[missingColumn];
+            if (!Object.keys(updatePayload).length) {
+                return { success: true, error: null };
+            }
+            console.warn(`syncTradePricingFields retrying without missing column: ${missingColumn}`);
+        }
+
+        return { success: false, error: { message: 'Trade pricing sync failed after schema fallback retries.' } };
     },
 
     async applyTradeFeeCharge({ userId, tradeId = null, feeAmount, lockOnShortfall = true }) {
@@ -3825,6 +3874,16 @@ window.DB = {
                     description: "Large-cap engineering and infrastructure leader in India.",
                     min_invest: 50000,
                     est_profit: 0
+                },
+                {
+                    name: "Bluestone Jewellery and Lifestyle Limited",
+                    symbol: "BLUESTONE",
+                    market_symbol: "BLUESTONE.NS",
+                    exchange: "NSE",
+                    price: 521.8,
+                    description: "Indian jewellery retail stock available for institutional-style product seeding.",
+                    min_invest: 50000,
+                    est_profit: 0
                 }
             ]
         };
@@ -3960,9 +4019,10 @@ window.DB = {
     async submitSubscriptionAtomic(tradeData) {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database client not initialized' };
+        const normalizedTradeData = this.sanitizeTradeInsertData(tradeData);
         const { data, error } = await client.rpc('submit_subscription_atomic', {
-            p_user_id: tradeData.user_id,
-            p_trade_data: tradeData
+            p_user_id: normalizedTradeData.user_id,
+            p_trade_data: normalizedTradeData
         });
         if (error) {
             console.error("RPC submit_subscription_atomic Error:", error);

@@ -126,6 +126,31 @@ window.DB = {
         return nextData;
     },
 
+    sanitizeTradeInsertData(tradeData, missingColumns = []) {
+        const nextData = { ...(tradeData || {}) };
+        const missingSet = new Set(
+            Array.isArray(missingColumns)
+                ? missingColumns.filter(Boolean).map(column => String(column).trim())
+                : []
+        );
+
+        [
+            'base_total_amount',
+            'base_total',
+            'baseAmount'
+        ].forEach((column) => {
+            delete nextData[column];
+        });
+
+        missingSet.forEach((column) => {
+            if (column && column in nextData) {
+                delete nextData[column];
+            }
+        });
+
+        return nextData;
+    },
+
     disableMarketCache(reason = '') {
         window.DISABLE_MARKET_DB = true;
         try {
@@ -2463,7 +2488,7 @@ window.DB = {
         const client = this.getClient();
         if (!client) return { success: false, error: { message: 'Database client not initialized' } };
 
-        let insertData = { ...tradeData };
+        let insertData = this.sanitizeTradeInsertData(tradeData);
         const removedColumns = new Set();
 
         for (let attempt = 0; attempt < 6; attempt++) {
@@ -2486,7 +2511,7 @@ window.DB = {
             }
 
             removedColumns.add(missingColumn);
-            delete insertData[missingColumn];
+            insertData = this.sanitizeTradeInsertData(tradeData, Array.from(removedColumns));
             console.warn(`submitTrade retrying without missing column: ${missingColumn}`);
         }
 
@@ -2599,10 +2624,11 @@ window.DB = {
     async submitSubscriptionAtomic(tradeData) {
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database client not initialized' };
+        const normalizedTradeData = this.sanitizeTradeInsertData(tradeData);
 
         const { data, error } = await client.rpc('submit_subscription_atomic', {
-            p_user_id: tradeData.user_id,
-            p_trade_data: tradeData
+            p_user_id: normalizedTradeData.user_id,
+            p_trade_data: normalizedTradeData
         });
 
         if (error) {
@@ -3583,6 +3609,16 @@ window.DB = {
                     exchange: "NSE",
                     price: 3505,
                     description: "Large-cap engineering and infrastructure leader in India.",
+                    min_invest: 50000,
+                    est_profit: 0
+                },
+                {
+                    name: "Bluestone Jewellery and Lifestyle Limited",
+                    symbol: "BLUESTONE",
+                    market_symbol: "BLUESTONE.NS",
+                    exchange: "NSE",
+                    price: 521.8,
+                    description: "Indian jewellery retail stock available for institutional-style product seeding.",
                     min_invest: 50000,
                     est_profit: 0
                 }
