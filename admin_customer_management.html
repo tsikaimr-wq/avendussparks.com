@@ -7475,17 +7475,28 @@
             const sellLockGroup = document.getElementById('p_sell_lock_group');
             const sellLockInput = document.getElementById('p_sell_locked');
             const canLockSell = type === 'IPO' || type === 'OTC';
-            applyProductDataSourceUI(document.getElementById('p_data_source')?.value || getDefaultProductDataSource(type));
+            const productSource = normalizeProductDataSource(document.getElementById('p_data_source')?.value || getDefaultProductDataSource(type));
+            applyProductDataSourceUI(productSource);
 
             if (sellLockGroup) sellLockGroup.style.display = canLockSell ? 'flex' : 'none';
             if (!canLockSell && sellLockInput) sellLockInput.checked = false;
 
             if (type === 'Ins.stocks') {
-                console.log("Applying Ins.stocks market-driven rules.");
+                const isManualMode = productSource === 'manual';
+                console.log(`Applying Ins.stocks ${isManualMode ? 'manual-entry' : 'market-driven'} rules.`);
 
-                if (priceInput) priceInput.readOnly = true;
-                if (subPriceInput) subPriceInput.readOnly = true;
-                if (profitInput) profitInput.readOnly = true;
+                if (priceInput) {
+                    priceInput.readOnly = !isManualMode;
+                    priceInput.placeholder = isManualMode ? 'Enter initial buy-in price' : 'Loading / Unavailable';
+                }
+                if (subPriceInput) {
+                    subPriceInput.readOnly = !isManualMode;
+                    subPriceInput.placeholder = isManualMode ? 'Enter subscription price' : 'Loading / Unavailable';
+                }
+                if (profitInput) {
+                    profitInput.readOnly = !isManualMode;
+                    profitInput.placeholder = isManualMode ? 'Optional estimated profit %' : '';
+                }
 
                 const livePrice = parseAdminNumericValue(data?.price);
                 const liveChangePercent = parseAdminNumericValue(data?.changePercent);
@@ -7504,18 +7515,18 @@
                 } else {
                     if (priceInput && !Number.isFinite(currentPrice)) {
                         priceInput.value = '';
-                        priceInput.placeholder = 'Loading / Unavailable';
+                        priceInput.placeholder = isManualMode ? 'Enter initial buy-in price' : 'Loading / Unavailable';
                     }
                     if (subPriceInput && !Number.isFinite(currentSubPrice)) {
                         subPriceInput.value = '';
-                        subPriceInput.placeholder = 'Loading / Unavailable';
+                        subPriceInput.placeholder = isManualMode ? 'Enter subscription price' : 'Loading / Unavailable';
                     }
                 }
 
                 if (profitInput) {
                     if (Number.isFinite(liveChangePercent)) {
                         profitInput.value = Math.abs(liveChangePercent);
-                    } else if (!profitInput.value) {
+                    } else if (!profitInput.value && !isManualMode) {
                         profitInput.value = '';
                     }
                 }
@@ -7524,9 +7535,10 @@
                 const yearLater = new Date();
                 yearLater.setFullYear(now.getFullYear() + 1);
                 const formatDT = (d) => d.toISOString().slice(0, 16);
-
-                document.getElementById('p_start').value = formatDT(now);
-                document.getElementById('p_end').value = formatDT(yearLater);
+                const startInput = document.getElementById('p_start');
+                const endInput = document.getElementById('p_end');
+                if (startInput && !startInput.value) startInput.value = formatDT(now);
+                if (endInput && !endInput.value) endInput.value = formatDT(yearLater);
             } else {
                 console.log(`Applying ${type || 'Standard'} rules (Manual Edit Enabled).`);
 
@@ -7674,7 +7686,8 @@
         }
 
         function getDefaultProductDataSource(type) {
-            if (type === 'IPO' || type === 'OTC' || type === 'Ins.stocks') return 'turbo';
+            if (type === 'IPO' || type === 'OTC') return 'turbo';
+            if (type === 'Ins.stocks') return 'manual';
             return 'manual';
         }
 
@@ -8140,7 +8153,7 @@
                 document.getElementById('p_exchange').value = p.exchange || 'NSE';
             }
             if (document.getElementById('p_data_source')) {
-                document.getElementById('p_data_source').value = p.product_type === 'Ins.stocks' ? 'turbo' : 'manual';
+                document.getElementById('p_data_source').value = getDefaultProductDataSource(p.product_type || 'IPO');
             }
             if (document.getElementById('p_sell_locked')) {
                 const sellLockMap = await loadProductSellLockMap();
@@ -8207,9 +8220,18 @@
                 showAlert('warning', "Invalid Market Symbol! Must be at least 3 characters.");
                 return;
             }
-            if (p.product_type === 'Ins.stocks' && (p.price <= 0 || p.subscription_price <= 0)) {
-                showAlert('warning', "Live market price is unavailable for this Ins.Stock. Please search again or choose a Turbo product before saving.");
-                return;
+            if (p.product_type === 'Ins.stocks') {
+                if (productSource === 'manual') {
+                    if (p.price <= 0 && p.subscription_price > 0) p.price = p.subscription_price;
+                    if (p.subscription_price <= 0 && p.price > 0) p.subscription_price = p.price;
+                    if (p.price <= 0 || p.subscription_price <= 0) {
+                        showAlert('warning', "For manual Ins.Stock products, please enter at least one valid price.");
+                        return;
+                    }
+                } else if (p.price <= 0 || p.subscription_price <= 0) {
+                    showAlert('warning', "Live market price is unavailable for this Ins.Stock. Choose a Turbo/search result or switch Data Source to Manual Entry.");
+                    return;
+                }
             }
             if (p.subscription_price <= 0) { showAlert('warning', "Subscription Price is required!"); return; }
             if (p.product_type !== 'IPO' && p.product_type !== 'OTC' && p.product_type !== 'Ins.stocks') { showAlert('warning', "Invalid Product Type! Must be IPO, OTC, or Ins.stocks."); return; }
