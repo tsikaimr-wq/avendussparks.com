@@ -7410,47 +7410,91 @@
         }
 
         let tradesTabRenderRequestId = 0;
+        const homepageRealtimeRefreshAt = {};
+
+        function queueHomepageRealtimePrice(symbol) {
+            const me = window.MarketEngine;
+            const normalizedSymbol = String(symbol || '').trim();
+            if (!normalizedSymbol || typeof me?.fetchMarketPrice !== 'function') return;
+
+            const now = Date.now();
+            const lastRun = homepageRealtimeRefreshAt[normalizedSymbol] || 0;
+            if ((now - lastRun) < 15000) return;
+            homepageRealtimeRefreshAt[normalizedSymbol] = now;
+
+            me.fetchMarketPrice(normalizedSymbol).catch(error => {
+                console.warn(`Homepage realtime fetch failed for ${normalizedSymbol}:`, error);
+            });
+        }
 
         async function getHomepageBluechipTrades() {
-            if (!window.DB || typeof window.DB.getTurboMarketData !== 'function') return [];
+            const me = window.MarketEngine;
+            if (!me || typeof me.getAllStocks !== 'function') return [];
 
-            try {
-                const rows = await window.DB.getTurboMarketData('Ins.stocks');
-                if (!Array.isArray(rows) || rows.length === 0) return [];
+            const curatedSymbols = [
+                'RELIANCE',
+                'HDFCBANK',
+                'BHARTIARTL',
+                'BAJFINANCE',
+                'INFY',
+                'HINDUNILVR',
+                'ICICIBANK',
+                'LT',
+                'SBIN',
+                'TCS',
+                'ITC',
+                'AXISBANK'
+            ];
 
-                return rows.map((item, index) => {
-                    const rawMarketSymbol = String(item.market_symbol || item.symbol || '').trim().toUpperCase();
-                    const displaySymbol = rawMarketSymbol
-                        .replace(/^NSE:|^BSE:/, '')
-                        .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '') || `STOCK${index + 1}`;
-                    const configuredPrice = toFiniteNumber(item.price) ?? 0;
-                    const subscriptionPrice = toFiniteNumber(item.subscription_price) ?? configuredPrice;
-                    const livePrice = toFiniteNumber(item.live_price) ?? configuredPrice;
-
-                    return {
-                        id: item.id || `homepage_bluechip_${displaySymbol}_${index}`,
-                        name: item.name || displaySymbol,
-                        symbol: displaySymbol,
-                        market_symbol: rawMarketSymbol || displaySymbol,
-                        exchange: item.exchange || 'NSE',
-                        price: livePrice,
-                        configured_price: configuredPrice,
-                        subscription_price: subscriptionPrice,
-                        min_invest: toFiniteNumber(item.min_invest ?? item.minInvest) ?? 0,
-                        yield: '0.00%',
-                        estimated_profit: 0,
-                        est_profit_percent: 0,
-                        type: 'INS.STOCKS',
-                        prevClose: toFiniteNumber(item.prevClose),
-                        change: toFiniteNumber(item.change) ?? 0,
-                        changePercent: toFiniteNumber(item.changePercent),
-                        description: item.description || ''
-                    };
+            const stockMap = new Map();
+            me.getAllStocks()
+                .filter(item => normalizeProductType(item?.type || 'stock') === 'STOCK')
+                .forEach(item => {
+                    const key = String(item.symbol || item.market_symbol || item.id || '').trim().toUpperCase();
+                    if (key) stockMap.set(key, item);
                 });
-            } catch (error) {
-                console.warn('Failed to load homepage bluechip trades:', error);
-                return [];
-            }
+
+            const selected = curatedSymbols
+                .map(symbol => stockMap.get(symbol))
+                .filter(Boolean);
+
+            const fallbackStocks = selected.length
+                ? selected
+                : me.getAllStocks().filter(item => normalizeProductType(item?.type || 'stock') === 'STOCK').slice(0, 12);
+
+            return fallbackStocks.map((item, index) => {
+                const rawMarketSymbol = String(item.market_symbol || item.symbol || '').trim().toUpperCase();
+                const displaySymbol = rawMarketSymbol
+                    .replace(/^NSE:|^BSE:/, '')
+                    .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '') || `STOCK${index + 1}`;
+                const latestPrice = toFiniteNumber(item.price) ?? 0;
+                const prevClose = toFiniteNumber(item.prevClose);
+                const computedChange = prevClose !== null && prevClose > 0 && latestPrice > 0
+                    ? ((latestPrice - prevClose) / prevClose) * 100
+                    : (toFiniteNumber(item.changePercent) ?? toFiniteNumber(item.change) ?? 0);
+
+                return {
+                    id: item.id || item.symbol || `homepage_bluechip_${displaySymbol}_${index}`,
+                    name: item.name || displaySymbol,
+                    symbol: displaySymbol,
+                    market_symbol: rawMarketSymbol || displaySymbol,
+                    exchange: item.exchange || 'NSE',
+                    price: latestPrice,
+                    configured_price: toFiniteNumber(item.configured_price) ?? latestPrice,
+                    subscription_price: latestPrice,
+                    min_invest: toFiniteNumber(item.min_invest ?? item.minInvest) ?? 0,
+                    yield: '0.00%',
+                    estimated_profit: 0,
+                    est_profit_percent: 0,
+                    type: 'stock',
+                    prevClose,
+                    change: computedChange,
+                    changePercent: toFiniteNumber(item.changePercent) ?? computedChange,
+                    updated_at: item.updated_at || '',
+                    quoteSource: item.quoteSource || '',
+                    description: item.description || ''
+                };
+            });
         }
 
         async function switchTradesTab(el, type) {
@@ -7463,23 +7507,8 @@
             const listContainer = document.getElementById('tradesList');
             let data = [];
 
-            // MAINTENANCE CHECK for Institutional Stocks
-            if (type === 'stocks' || type === 'all') {
-                const config = (window.DB && typeof window.DB.getPlatformSettings === 'function') ? await window.DB.getPlatformSettings('institutional_config') : null;
-                if (requestId !== tradesTabRenderRequestId) return;
-                if (config && config.status === 'Maintenance' && type === 'stocks') {
-                    listContainer.innerHTML = `
-                        <div style="background: #fff7ed; border: 1px solid #ffedd5; padding: 2rem; border-radius: 12px; text-align: center; margin-top: 1rem;">
-                            <div style="color: #9a3412; font-weight: 700; font-size: 1.1rem; margin-bottom: 0.5rem;">Terminal Under Maintenance</div>
-                            <div style="color: #c2410c; font-size: 0.9rem;">The Institutional Trading terminal (057) is currently undergoing scheduled maintenance. Please try again later.</div>
-                        </div>
-                    `;
-                    return;
-                }
-            }
-
             const homepageBluechips = await getHomepageBluechipTrades();
-            const normalizedBluechips = homepageBluechips.map(s => ({ ...s, type: 'INS.STOCKS' }));
+            const normalizedBluechips = homepageBluechips.map(s => ({ ...s, type: 'stock' }));
 
             if ((type === 'all' || type === 'stocks') && normalizedBluechips.length > 0) {
                 data = normalizedBluechips;
@@ -7544,8 +7573,8 @@
                         && livePrice !== null
                         && livePrice > 0
                         && !isSimulatedQuote;
-                    if (isInsStock && (!isFresh || isSimulatedQuote) && marketSymbol && typeof me?.fetchMarketPrice === 'function') {
-                        me.fetchMarketPrice(marketSymbol);
+                    if (!isFresh && marketSymbol) {
+                        queueHomepageRealtimePrice(marketSymbol);
                     }
 
                     let lastUpdatedHtml = '';
@@ -7571,6 +7600,8 @@
                         } else {
                             lastUpdatedHtml = `<div style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px; font-weight: 500;">Syncing...</div>`;
                         }
+                    } else if (livePrice !== null && livePrice > 0) {
+                        lastUpdatedHtml = `<div style="font-size: 0.7rem; color: #94a3b8; margin-top: 4px; font-weight: 500;">Syncing realtime price...</div>`;
                     }
 
                     const priceVal = toFiniteNumber(s.price);
