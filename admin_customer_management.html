@@ -3526,7 +3526,7 @@
                 fetchSafe('kyc_submissions', (isCsr ? client.from('kyc_submissions').select('*').in('user_id', userIds) : client.from('kyc_submissions').select('id,user_id,id_front_url,id_back_url,status,id_type,selfie_url'))),
                 fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)),
                 fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)),
-                fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').eq('type', 'stock').in('user_id', userIds) : client.from('trades').select('*').eq('type', 'stock')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })),
+                fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').in('user_id', userIds).or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks') : client.from('trades').select('*').or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })),
                 fetchSafe('trades_otc', (isCsr ? client.from('trades').select('*').eq('type', 'otc').in('user_id', userIds) : client.from('trades').select('*').eq('type', 'otc')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })),
                 fetchSafe('trades_ipo', (isCsr ? client.from('trades').select('*').ilike('type', 'ipo').in('user_id', userIds) : client.from('trades').select('*').ilike('type', 'ipo')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })),
                 window.DB.getAllLoans(),
@@ -3638,6 +3638,34 @@
 
         function normalizeTradeStatus(status) {
             return String(status || 'Pending').trim().replace(/\s+/g, '_').toUpperCase();
+        }
+
+        function normalizeTradeType(type) {
+            const raw = String(type || 'stock').trim().toLowerCase();
+            if (!raw) return 'stock';
+            if (raw === 'ins.stocks' || raw === 'insstocks' || raw === 'institutional' || raw === 'institutional_stock' || raw === 'ins-stock') return 'ins.stocks';
+            if (raw.includes('ipo')) return 'ipo';
+            if (raw.includes('otc')) return 'otc';
+            if (raw.includes('stock')) return 'stock';
+            return raw;
+        }
+
+        function isStockBoardTradeType(type) {
+            const normalized = normalizeTradeType(type);
+            return normalized === 'stock' || normalized === 'ins.stocks';
+        }
+
+        function isSubscriptionTradeType(type) {
+            const normalized = normalizeTradeType(type);
+            return normalized === 'ipo' || normalized === 'otc' || normalized === 'ins.stocks';
+        }
+
+        function formatAdminTradeTypeLabel(type) {
+            const normalized = normalizeTradeType(type);
+            if (normalized === 'ins.stocks') return 'Ins.stocks';
+            if (normalized === 'ipo') return 'IPO';
+            if (normalized === 'otc') return 'OTC';
+            return 'Stock';
         }
 
         function isPendingTradeStatus(status) {
@@ -3784,13 +3812,14 @@
 
                 // Populate Modal
                 document.getElementById('otm_trade_id').value = tradeId;
-                document.getElementById('otm_title').innerText = (trade.type || '').toUpperCase() + " Operation";
+                document.getElementById('otm_title').innerText = formatAdminTradeTypeLabel(trade.type) + " Operation";
                 document.getElementById('otm_user_info').innerText = `${trade.users.mobile || trade.users.username || 'User'} (ID: ${trade.users.id})`;
                 document.getElementById('otm_prod_info').innerText = `${trade.name} (${trade.symbol})`;
                 document.getElementById('otm_req_qty').innerText = trade.requested_quantity || trade.quantity || 0;
 
-                const isIPO = trade.type?.toLowerCase() === 'ipo';
-                const shouldShowFinancials = ['ipo', 'otc'].includes((trade.type || '').toLowerCase());
+                const normalizedTradeType = normalizeTradeType(trade.type);
+                const isIPO = normalizedTradeType === 'ipo';
+                const shouldShowFinancials = isSubscriptionTradeType(normalizedTradeType);
                 const financials = getTradeFinancials(trade);
                 const reqAmtGroup = document.getElementById('otm_req_amt_group');
                 const reqQtyGroup = document.getElementById('otm_req_group');
@@ -4394,15 +4423,17 @@
             renderMessages(filtered);
 
             // Process Trades
-            const stocks = tradesData.filter(t => (t.type || '').toLowerCase() === 'stock');
-            const otcTrades = tradesData.filter(t => (t.type || '').toLowerCase() === 'otc');
-            const ipos = tradesData.filter(t => (t.type || '').toLowerCase() === 'ipo');
+            const stocks = tradesData.filter(t => isStockBoardTradeType(t.type));
+            const otcTrades = tradesData.filter(t => normalizeTradeType(t.type) === 'otc');
+            const ipos = tradesData.filter(t => normalizeTradeType(t.type) === 'ipo');
 
             if (stocks) {
                 const stockTbody = document.getElementById('stockList');
                 if (stockTbody) {
                     stockTbody.innerHTML = stocks.length ? stocks.map(t => {
                         const user = userMap[t.user_id] || {};
+                        const tradeTypeLabel = formatAdminTradeTypeLabel(t.type);
+                        const tradeTypeColor = normalizeTradeType(t.type) === 'ins.stocks' ? '#8b5cf6' : '#3b82f6';
                         return `
                     <tr>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
@@ -4410,23 +4441,24 @@
                                     <div style="font-size:0.75rem; color:#64748b;">${t.name}</div>
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${user.mobile || 'Unknown'}</td>
-                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9; text-transform:uppercase; font-size:0.75rem; font-weight:700; color:${t.type === 'stock' ? '#3b82f6' : '#8b5cf6'}">
-                                    <span data-i18n="th_type">${window.i18n('th_type', t.type)}</span>
+                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem; font-weight:700; color:${tradeTypeColor}">
+                                    <span data-i18n="th_type">${window.i18n('th_type', tradeTypeLabel)}</span>
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-                                    <div><span data-i18n="lbl_qty">${window.i18n('lbl_qty', 'Qty')}</span>: ${t.quantity}</div>
+                                    <div><span data-i18n="lbl_qty">${window.i18n('lbl_qty', 'Qty')}</span>: ${t.requested_quantity || t.quantity || 0}</div>
                                     <div><span data-i18n="lbl_price">${window.i18n('lbl_price', 'Price')}</span>: ₹${t.price}</div>
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-                                    <span style="padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.7rem; background:${t.status === 'Pending' ? '#fef3c7' : t.status === 'Settled' ? '#dcfce7' : '#fee2e2'}; color:${t.status === 'Pending' ? '#92400e' : t.status === 'Settled' ? '#166534' : '#991b1b'};" data-i18n="status_${(t.status || 'pending').toLowerCase()}">${window.i18n('status_' + (t.status || 'pending').toLowerCase(), t.status)}</span>
+                                    ${renderTradeStatusBadge(t.status)}
                                     ${t.image_url ? `<div style="margin-top:4px;"><a href="${t.image_url}" target="_blank" style="font-size:0.65rem; color:#3b82f6;" data-i18n="lbl_payment_proof">${window.i18n('lbl_payment_proof', 'Payment Proof')}</a></div>` : ''}
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
                                     <div class="row-actions">
-                                        ${t.status === 'Pending' ? `
-                                            <button class="vsl-btn green" onclick="updateTradeStatus(${t.id}, 'Settled')" style="padding:4px 8px; font-size:0.7rem;" data-i18n="lbl_approve">${window.i18n('lbl_approve', 'Approve')}</button>
-                                            <button class="vsl-btn" onclick="updateTradeStatus(${t.id}, 'Rejected')" style="padding:4px 8px; font-size:0.7rem; background:#fee2e2; color:#991b1b; border:none;" data-i18n="lbl_reject">${window.i18n('lbl_reject', 'Reject')}</button>
-                                        ` : ''}
+                                        ${isPendingTradeStatus(t.status) ? `
+                                            <button class="vsl-btn-primary" onclick="openTradeOperateModal(${t.id})" style="padding:4px 10px; font-size:0.7rem;" data-i18n="lbl_operate">${window.i18n('lbl_operate', 'Operate')}</button>
+                                        ` : `
+                                            <span style="font-size:0.7rem; color:#94a3b8;" data-i18n="lbl_processed">${window.i18n('lbl_processed', 'Processed')}</span>
+                                        `}
                                         <div class="action-menu">
                                             <button class="menu-trigger" onclick="toggleRowMenu(event, 'stock_${t.id}')">⋮</button>
                                             <div class="menu-dropdown" id="menu_stock_${t.id}">
@@ -6483,17 +6515,17 @@
                     const amount = finalQty * price;
 
                     // IPO & OTC Allocation Approval (Atomic Path)
-                    const typeLower = (trade.type || "").trim().toLowerCase();
-                    if (typeLower.includes('ipo') || typeLower.includes('otc')) {
-                        if (typeLower.includes('ipo') && !['super_admin', 'csr'].includes(auth.role)) {
+                    const normalizedTradeType = normalizeTradeType(trade.type);
+                    if (isSubscriptionTradeType(normalizedTradeType)) {
+                        if (normalizedTradeType === 'ipo' && !['super_admin', 'csr'].includes(auth.role)) {
                             throw new Error("Unauthorized: Only Admins or CSRs can approve IPO allocations.");
                         }
 
-                        console.log(`[TradeApproval] Authorizing ${typeLower.toUpperCase()} via Atomic RPC...`);
+                        console.log(`[TradeApproval] Authorizing ${formatAdminTradeTypeLabel(trade.type)} via Atomic RPC...`);
                         const res = await window.DB.approveSubscriptionAtomic(id, finalQty, auth.id, auth.role);
 
                         if (!res.success) {
-                            throw new Error(`Failed to approve ${typeLower.toUpperCase()}: ` + (res.error?.message || res.error || "Unknown Error"));
+                            throw new Error(`Failed to approve ${formatAdminTradeTypeLabel(trade.type)}: ` + (res.error?.message || res.error || "Unknown Error"));
                         }
                         console.log(`[TradeApproval] Atomic Success! New Balance: ${res.new_balance}`);
 
@@ -6534,7 +6566,7 @@
 
                 } else if (newStatus === 'Rejected') {
                     // --- WALLET STATE TRANSITION: STAGE 3 (ATOMIC IPO/OTC REJECTION) ---
-                    if (['otc', 'ipo'].includes((trade.type || "").toLowerCase())) {
+                    if (isSubscriptionTradeType(trade.type)) {
                         const res = await window.DB.rejectSubscriptionAtomic(id, auth.id, auth.role);
                         if (!res.success) {
                             const errStr = res.error?.message || res.error || "Unknown Error";
