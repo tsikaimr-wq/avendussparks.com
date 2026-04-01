@@ -2219,7 +2219,7 @@
             <!-- Page: Stock -->
             <div id="pageStock" class="vsl-page" style="display:none;">
                 <div class="section-card">
-                    <h3 data-i18n="stock_trading">Stock Trading</h3>
+                    <h3 id="stockPageTitle" data-i18n="stock_trading">Stock Trading</h3>
                     <div class="vsl-table-wrap">
                         <table class="vsl-table" style="width:100%; border-collapse:collapse;">
                             <thead>
@@ -2233,7 +2233,7 @@
                             </thead>
                             <tbody id="stockList">
                                 <tr>
-                                    <td colspan="5" style="text-align:center; padding:20px; color:#94a3b8;"
+                                    <td colspan="6" style="text-align:center; padding:20px; color:#94a3b8;"
                                         data-i18n="no_data">No records
                                         found.</td>
                                 </tr>
@@ -3269,6 +3269,9 @@
         let allSubmissions = [];
         let allCsrs = [];
         let adminProductTypeById = new Map();
+        let adminUserLookup = {};
+        let adminTradeRows = [];
+        let currentStockPageFilter = '';
         let kycStatusFilter = 'all';
 
 
@@ -3824,6 +3827,77 @@
             return `<span style="padding:3px 8px; border-radius:4px; font-weight:700; font-size:0.7rem; ${meta.style}" data-i18n="${meta.key}">${window.i18n(meta.key, meta.label)}</span>`;
         }
 
+        function renderStockTradeListView() {
+            const stockTbody = document.getElementById('stockList');
+            if (!stockTbody) return;
+
+            const stockPageTitle = document.getElementById('stockPageTitle');
+            const allTrades = Array.isArray(adminTradeRows) ? adminTradeRows : [];
+            const tradesForView = currentStockPageFilter === 'Pending'
+                ? allTrades.filter(t => isPendingTradeStatus(t.status))
+                : allTrades.filter(t => isStockBoardTradeType(t));
+
+            if (stockPageTitle) {
+                stockPageTitle.textContent = currentStockPageFilter === 'Pending'
+                    ? window.i18n('lbl_pending_trades', 'Pending Trades')
+                    : window.i18n('stock_trading', 'Stock Trading');
+            }
+
+            stockTbody.innerHTML = tradesForView.length ? tradesForView.map(t => {
+                const user = adminUserLookup[t.user_id] || {};
+                const tradeTypeLabel = formatAdminTradeTypeLabel(t);
+                const normalizedType = resolveAdminTradeType(t);
+                const tradeTypeColor = normalizedType === 'ins.stocks'
+                    ? '#8b5cf6'
+                    : normalizedType === 'ipo'
+                        ? '#f59e0b'
+                        : normalizedType === 'otc'
+                            ? '#06b6d4'
+                            : '#3b82f6';
+                const requestedQty = t.requested_quantity || t.quantity || 0;
+                const displayPrice = t.price ?? t.subscription_price ?? t.requested_price ?? 0;
+                const symbolLabel = t.symbol || t.name || tradeTypeLabel;
+                const nameLabel = t.name || t.symbol || tradeTypeLabel;
+                return `
+                    <tr>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                            <div style="font-weight:700;">${symbolLabel}</div>
+                            <div style="font-size:0.75rem; color:#64748b;">${nameLabel}</div>
+                        </td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${user.mobile || 'Unknown'}</td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem; font-weight:700; color:${tradeTypeColor}">
+                            <span data-i18n="th_type">${window.i18n('th_type', tradeTypeLabel)}</span>
+                        </td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                            <div><span data-i18n="lbl_qty">${window.i18n('lbl_qty', 'Qty')}</span>: ${requestedQty}</div>
+                            <div><span data-i18n="lbl_price">${window.i18n('lbl_price', 'Price')}</span>: ${formatTradeCurrencyLocked(displayPrice)}</div>
+                        </td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                            ${renderTradeStatusBadge(t.status)}
+                            ${t.image_url ? `<div style="margin-top:4px;"><a href="${t.image_url}" target="_blank" style="font-size:0.65rem; color:#3b82f6;" data-i18n="lbl_payment_proof">${window.i18n('lbl_payment_proof', 'Payment Proof')}</a></div>` : ''}
+                        </td>
+                        <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
+                            <div class="row-actions">
+                                ${isPendingTradeStatus(t.status) ? `
+                                    <button class="vsl-btn-primary" onclick="openTradeOperateModal(${t.id})" style="padding:4px 10px; font-size:0.7rem;" data-i18n="lbl_operate">${window.i18n('lbl_operate', 'Operate')}</button>
+                                ` : `
+                                    <span style="font-size:0.7rem; color:#94a3b8;" data-i18n="lbl_processed">${window.i18n('lbl_processed', 'Processed')}</span>
+                                `}
+                                <div class="action-menu">
+                                    <button class="menu-trigger" onclick="toggleRowMenu(event, 'stock_${t.id}')">⋮</button>
+                                    <div class="menu-dropdown" id="menu_stock_${t.id}">
+                                        <button class="btn-delete" onclick="deleteStockTrade(${t.id})" data-i18n="lbl_delete">${window.i18n('lbl_delete', 'Delete')}</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('') : `<tr><td colspan="6" style="padding:20px; text-align:center; color:#94a3b8;" data-i18n="no_data">${currentStockPageFilter === 'Pending' ? window.i18n('lbl_no_pending_trades', 'No pending trades found') : window.i18n('no_data', 'No stock trades found')}</td></tr>`;
+
+            lucide.createIcons();
+        }
+
         async function openTradeOperateModal(tradeId) {
             showLoader(true);
             const client = DB.getClient();
@@ -4191,6 +4265,8 @@
             allUsers.forEach(u => {
                 userMap[u.id] = { mobile: u.mobile, username: u.username, full_name: u.full_name };
             });
+            adminUserLookup = userMap;
+            adminTradeRows = Array.isArray(tradesData) ? tradesData : [];
 
             // Process Rewards
             const rewardList = document.getElementById('rewardList');
@@ -4449,29 +4525,48 @@
             renderMessages(filtered);
 
             // Process Trades
+            const pendingTrades = tradesData.filter(t => isPendingTradeStatus(t.status));
             const stocks = tradesData.filter(t => isStockBoardTradeType(t));
+            const stockViewTrades = currentStockPageFilter === 'Pending' ? pendingTrades : stocks;
             const otcTrades = tradesData.filter(t => resolveAdminTradeType(t) === 'otc');
             const ipos = tradesData.filter(t => resolveAdminTradeType(t) === 'ipo');
 
             if (stocks) {
                 const stockTbody = document.getElementById('stockList');
+                const stockPageTitle = document.getElementById('stockPageTitle');
                 if (stockTbody) {
-                    stockTbody.innerHTML = stocks.length ? stocks.map(t => {
+                    if (stockPageTitle) {
+                        stockPageTitle.textContent = currentStockPageFilter === 'Pending'
+                            ? window.i18n('lbl_pending_trades', 'Pending Trades')
+                            : window.i18n('stock_trading', 'Stock Trading');
+                    }
+                    stockTbody.innerHTML = stockViewTrades.length ? stockViewTrades.map(t => {
                         const user = userMap[t.user_id] || {};
                         const tradeTypeLabel = formatAdminTradeTypeLabel(t);
-                        const tradeTypeColor = resolveAdminTradeType(t) === 'ins.stocks' ? '#8b5cf6' : '#3b82f6';
+                        const normalizedType = resolveAdminTradeType(t);
+                        const tradeTypeColor = normalizedType === 'ins.stocks'
+                            ? '#8b5cf6'
+                            : normalizedType === 'ipo'
+                                ? '#f59e0b'
+                                : normalizedType === 'otc'
+                                    ? '#06b6d4'
+                                    : '#3b82f6';
+                        const requestedQty = t.requested_quantity || t.quantity || 0;
+                        const displayPrice = t.price ?? t.subscription_price ?? t.requested_price ?? 0;
+                        const symbolLabel = t.symbol || t.name || tradeTypeLabel;
+                        const nameLabel = t.name || t.symbol || tradeTypeLabel;
                         return `
                     <tr>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-                                    <div style="font-weight:700;">${t.symbol}</div>
-                                    <div style="font-size:0.75rem; color:#64748b;">${t.name}</div>
+                                    <div style="font-weight:700;">${symbolLabel}</div>
+                                    <div style="font-size:0.75rem; color:#64748b;">${nameLabel}</div>
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">${user.mobile || 'Unknown'}</td>
                                  <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem; font-weight:700; color:${tradeTypeColor}">
                                     <span data-i18n="th_type">${window.i18n('th_type', tradeTypeLabel)}</span>
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-                                    <div><span data-i18n="lbl_qty">${window.i18n('lbl_qty', 'Qty')}</span>: ${t.requested_quantity || t.quantity || 0}</div>
+                                    <div><span data-i18n="lbl_qty">${window.i18n('lbl_qty', 'Qty')}</span>: ${requestedQty}</div>
                                     <div><span data-i18n="lbl_price">${window.i18n('lbl_price', 'Price')}</span>: ₹${t.price}</div>
                                 </td>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
@@ -4495,7 +4590,7 @@
                                 </td>
                             </tr>
                     `;
-                    }).join('') : `<tr><td colspan="6" style="padding:20px; text-align:center; color:#94a3b8;" data-i18n="no_data">${window.i18n('no_data', 'No stock trades found')}</td></tr>`;
+                    }).join('') : `<tr><td colspan="6" style="padding:20px; text-align:center; color:#94a3b8;" data-i18n="no_data">${currentStockPageFilter === 'Pending' ? window.i18n('lbl_no_pending_trades', 'No pending trades found') : window.i18n('no_data', 'No stock trades found')}</td></tr>`;
                 }
             }
 
@@ -5055,6 +5150,8 @@
                 return switchPage('home');
             }
 
+            currentStockPageFilter = p === 'stock' ? (filter || '') : '';
+
             if (!openTabs.includes(p)) openTabs.push(p);
 
             // Hide all pages
@@ -5079,6 +5176,8 @@
 
             const btn = document.getElementById('btn_' + p);
             if (btn) btn.classList.add('active');
+
+            if (p === 'stock') renderStockTradeListView();
 
             renderTabs();
             lucide.createIcons();
