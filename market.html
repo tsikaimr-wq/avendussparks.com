@@ -4486,31 +4486,31 @@
         const stockData = {
             gainers: {
                 NSE: [
-                    { t: 'NIRAJISPAT', n: 'Niraj Ispat Industries Limited', p: '₹7.41', c: '+20.00%', color: '#10b981' },
-                    { t: 'PRESSTONIC', n: 'Presstonic Engineering Limited', p: '₹0.20', c: '+19.82%', color: '#3b82f6' },
-                    { t: 'IZMO', n: 'IZMO Limited', p: '₹1.45', c: '+18.48%', color: '#06b6d4' },
-                    { t: 'APOLLOPIPE', n: 'Apollo Pipes Limited', p: '₹3.40', c: '+18.06%', color: '#10b981' },
-                    { t: 'LOYALTEX', n: 'Loyal Textile Mills Limited', p: '₹4.79', c: '+17.41%', color: '#6366f1' },
-                    { t: 'KCEIL', n: 'Kay Cee Energy & Infra Limited', p: '₹5.80', c: '+16.87%', color: '#f59e0b' }
+                    { t: 'NIRAJISPAT', q: 'NIRAJISPAT.NS', n: 'Niraj Ispat Industries Limited', p: '₹7.41', c: '+20.00%', color: '#10b981' },
+                    { t: 'PRESSTONIC', q: 'PRESSTONIC.NS', n: 'Presstonic Engineering Limited', p: '₹0.20', c: '+19.82%', color: '#3b82f6' },
+                    { t: 'IZMO', q: 'IZMO.NS', n: 'IZMO Limited', p: '₹1.45', c: '+18.48%', color: '#06b6d4' },
+                    { t: 'APOLLOPIPE', q: 'APOLLOPIPE.NS', n: 'Apollo Pipes Limited', p: '₹3.40', c: '+18.06%', color: '#10b981' },
+                    { t: 'LOYALTEX', q: 'LOYALTEX.NS', n: 'Loyal Textile Mills Limited', p: '₹4.79', c: '+17.41%', color: '#6366f1' },
+                    { t: 'KCEIL', q: 'KCEIL-SM.NS', n: 'Kay Cee Energy & Infra Limited', p: '₹5.80', c: '+16.87%', color: '#f59e0b' }
                 ],
                 BSE: [
-                    { t: 'HDFCBANK', n: 'HDFC Bank Ltd', p: '₹540.20', c: '+2.45%', color: '#3b82f6' },
-                    { t: 'RELIANCE', n: 'Reliance Industries Ltd', p: '₹985.40', c: '+1.80%', color: '#6366f1' },
-                    { t: 'TCS', n: 'Tata Consultancy Services', p: '₹120.15', c: '+1.20%', color: '#ec4899' }
+                    { t: 'HDFCBANK', q: 'HDFCBANK.BO', n: 'HDFC Bank Ltd', p: '₹540.20', c: '+2.45%', color: '#3b82f6' },
+                    { t: 'RELIANCE', q: 'RELIANCE.BO', n: 'Reliance Industries Ltd', p: '₹985.40', c: '+1.80%', color: '#6366f1' },
+                    { t: 'TCS', q: 'TCS.BO', n: 'Tata Consultancy Services', p: '₹120.15', c: '+1.20%', color: '#ec4899' }
                 ]
             },
             losers: {
                 NSE: [
-                    { t: 'DHARIWAL', n: 'Dhariwalcorp Limited', p: '₹0.70', c: '-79.61%', color: '#ef4444' },
-                    { t: 'CLEDUCATE', n: 'CL Educate Limited', p: '₹0.08', c: '-20.00%', color: '#f43f5e' },
+                    { t: 'DHARIWAL', q: 'DHARIWAL.NS', n: 'Dhariwalcorp Limited', p: '₹0.70', c: '-79.61%', color: '#ef4444' },
+                    { t: 'CLEDUCATE', q: 'CLEDUCATE.NS', n: 'CL Educate Limited', p: '₹0.08', c: '-20.00%', color: '#f43f5e' },
                     { t: 'KRISHFL_RE', n: 'KRISHIVAL FOODS LIMITED', p: '₹0.20', c: '-19.86%', color: '#ef4444' },
-                    { t: 'UCL', n: 'Ushanti Colour Chem Limited', p: '₹0.55', c: '-12.42%', color: '#ec4899' },
-                    { t: 'MAHESHWARI', n: 'Maheshwari Logistics Limited', p: '₹0.27', c: '-12.37%', color: '#f43f5e' },
-                    { t: 'VISHWAS', n: 'Vishwas Agri Seeds Limited', p: '₹0.10', c: '-10.88%', color: '#8b5cf6' }
+                    { t: 'UCL', q: 'UCL.NS', n: 'Ushanti Colour Chem Limited', p: '₹0.55', c: '-12.42%', color: '#ec4899' },
+                    { t: 'MAHESHWARI', q: 'MAHESHWARI.NS', n: 'Maheshwari Logistics Limited', p: '₹0.27', c: '-12.37%', color: '#f43f5e' },
+                    { t: 'VISHWAS', q: 'VISHWAS.NS', n: 'Vishwas Agri Seeds Limited', p: '₹0.10', c: '-10.88%', color: '#8b5cf6' }
                 ],
                 BSE: [
-                    { t: 'ZOMATO', n: 'Zomato Limited', p: '₹5.40', c: '-4.20%', color: '#f43f5e' },
-                    { t: 'PAYTM', n: 'One 97 Communications', p: '₹2.10', c: '-3.15%', color: '#0ea5e9' }
+                    { t: 'ZOMATO', q: 'ETERNAL.NS', n: 'Zomato Limited', p: '₹5.40', c: '-4.20%', color: '#f43f5e' },
+                    { t: 'PAYTM', q: 'PAYTM.NS', n: 'One 97 Communications', p: '₹2.10', c: '-3.15%', color: '#0ea5e9' }
                 ]
             }
         };
@@ -4541,6 +4541,18 @@
             const numeric = Number(value);
             if (!Number.isFinite(numeric) || numeric <= 0) return '--';
             return `₹${numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        function parseMoverSeedPrice(value) {
+            const cleaned = String(value ?? '').replace(/[^\d.+-]/g, '').trim();
+            const numeric = Number(cleaned);
+            return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+        }
+
+        function parseMoverSeedChange(value) {
+            const cleaned = String(value ?? '').replace(/%/g, '').replace(/[^\d.+-]/g, '').trim();
+            const numeric = Number(cleaned);
+            return Number.isFinite(numeric) ? numeric : null;
         }
 
         function isIndiaRegularMarketOpenNow() {
@@ -4631,13 +4643,13 @@
             const seedRows = (stockData[type]?.[exchange] || []).map(item => ({
                 t: item.t,
                 n: item.n,
-                p: '--',
-                c: marketClosed ? noQuote.text : '--',
-                changeClass: type === 'gainers' ? 'green' : 'red',
-                changeColor: '#94a3b8',
-                metaText: marketClosed ? noQuote.text : '',
+                p: item.p || '--',
+                c: item.c || (marketClosed ? noQuote.text : '--'),
+                changeClass: String(item.c || '').trim().startsWith('-') ? 'red' : 'green',
+                changeColor: String(item.c || '').trim() ? (String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981') : '#94a3b8',
+                metaText: marketClosed ? noQuote.text : 'Refreshing live quote...',
                 metaColor: '#94a3b8',
-                detailColor: type === 'gainers' ? '#10b981' : '#ef4444'
+                detailColor: String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981'
             }));
             renderMoverRows(type, exchange, seedRows);
             if (shouldPauseBackgroundMarketApi()) return;
@@ -4645,31 +4657,37 @@
             const liveRows = [];
             for (const item of (stockData[type]?.[exchange] || [])) {
                 let payload = null;
+                const requestSymbol = String(item.q || item.t || '').trim();
                 if (window.DB && typeof window.DB.getMarketPrice === 'function') {
                     try {
-                        payload = await window.DB.getMarketPrice(item.t, item.n);
+                        payload = await window.DB.getMarketPrice(requestSymbol, item.n);
                     } catch (_) { }
                 }
 
                 const price = Number(payload?.price);
                 const changePercent = Number(payload?.changePercent);
-                const hasChange = Number.isFinite(changePercent);
-                const isPositive = hasChange ? changePercent >= 0 : type === 'gainers';
+                const fallbackPrice = parseMoverSeedPrice(item.p);
+                const fallbackChangePercent = parseMoverSeedChange(item.c);
+                const effectivePrice = Number.isFinite(price) && price > 0 ? price : fallbackPrice;
+                const effectiveChangePercent = Number.isFinite(changePercent) ? changePercent : fallbackChangePercent;
+                const hasChange = Number.isFinite(effectiveChangePercent);
+                const isPositive = hasChange ? effectiveChangePercent >= 0 : type === 'gainers';
                 const noQuote = getMoverNoQuoteState();
                 const changeText = hasChange
-                    ? `${isPositive ? '+' : ''}${changePercent.toFixed(2)}%`
-                    : noQuote.text;
+                    ? `${isPositive ? '+' : ''}${effectiveChangePercent.toFixed(2)}%`
+                    : (item.c || noQuote.text);
                 const quoteMeta = describeMarketPayload(payload);
+                const usingSnapshot = !(Number.isFinite(price) && price > 0);
 
                 liveRows.push({
                     t: item.t,
                     n: item.n,
-                    p: formatMoverPrice(price),
+                    p: formatMoverPrice(effectivePrice),
                     c: changeText,
-                    sortValue: hasChange ? changePercent : (type === 'gainers' ? -9999 : 9999),
+                    sortValue: hasChange ? effectiveChangePercent : (type === 'gainers' ? -9999 : 9999),
                     changeClass: hasChange ? (isPositive ? 'green' : 'red') : '',
                     changeColor: hasChange ? (isPositive ? '#10b981' : '#ef4444') : '#94a3b8',
-                    metaText: quoteMeta.text,
+                    metaText: usingSnapshot ? (quoteMeta.text ? `Snapshot | ${quoteMeta.text}` : 'Snapshot') : quoteMeta.text,
                     metaColor: quoteMeta.color,
                     detailColor: isPositive ? '#10b981' : '#ef4444'
                 });

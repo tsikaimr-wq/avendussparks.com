@@ -255,16 +255,16 @@ window.DB = {
         const raw = String(exchangeHint || '').trim();
         const upper = raw.toUpperCase();
         if (!upper) return '';
-        if (upper === 'NSI' || upper.includes('NSE')) return 'NSE';
-        if (upper === 'BSE' || upper === 'BOM' || upper.includes('BOMBAY')) return 'BSE';
+        if (upper === 'NSI' || upper === 'NS' || /\bNSE\b/.test(upper)) return 'NSE';
+        if (upper === 'BSE' || upper === 'BOM' || /\bBSE\b/.test(upper) || upper.includes('BOMBAY')) return 'BSE';
         if (upper.includes('NYSE ARCA') || upper.includes('NYSEARCA') || upper === 'ARCA' || upper === 'PCX') return 'NYSE ARCA';
         if (upper.includes('NASDAQ')) return 'NASDAQ';
         if (upper.includes('NYSE')) return 'NYSE';
         if (upper.includes('AMEX') || upper === 'ASE') return 'AMEX';
         if (upper.includes('CBOE') || upper.includes('BATS')) return 'CBOE';
         if (upper === 'US' || upper === 'USA' || upper.includes('UNITED STATES')) return 'US';
-        if (upper.startsWith('KRX')) return 'KRX';
-        return upper;
+        if (upper === 'KRX' || upper.startsWith('KRX:') || upper.includes('KOREA EXCHANGE')) return 'KRX';
+        return '';
     },
 
     inferMarketExchange(symbol, exchangeHint = '') {
