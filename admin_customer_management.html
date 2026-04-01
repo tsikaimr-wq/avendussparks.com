@@ -3268,6 +3268,7 @@
         let allMsgs = [];
         let allSubmissions = [];
         let allCsrs = [];
+        let adminProductTypeById = new Map();
         let kycStatusFilter = 'all';
 
 
@@ -3522,7 +3523,7 @@
             }
 
             // 2. Fetch other modules (Filtered if CSR)
-            const [ks, w, d, tStock, tOtc, tIpo, l, m, r] = await Promise.all([
+            const [ks, w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
                 fetchSafe('kyc_submissions', (isCsr ? client.from('kyc_submissions').select('*').in('user_id', userIds) : client.from('kyc_submissions').select('id,user_id,id_front_url,id_back_url,status,id_type,selfie_url'))),
                 fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)),
                 fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)),
@@ -3531,8 +3532,11 @@
                 fetchSafe('trades_ipo', (isCsr ? client.from('trades').select('*').ilike('type', 'ipo').in('user_id', userIds) : client.from('trades').select('*').ilike('type', 'ipo')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })),
                 window.DB.getAllLoans(),
                 fetchSafe('messages', (isCsr ? client.from('messages').select('*').in('user_id', userIds) : client.from('messages').select('*')).order('created_at', { ascending: false }).limit(100)),
-                fetchSafe('rewards', (isCsr ? client.from('rewards').select('*').in('user_id', userIds) : client.from('rewards').select('*')).order('created_at', { ascending: false }).limit(100))
+                fetchSafe('rewards', (isCsr ? client.from('rewards').select('*').in('user_id', userIds) : client.from('rewards').select('*')).order('created_at', { ascending: false }).limit(100)),
+                fetchSafe('products_meta', client.from('products').select('id, product_type').or('is_deleted.is.null,is_deleted.eq.false'))
             ]);
+
+            adminProductTypeById = new Map((productsMeta || []).map(product => [String(product.id), product.product_type || '']));
 
             // Combine trades
             const allTrades = [...(tStock || []), ...(tOtc || []), ...(tIpo || [])];
@@ -3650,18 +3654,40 @@
             return raw;
         }
 
+        function resolveAdminTradeType(value) {
+            const trade = value && typeof value === 'object' ? value : null;
+            const normalized = normalizeTradeType(trade ? trade.type : value);
+            if (!trade) return normalized;
+
+            const productId = trade.product_id === undefined || trade.product_id === null
+                ? ''
+                : String(trade.product_id);
+            const hintedType = normalizeTradeType(
+                trade.product_type
+                || trade.products?.product_type
+                || adminProductTypeById.get(productId)
+                || ''
+            );
+
+            if (hintedType === 'ins.stocks' && normalized !== 'otc') {
+                return 'ins.stocks';
+            }
+
+            return normalized;
+        }
+
         function isStockBoardTradeType(type) {
-            const normalized = normalizeTradeType(type);
+            const normalized = resolveAdminTradeType(type);
             return normalized === 'stock' || normalized === 'ins.stocks';
         }
 
         function isSubscriptionTradeType(type) {
-            const normalized = normalizeTradeType(type);
+            const normalized = resolveAdminTradeType(type);
             return normalized === 'ipo' || normalized === 'otc' || normalized === 'ins.stocks';
         }
 
         function formatAdminTradeTypeLabel(type) {
-            const normalized = normalizeTradeType(type);
+            const normalized = resolveAdminTradeType(type);
             if (normalized === 'ins.stocks') return 'Ins.stocks';
             if (normalized === 'ipo') return 'IPO';
             if (normalized === 'otc') return 'OTC';
@@ -3812,12 +3838,12 @@
 
                 // Populate Modal
                 document.getElementById('otm_trade_id').value = tradeId;
-                document.getElementById('otm_title').innerText = formatAdminTradeTypeLabel(trade.type) + " Operation";
+                document.getElementById('otm_title').innerText = formatAdminTradeTypeLabel(trade) + " Operation";
                 document.getElementById('otm_user_info').innerText = `${trade.users.mobile || trade.users.username || 'User'} (ID: ${trade.users.id})`;
                 document.getElementById('otm_prod_info').innerText = `${trade.name} (${trade.symbol})`;
                 document.getElementById('otm_req_qty').innerText = trade.requested_quantity || trade.quantity || 0;
 
-                const normalizedTradeType = normalizeTradeType(trade.type);
+                const normalizedTradeType = resolveAdminTradeType(trade);
                 const isIPO = normalizedTradeType === 'ipo';
                 const shouldShowFinancials = isSubscriptionTradeType(normalizedTradeType);
                 const financials = getTradeFinancials(trade);
@@ -4423,17 +4449,17 @@
             renderMessages(filtered);
 
             // Process Trades
-            const stocks = tradesData.filter(t => isStockBoardTradeType(t.type));
-            const otcTrades = tradesData.filter(t => normalizeTradeType(t.type) === 'otc');
-            const ipos = tradesData.filter(t => normalizeTradeType(t.type) === 'ipo');
+            const stocks = tradesData.filter(t => isStockBoardTradeType(t));
+            const otcTrades = tradesData.filter(t => resolveAdminTradeType(t) === 'otc');
+            const ipos = tradesData.filter(t => resolveAdminTradeType(t) === 'ipo');
 
             if (stocks) {
                 const stockTbody = document.getElementById('stockList');
                 if (stockTbody) {
                     stockTbody.innerHTML = stocks.length ? stocks.map(t => {
                         const user = userMap[t.user_id] || {};
-                        const tradeTypeLabel = formatAdminTradeTypeLabel(t.type);
-                        const tradeTypeColor = normalizeTradeType(t.type) === 'ins.stocks' ? '#8b5cf6' : '#3b82f6';
+                        const tradeTypeLabel = formatAdminTradeTypeLabel(t);
+                        const tradeTypeColor = resolveAdminTradeType(t) === 'ins.stocks' ? '#8b5cf6' : '#3b82f6';
                         return `
                     <tr>
                                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
@@ -6515,17 +6541,17 @@
                     const amount = finalQty * price;
 
                     // IPO & OTC Allocation Approval (Atomic Path)
-                    const normalizedTradeType = normalizeTradeType(trade.type);
+                    const normalizedTradeType = resolveAdminTradeType(trade);
                     if (isSubscriptionTradeType(normalizedTradeType)) {
                         if (normalizedTradeType === 'ipo' && !['super_admin', 'csr'].includes(auth.role)) {
                             throw new Error("Unauthorized: Only Admins or CSRs can approve IPO allocations.");
                         }
 
-                        console.log(`[TradeApproval] Authorizing ${formatAdminTradeTypeLabel(trade.type)} via Atomic RPC...`);
+                        console.log(`[TradeApproval] Authorizing ${formatAdminTradeTypeLabel(trade)} via Atomic RPC...`);
                         const res = await window.DB.approveSubscriptionAtomic(id, finalQty, auth.id, auth.role);
 
                         if (!res.success) {
-                            throw new Error(`Failed to approve ${formatAdminTradeTypeLabel(trade.type)}: ` + (res.error?.message || res.error || "Unknown Error"));
+                            throw new Error(`Failed to approve ${formatAdminTradeTypeLabel(trade)}: ` + (res.error?.message || res.error || "Unknown Error"));
                         }
                         console.log(`[TradeApproval] Atomic Success! New Balance: ${res.new_balance}`);
 

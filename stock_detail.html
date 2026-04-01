@@ -474,6 +474,18 @@
             return normalizeProductType(value) === 'INS.STOCKS';
         }
 
+        function normalizeTradeExecutionType(value) {
+            const normalized = normalizeProductType(value);
+            if (normalized === 'INS.STOCKS') return 'ins.stocks';
+            if (normalized === 'IPO') return 'ipo';
+            if (normalized === 'OTC') return 'otc';
+            return 'stock';
+        }
+
+        function isSubscriptionExecutionType(value) {
+            return ['ipo', 'otc', 'ins.stocks'].includes(normalizeTradeExecutionType(value));
+        }
+
         function resolveMarketProduct(rawSymbol, productId = null) {
             const base = String(rawSymbol || '').toUpperCase();
             const compact = base
@@ -699,10 +711,10 @@
             const headerTitle = document.getElementById('bpHeaderTitle');
             const qtyRow = document.querySelector('.bp-row'); // The row containing Quantity label and input
 
-            if (currentProductType === 'OTC' || currentProductType === 'IPO') {
+            if (currentProductType === 'OTC' || currentProductType === 'IPO' || isInsStockType(currentProductType)) {
                 if (buyBtn) {
                     buyBtn.innerText = 'SUBSCRIBE NOW';
-                    buyBtn.dataset.type = currentProductType;
+                    buyBtn.dataset.type = isInsStockType(currentProductType) ? 'Ins.stocks' : currentProductType;
                 }
                 if (headerTitle) headerTitle.innerText = `Subscribe to ${currentProductType}`;
 
@@ -1487,8 +1499,8 @@
                         return;
                     }
 
-                    const normalizedType = (window.TradePricing?.normalizeTradeType?.(type) || String(type || 'stock').toLowerCase());
-                    const isSubscription = ['otc', 'ipo'].includes(normalizedType);
+                    const normalizedType = normalizeTradeExecutionType(type);
+                    const isSubscription = isSubscriptionExecutionType(normalizedType);
                     const tradeStatus = isSubscription ? 'Pending' : 'Holding';
                     const orderStatus = isSubscription ? (normalizedType === 'ipo' ? 'PENDING' : 'OPEN') : 'FILLED';
 
@@ -1496,12 +1508,12 @@
                         user_id: freshUser.id,
                         symbol: symbol,
                         name: stockName,
-                        type: normalizedType,
+                        type: normalizedType === 'ins.stocks' ? 'Ins.stocks' : normalizedType,
                         product_id: currentProductId,
                         quantity: calc.qty,
                         requested_quantity: calc.qty,
                         price: calc.price,
-                        total_amount: calc.total,
+                        total_amount: isSubscription ? calc.baseTotal : calc.total,
                         tax_amount: calc.tax,
                         txn_charge: calc.txnCharge,
                         status: tradeStatus,
@@ -1525,7 +1537,7 @@
 
                         closeOrderConfirm();
                         if (isSubscription) {
-                            openPurchaseModal(type, symbol, stockName, calc.qty, calc.total);
+                            openPurchaseModal(normalizedType, symbol, stockName, calc.qty, calc.total);
                         } else {
                             showModal('success', 'Order Successful', `Successfully purchased ${calc.qty} shares of ${stockName}.`, () => {
                                 syncBalance();

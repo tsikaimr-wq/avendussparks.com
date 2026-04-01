@@ -4805,6 +4805,18 @@
             return normalizeProductType(value) === 'INS.STOCKS';
         }
 
+        function normalizeTradeExecutionType(value) {
+            const normalized = normalizeProductType(value);
+            if (normalized === 'INS.STOCKS') return 'ins.stocks';
+            if (normalized === 'IPO') return 'ipo';
+            if (normalized === 'OTC') return 'otc';
+            return 'stock';
+        }
+
+        function isSubscriptionExecutionType(value) {
+            return ['ipo', 'otc', 'ins.stocks'].includes(normalizeTradeExecutionType(value));
+        }
+
         function resolveMarketProduct(rawSymbol, productId = null) {
             const base = String(rawSymbol || '').toUpperCase();
             const compact = base
@@ -6065,9 +6077,9 @@
             const totalInvestLabel = document.querySelector('.buy-total-row .total-label');
 
             if (buyBtn) {
-                if (normalizedType === 'OTC' || normalizedType === 'IPO') {
+                if (normalizedType === 'OTC' || normalizedType === 'IPO' || isInsStockDetail) {
                     buyBtn.innerText = 'Subscribe';
-                    buyBtn.dataset.type = normalizedType;
+                    buyBtn.dataset.type = isInsStockDetail ? 'Ins.stocks' : normalizedType;
                     buyBtn.dataset.productId = id || (product ? product.id : productIdOrSymbol);
                     currentProductId = buyBtn.dataset.productId;
                     buyBtn.dataset.minInvest = minInvest;
@@ -6079,6 +6091,11 @@
                         if (sliderSec) sliderSec.style.display = 'none';
                         if (buyPriceLabel) buyPriceLabel.innerText = 'Subscription Price';
                         if (totalInvestLabel) totalInvestLabel.innerText = 'Total Subscription Amount';
+                    } else if (isInsStockDetail) {
+                        if (qtySec) qtySec.style.display = 'block';
+                        if (sliderSec) sliderSec.style.display = 'block';
+                        if (buyPriceLabel) buyPriceLabel.innerText = 'Allocation Price';
+                        if (totalInvestLabel) totalInvestLabel.innerText = 'Total Allocation Amount';
                     } else {
                         // OTC UI Rules: Show Qty/Slider, standard labels
                         if (qtySec) qtySec.style.display = 'block';
@@ -6098,10 +6115,10 @@
                 }
             }
 
-            // Hide Your Holdings for OTC/IPO
+            // Hide holdings until allocations are approved for subscription-style products.
             const holdingsSection = document.getElementById('detailHoldingsSection');
             if (holdingsSection) {
-                if (normalizedType === 'OTC' || normalizedType === 'IPO') {
+                if (normalizedType === 'OTC' || normalizedType === 'IPO' || isInsStockDetail) {
                     holdingsSection.style.display = 'none';
                 } else {
                     holdingsSection.style.display = 'block';
@@ -7921,7 +7938,7 @@
 
         async function handleTradeAction() {
             const btn = document.getElementById('buyBtn');
-            const type = (btn.dataset.type || 'stock').toLowerCase();
+            const type = normalizeTradeExecutionType(btn.dataset.type || 'stock');
             const symbol = document.getElementById('detSymbol').innerText;
             const stockName = document.getElementById('detName').innerText;
             const exchangeText = document.getElementById('detExchange').innerText;
@@ -7991,9 +8008,9 @@
             if (ocTot) ocTot.innerText = '₹' + calc.total.toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
             if (ocBtn) {
-                ocBtn.innerText = `CONFIRM ${type.toUpperCase()} ORDER`;
+                ocBtn.innerText = `CONFIRM ${(type === 'ins.stocks' ? 'INS.STOCKS' : type.toUpperCase())} ORDER`;
                 // Pass event to prevent default
-                ocBtn.onclick = (e) => executeConfirmedTrade(e, type.toLowerCase(), symbol, stockName, calc);
+                ocBtn.onclick = (e) => executeConfirmedTrade(e, type, symbol, stockName, calc);
             }
 
             const modal = document.getElementById('orderConfirmModal');
@@ -8021,7 +8038,7 @@
         }
 
         async function resolveExecutionCalc(type, symbol, stockName, calc) {
-            const normalizedType = String(type || '').toLowerCase();
+            const normalizedType = normalizeTradeExecutionType(type);
             const quantity = Math.max(0, parseFloat(calc?.qty) || 0);
             const product = resolveDetailTradeProduct(symbol);
             const BUY_TAX_RATE = window.TradePricing?.BUY_TAX_RATE ?? 0.0012;
@@ -8042,7 +8059,7 @@
                 };
             };
 
-            if (normalizedType === 'otc' || normalizedType === 'ipo') {
+            if (isSubscriptionExecutionType(normalizedType)) {
                 const backendPrice = toFiniteNumber(product?.subscription_price)
                     ?? toFiniteNumber(product?.price)
                     ?? toFiniteNumber(calc?.price);
@@ -8086,6 +8103,7 @@
             const originalText = btn.innerText;
             btn.innerText = "EXECUTING...";
             btn.disabled = true;
+            const normalizedType = normalizeTradeExecutionType(type);
 
             try {
                 // 1. Force Refresh User Data to get latest Balance
@@ -8111,7 +8129,7 @@
                 const currentBalance = parseFloat(freshUser.balance || 0);
                 const isInsufficient = executionCalc.total > currentBalance;
 
-                if (type.toLowerCase() !== 'ipo' && isInsufficient) {
+                if (normalizedType !== 'ipo' && isInsufficient) {
                     showIBModal(`Your available balance is ₹${currentBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}, but this trade requires ₹${executionCalc.total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}. Please deposit funds to continue.`);
                     closeOrderConfirm();
                     btn.innerText = originalText;
@@ -8124,7 +8142,7 @@
                 let orderStatus = 'OPEN';
 
                 // IPO Refactor: Subscription Logic (Direct Reversion)
-                if (type.toLowerCase() === 'ipo') {
+                if (normalizedType === 'ipo') {
                     const tradeData = {
                         user_id: freshUser.id,
                         product_id: currentProductId,
@@ -8167,10 +8185,10 @@
                     return;
                 }
 
-                if (type.toLowerCase() === 'otc') {
+                if (normalizedType === 'otc' || normalizedType === 'ins.stocks') {
                     tradeStatus = 'Pending';
                     orderStatus = 'OPEN';
-                } else if (type.toLowerCase() === 'stock') {
+                } else if (normalizedType === 'stock') {
                     tradeStatus = 'Holding';
                     orderStatus = 'FILLED';
                 }
@@ -8180,11 +8198,11 @@
                     product_id: currentProductId,
                     symbol: symbol,
                     name: stockName,
-                    type: type.toLowerCase(),
+                    type: normalizedType === 'ins.stocks' ? 'Ins.stocks' : normalizedType,
                     quantity: executionCalc.qty,
                     requested_quantity: executionCalc.qty,
                     price: executionCalc.price,
-                    total_amount: ['otc', 'ipo'].includes(type.toLowerCase()) ? executionCalc.baseTotal : executionCalc.total,
+                    total_amount: isSubscriptionExecutionType(normalizedType) ? executionCalc.baseTotal : executionCalc.total,
                     base_total_amount: executionCalc.baseTotal,
                     tax_amount: executionCalc.tax,
                     txn_charge: executionCalc.txnCharge,
@@ -8194,7 +8212,7 @@
                 };
 
                 let result;
-                if (['otc', 'ipo'].includes(type.toLowerCase())) {
+                if (isSubscriptionExecutionType(normalizedType)) {
                     // --- ATOMIC STAGE 1 (IPO/OTC) ---
                     // This handles trade creation AND fund freeze in a single database transaction
                     result = await window.DB.submitSubscriptionAtomic(tradeData);
@@ -8212,7 +8230,7 @@
 
                 if (result.success) {
                     // OTC must debit immediately on subscription click.
-                    if (type.toLowerCase() === 'otc') {
+                    if (normalizedType === 'otc') {
                         const expectedDebit = parseFloat(executionCalc.baseTotal || 0);
                         const expectedFrozen = expectedDebit;
                         const expectedFeeCharge = parseFloat((executionCalc.tax || 0) + (executionCalc.txnCharge || 0));
@@ -8305,7 +8323,7 @@
                     }
 
                     // --- WALLET STATE TRANSITION (NON-SUBSCRIPTION) ---
-                    if (!['otc', 'ipo'].includes(type.toLowerCase()) && (tradeStatus === 'Holding' || isInsufficient)) {
+                    if (!isSubscriptionExecutionType(normalizedType) && (tradeStatus === 'Holding' || isInsufficient)) {
                         const deduction = isInsufficient ? currentBalance : executionCalc.total;
                         const newBalance = currentBalance - deduction;
                         const currentInvested = parseFloat(freshUser.invested) || 0;
@@ -8344,7 +8362,7 @@
                         });
                     } else {
                         // For OTC/IPO that isn't insufficient but just needs a nicer approval modal
-                        openPurchaseModal(type, symbol, stockName, executionCalc.qty, executionCalc.total);
+                        openPurchaseModal(normalizedType, symbol, stockName, executionCalc.qty, executionCalc.total);
                     }
                 } else {
                     const errStr = result.error?.message || result.error || "Unknown error";
