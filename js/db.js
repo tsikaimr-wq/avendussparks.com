@@ -2631,13 +2631,36 @@ window.DB = {
     // --- TRADING ---
     async submitTrade(tradeData) {
         const client = this.getClient();
-        const { data, error } = await client
-            .from('trades')
-            .insert([tradeData])
-            .select()
-            .single();
+        if (!client) return { success: false, error: { message: 'Database client not initialized' } };
 
-        return { success: !error, data, error };
+        let insertData = { ...tradeData };
+        const removedColumns = new Set();
+
+        for (let attempt = 0; attempt < 6; attempt++) {
+            const { data, error } = await client
+                .from('trades')
+                .insert([insertData])
+                .select()
+                .single();
+
+            if (!error) {
+                if (removedColumns.size) {
+                    console.warn('submitTrade schema fallback removed columns:', Array.from(removedColumns));
+                }
+                return { success: true, data, error: null };
+            }
+
+            const missingColumn = this.getSchemaMissingColumn(error, 'trades');
+            if (!missingColumn || removedColumns.has(missingColumn) || !(missingColumn in insertData)) {
+                return { success: false, data, error };
+            }
+
+            removedColumns.add(missingColumn);
+            delete insertData[missingColumn];
+            console.warn(`submitTrade retrying without missing column: ${missingColumn}`);
+        }
+
+        return { success: false, error: { message: 'Trade submission failed after schema fallback retries.' } };
     },
 
     async getTradesByUserId(userId) {
