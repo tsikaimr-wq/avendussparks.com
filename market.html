@@ -11,7 +11,7 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js?v=1.0.5"></script>
-    <script src="js/db.js?v=1.0.16"></script>
+    <script src="js/db.js?v=1.0.17"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.12"></script>
     <script src="js/trading.js?v=1.0.7"></script>
@@ -4503,7 +4503,7 @@
                 NSE: [
                     { t: 'DHARIWAL', q: 'DHARIWAL.NS', n: 'Dhariwalcorp Limited', p: '₹0.70', c: '-79.61%', color: '#ef4444' },
                     { t: 'CLEDUCATE', q: 'CLEDUCATE.NS', n: 'CL Educate Limited', p: '₹0.08', c: '-20.00%', color: '#f43f5e' },
-                    { t: 'KRISHFL_RE', n: 'KRISHIVAL FOODS LIMITED', p: '₹0.20', c: '-19.86%', color: '#ef4444' },
+                    { t: 'KRISHFL_RE', q: 'KRISHIVAL.NS', n: 'KRISHIVAL FOODS LIMITED', p: '₹0.20', c: '-19.86%', color: '#ef4444' },
                     { t: 'UCL', q: 'UCL.NS', n: 'Ushanti Colour Chem Limited', p: '₹0.55', c: '-12.42%', color: '#ec4899' },
                     { t: 'MAHESHWARI', q: 'MAHESHWARI.NS', n: 'Maheshwari Logistics Limited', p: '₹0.27', c: '-12.37%', color: '#f43f5e' },
                     { t: 'VISHWAS', q: 'VISHWAS.NS', n: 'Vishwas Agri Seeds Limited', p: '₹0.10', c: '-10.88%', color: '#8b5cf6' }
@@ -4633,14 +4633,42 @@
             lucide.createIcons();
         }
 
+        function buildMoverRow(type, item, payload = null) {
+            const fallbackPrice = parseMoverSeedPrice(item.p);
+            const fallbackChangePercent = parseMoverSeedChange(item.c);
+            const price = Number(payload?.price);
+            const changePercent = Number(payload?.changePercent);
+            const effectivePrice = Number.isFinite(price) && price > 0 ? price : fallbackPrice;
+            const effectiveChangePercent = Number.isFinite(changePercent) ? changePercent : fallbackChangePercent;
+            const hasChange = Number.isFinite(effectiveChangePercent);
+            const isPositive = hasChange ? effectiveChangePercent >= 0 : !String(item.c || '').trim().startsWith('-');
+            const noQuote = getMoverNoQuoteState();
+            const quoteMeta = describeMarketPayload(payload);
+            const usingSnapshot = !(Number.isFinite(price) && price > 0);
+
+            return {
+                t: item.t,
+                n: item.n,
+                p: formatMoverPrice(effectivePrice),
+                c: hasChange ? `${isPositive ? '+' : ''}${effectiveChangePercent.toFixed(2)}%` : (item.c || noQuote.text),
+                sortValue: hasChange ? effectiveChangePercent : (type === 'gainers' ? -9999 : 9999),
+                changeClass: hasChange ? (isPositive ? 'green' : 'red') : '',
+                changeColor: hasChange ? (isPositive ? '#10b981' : '#ef4444') : '#94a3b8',
+                metaText: usingSnapshot ? (quoteMeta.text ? `Snapshot | ${quoteMeta.text}` : 'Snapshot') : quoteMeta.text,
+                metaColor: '#94a3b8',
+                detailColor: isPositive ? '#10b981' : '#ef4444'
+            };
+        }
+
         async function refreshTrackedMovers(type, exchange) {
             const state = moverListState[type];
             if (!state) return;
             state.exchange = exchange;
             const requestId = ++state.requestId;
+            const items = stockData[type]?.[exchange] || [];
             const noQuote = getMoverNoQuoteState();
             const marketClosed = noQuote.text === 'Closed';
-            const seedRows = (stockData[type]?.[exchange] || []).map(item => ({
+            const seedRows = items.map(item => ({
                 t: item.t,
                 n: item.n,
                 p: item.p || '--',
@@ -4654,8 +4682,7 @@
             renderMoverRows(type, exchange, seedRows);
             if (shouldPauseBackgroundMarketApi()) return;
 
-            const liveRows = [];
-            for (const item of (stockData[type]?.[exchange] || [])) {
+            const liveRows = await Promise.all(items.map(async (item) => {
                 let payload = null;
                 const requestSymbol = String(item.q || item.t || '').trim();
                 if (window.DB && typeof window.DB.getMarketPrice === 'function') {
@@ -4663,35 +4690,8 @@
                         payload = await window.DB.getMarketPrice(requestSymbol, item.n);
                     } catch (_) { }
                 }
-
-                const price = Number(payload?.price);
-                const changePercent = Number(payload?.changePercent);
-                const fallbackPrice = parseMoverSeedPrice(item.p);
-                const fallbackChangePercent = parseMoverSeedChange(item.c);
-                const effectivePrice = Number.isFinite(price) && price > 0 ? price : fallbackPrice;
-                const effectiveChangePercent = Number.isFinite(changePercent) ? changePercent : fallbackChangePercent;
-                const hasChange = Number.isFinite(effectiveChangePercent);
-                const isPositive = hasChange ? effectiveChangePercent >= 0 : type === 'gainers';
-                const noQuote = getMoverNoQuoteState();
-                const changeText = hasChange
-                    ? `${isPositive ? '+' : ''}${effectiveChangePercent.toFixed(2)}%`
-                    : (item.c || noQuote.text);
-                const quoteMeta = describeMarketPayload(payload);
-                const usingSnapshot = !(Number.isFinite(price) && price > 0);
-
-                liveRows.push({
-                    t: item.t,
-                    n: item.n,
-                    p: formatMoverPrice(effectivePrice),
-                    c: changeText,
-                    sortValue: hasChange ? effectiveChangePercent : (type === 'gainers' ? -9999 : 9999),
-                    changeClass: hasChange ? (isPositive ? 'green' : 'red') : '',
-                    changeColor: hasChange ? (isPositive ? '#10b981' : '#ef4444') : '#94a3b8',
-                    metaText: usingSnapshot ? (quoteMeta.text ? `Snapshot | ${quoteMeta.text}` : 'Snapshot') : quoteMeta.text,
-                    metaColor: quoteMeta.color,
-                    detailColor: isPositive ? '#10b981' : '#ef4444'
-                });
-            }
+                return buildMoverRow(type, item, payload);
+            }));
 
             if (state.requestId !== requestId || state.exchange !== exchange || shouldPauseBackgroundMarketApi()) return;
 

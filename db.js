@@ -54,6 +54,7 @@ window.DB = {
     MARKET_CACHE_DISABLED_TTL_MS: MARKET_CACHE_DISABLED_TTL_MS,
     MARKET_SYMBOL_ALIAS: {
         KCEIL: 'KCEIL-SM.NS',
+        KRISHFLRE: 'KRISHIVAL.NS',
         ZOMATO: 'ETERNAL.NS',
         NSEP: 'NSEP',
         INNOVATORGROWTH100POWERBUFFER: 'NSEP',
@@ -62,6 +63,8 @@ window.DB = {
     MARKET_SEARCH_ALIAS_RESULTS: {
         KCEIL: [{ symbol: 'KCEIL-SM.NS', name: 'KAY CEE ENERGY & INFRA L', exch: 'NSE', type: 'stock', score: 250000 }],
         KCEILNS: [{ symbol: 'KCEIL-SM.NS', name: 'KAY CEE ENERGY & INFRA L', exch: 'NSE', type: 'stock', score: 250000 }],
+        KRISHFLRE: [{ symbol: 'KRISHIVAL.NS', name: 'KRISHIVAL FOODS LIMITED', exch: 'NSE', type: 'stock', score: 250000 }],
+        KRISHIVALFOODSLIMITED: [{ symbol: 'KRISHIVAL.NS', name: 'KRISHIVAL FOODS LIMITED', exch: 'NSE', type: 'stock', score: 250000 }],
         ZOMATO: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
         ZOMATONS: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
         ZOMATOLIMITED: [{ symbol: 'ETERNAL.NS', name: 'Eternal Limited', exch: 'NSE', type: 'stock', score: 250000 }],
