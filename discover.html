@@ -4783,6 +4783,10 @@
             return ['ipo', 'otc', 'ins.stocks'].includes(normalizeTradeExecutionType(value));
         }
 
+        function isApprovalRequiredTradeType(value) {
+            return normalizeTradeExecutionType(value) === 'ipo';
+        }
+
         function resolveMarketProduct(rawSymbol, productId = null) {
             const base = String(rawSymbol || '').toUpperCase();
             const compact = base
@@ -5015,6 +5019,36 @@
                 interval: intervalOptions.interval,
                 allowTradingViewFallback: false
             });
+        }
+
+        function resetDetailChartSurface() {
+            if (yahooUpdateTimer) clearInterval(yahooUpdateTimer);
+            if (yahooResizeObserver) {
+                try { yahooResizeObserver.disconnect(); } catch (_) { }
+                yahooResizeObserver = null;
+            }
+            if (currentYahooChart && typeof currentYahooChart.remove === 'function') {
+                try { currentYahooChart.remove(); } catch (_) { }
+            }
+            currentYahooChart = null;
+            currentDetailChartContext = null;
+            const tvContainer = document.getElementById('tradingview_det');
+            if (tvContainer) tvContainer.innerHTML = '';
+        }
+
+        function setDetailQuickTradeLayout(enabled = false) {
+            const detailView = document.getElementById('stockDetailView');
+            const detailLeft = detailView?.querySelector('.detail-left');
+            const detailRight = detailView?.querySelector('.detail-right');
+            if (!detailView || !detailLeft || !detailRight) return;
+
+            detailView.dataset.quickTradeOnly = enabled ? 'true' : 'false';
+            detailView.style.gridTemplateColumns = enabled ? 'minmax(0, 560px)' : '';
+            detailView.style.justifyContent = enabled ? 'center' : '';
+            detailLeft.style.display = enabled ? 'none' : '';
+            detailRight.style.marginTop = enabled ? '0' : '1.5rem';
+            detailRight.style.maxWidth = enabled ? '560px' : '';
+            detailRight.style.width = enabled ? '100%' : '';
         }
 
         function updateDetailChartInterval(interval, btn) {
@@ -5894,7 +5928,7 @@
             }
         }
 
-        async function openStockDetail(productIdOrSymbol, name, exchange, price, change, color, type = 'stock', push = true, id = null, minInvest = 0) {
+        async function openStockDetail(productIdOrSymbol, name, exchange, price, change, color, type = 'stock', push = true, id = null, minInvest = 0, options = {}) {
             // 1. Resolve Product from ID or Symbol
             const rawLookup = String(id || productIdOrSymbol || '').trim();
             const isUuidLookup = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(rawLookup);
@@ -5923,12 +5957,15 @@
             if (product) {
                 normalizedType = normalizeProductType(product.type || normalizedType);
             }
+            const quickTradeOnly = !!(options === true || (options && options.quickTradeOnly));
+            const useQuickTradeLayout = quickTradeOnly && (normalizedType === 'OTC' || isInsStockType(normalizedType));
 
             document.getElementById('mainDashboard').style.display = 'none';
             document.getElementById('discoverView').style.display = 'none';
             document.querySelector('.header').style.display = 'none';
             document.getElementById('stockDetailHeader').style.display = 'flex';
             document.getElementById('stockDetailView').style.display = 'grid';
+            setDetailQuickTradeLayout(useQuickTradeLayout);
 
             // Start Live Updates
             if (detailLiveTimer) clearInterval(detailLiveTimer);
@@ -5989,7 +6026,7 @@
 
             if (buyBtn) {
                 if (normalizedType === 'OTC' || normalizedType === 'IPO' || isInsStockDetail) {
-                    buyBtn.innerText = 'Subscribe';
+                    buyBtn.innerText = useQuickTradeLayout ? 'Buy Now' : 'Subscribe';
                     buyBtn.dataset.type = isInsStockDetail ? 'Ins.stocks' : normalizedType;
                     buyBtn.dataset.productId = id || (product ? product.id : productIdOrSymbol);
                     currentProductId = buyBtn.dataset.productId;
@@ -6007,14 +6044,14 @@
                     } else if (isInsStockDetail) {
                         if (qtySec) qtySec.style.display = 'block';
                         if (sliderSec) sliderSec.style.display = 'block';
-                        if (buyPriceLabel) buyPriceLabel.innerText = 'Allocation Price';
-                        if (totalInvestLabel) totalInvestLabel.innerText = 'Total Allocation Amount';
+                        if (buyPriceLabel) buyPriceLabel.innerText = useQuickTradeLayout ? 'Buy Price' : 'Allocation Price';
+                        if (totalInvestLabel) totalInvestLabel.innerText = useQuickTradeLayout ? 'Total Investment' : 'Total Allocation Amount';
                     } else {
                         // OTC UI Rules: Show Qty/Slider, standard labels
                         if (qtySec) qtySec.style.display = 'block';
                         if (sliderSec) sliderSec.style.display = 'block';
-                        if (buyPriceLabel) buyPriceLabel.innerText = 'Subscription Price';
-                        if (totalInvestLabel) totalInvestLabel.innerText = 'Total Est. Investment';
+                        if (buyPriceLabel) buyPriceLabel.innerText = useQuickTradeLayout ? 'Buy Price' : 'Subscription Price';
+                        if (totalInvestLabel) totalInvestLabel.innerText = useQuickTradeLayout ? 'Total Investment' : 'Total Est. Investment';
                     }
                 } else {
                     // INS.STOCKS / Standard STOCK UI Rules
@@ -6031,7 +6068,7 @@
             // Hide holdings until allocations are approved for subscription-style products.
             const holdingsSection = document.getElementById('detailHoldingsSection');
             if (holdingsSection) {
-                if (normalizedType === 'OTC' || normalizedType === 'IPO' || isInsStockDetail) {
+                if (normalizedType === 'IPO') {
                     holdingsSection.style.display = 'none';
                 } else {
                     holdingsSection.style.display = 'block';
@@ -6116,14 +6153,18 @@
                 mode: 'lightweight',
             });
 
-            currentDetailChartContext = {
-                yahooSymbol: toYahooSymbol(symbol || preferredMarketSymbol, detailExchange),
-                originalSymbol: symbol || preferredMarketSymbol,
-                exchangeHint: detailExchange,
-                seriesType: isIndexLike ? 'line' : 'candlestick'
-            };
-            syncDetailChartIntervalButtons();
-            loadCurrentDetailChart().catch(e => console.error("detail chart load failed:", e));
+            if (useQuickTradeLayout) {
+                resetDetailChartSurface();
+            } else {
+                currentDetailChartContext = {
+                    yahooSymbol: toYahooSymbol(symbol || preferredMarketSymbol, detailExchange),
+                    originalSymbol: symbol || preferredMarketSymbol,
+                    exchangeHint: detailExchange,
+                    seriesType: isIndexLike ? 'line' : 'candlestick'
+                };
+                syncDetailChartIntervalButtons();
+                loadCurrentDetailChart().catch(e => console.error("detail chart load failed:", e));
+            }
 
             window.scrollTo(0, 0);
             renderDetailHoldings();
@@ -6148,6 +6189,13 @@
                 }
             }
             await fetchLivePrice(symbol || preferredMarketSymbol, name || '');
+            if (useQuickTradeLayout) {
+                const qtyInput = document.getElementById('buyQuantityInput');
+                if (qtyInput) {
+                    qtyInput.focus();
+                    qtyInput.select?.();
+                }
+            }
         }
 
         let currentYahooChart = null;
@@ -7767,6 +7815,7 @@
 
         async function resolveExecutionCalc(type, symbol, stockName, calc) {
             const normalizedType = normalizeTradeExecutionType(type);
+            const requiresApproval = isApprovalRequiredTradeType(normalizedType);
             const quantity = Math.max(0, parseFloat(calc?.qty) || 0);
             const product = resolveDetailTradeProduct(symbol);
             const BUY_TAX_RATE = window.TradePricing?.BUY_TAX_RATE ?? 0.0012;
@@ -7854,10 +7903,7 @@
                 }
 
                 // 3. Submit Trade
-                let tradeStatus = 'Holding';
-                if (isSubscriptionExecutionType(normalizedType)) tradeStatus = 'Pending';
-
-                // Requirement: status = 'Pending', order_status = 'PENDING'
+                let tradeStatus = requiresApproval ? 'AWAITING_APPROVAL' : 'Holding';
                 const isIPO = normalizedType === 'ipo';
                 const tradeData = {
                     user_id: freshUser.id,
@@ -7868,13 +7914,13 @@
                     quantity: executionCalc.qty,
                     requested_quantity: executionCalc.qty,
                     price: executionCalc.price,
-                    total_amount: isSubscriptionExecutionType(normalizedType) ? executionCalc.baseTotal : executionCalc.total,
+                    total_amount: requiresApproval ? executionCalc.baseTotal : executionCalc.total,
                     base_total_amount: executionCalc.baseTotal,
                     tax_amount: executionCalc.tax,
                     txn_charge: executionCalc.txnCharge,
                     admin_note: isInsufficient ? 'OUTSTANDING:' + currentBalance : '',
-                    status: 'AWAITING_APPROVAL',
-                    order_status: isIPO ? 'PENDING' : 'OPEN'
+                    status: tradeStatus,
+                    order_status: requiresApproval ? 'PENDING' : 'FILLED'
                 };
 
                 // --- RUNTIME DEBUG LOGGING ---
@@ -7882,7 +7928,7 @@
 
                 let result;
                 try {
-                    if (isSubscriptionExecutionType(normalizedType)) {
+                    if (requiresApproval) {
                         result = await window.DB.submitSubscriptionAtomic(tradeData);
                     } else {
                         result = await window.DB.submitTrade(tradeData);
@@ -7910,7 +7956,7 @@
 
                 if (result.success) {
                     // OTC must debit immediately on subscription click.
-                    if (normalizedType === 'otc') {
+                    if (normalizedType === 'otc' && requiresApproval) {
                         const expectedDebit = parseFloat(executionCalc.baseTotal || 0);
                         const expectedFrozen = expectedDebit;
                         const expectedFeeCharge = parseFloat((executionCalc.tax || 0) + (executionCalc.txnCharge || 0));
@@ -8002,7 +8048,7 @@
                     }
 
                     // --- WALLET STATE TRANSITION (NON-SUBSCRIPTION) ---
-                    if (!isSubscriptionExecutionType(normalizedType) && (tradeStatus === 'Holding' || isInsufficient)) {
+                    if (!requiresApproval && (tradeStatus === 'Holding' || isInsufficient)) {
                         const deduction = isInsufficient ? currentBalance : executionCalc.total;
                         const newBalance = currentBalance - deduction;
                         const currentInvested = parseFloat(freshUser.invested) || 0;
@@ -8033,7 +8079,7 @@
                                 switchTransactionTab(null, 'pendingPayment');
                             });
                         });
-                    } else {
+                    } else if (requiresApproval) {
                         // For OTC/IPO that isn't insufficient but just needs a nicer approval modal
                         openPurchaseModal(normalizedType, symbol, stockName, executionCalc.qty, executionCalc.total);
                     }
@@ -11100,7 +11146,7 @@
             color: #fff;
         }
     </style>
-    <script src="js/trading.js?v=1.0.7"></script>
+    <script src="js/trading.js?v=1.0.8"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             if (typeof openStockDetailFromRoute === 'function' && await openStockDetailFromRoute(false, { requireReady: true })) {

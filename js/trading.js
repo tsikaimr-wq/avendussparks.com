@@ -922,7 +922,7 @@ window.openIPOSubscribe = function (product) {
 /**
  * Opens the subscription/detail view for OTC/IPO products
  */
-window.openOTCSubscribeModal = function (productId) {
+window.openOTCSubscribeModal = function (productId, extraData = {}) {
     if (!productId) return;
     console.log("Opening Subscription/Trade for:", productId);
 
@@ -940,6 +940,7 @@ window.openOTCSubscribeModal = function (productId) {
 
     // NEW: Handle IPO directly if on discover page to prevent redirection
     const pType = (product.type || 'stock').trim().toUpperCase();
+    const isDirectTradeOnly = pType === 'OTC' || pType === 'INS.STOCKS' || pType === 'INS_STOCKS';
     if (pType === 'IPO') {
         if (typeof window.openIpoConfirmation === "function") {
             window.openIpoConfirmation(product);
@@ -965,7 +966,19 @@ window.openOTCSubscribeModal = function (productId) {
 
         const color = (product.change >= 0 || (displayType !== 'INS.STOCKS' && displayType !== 'STOCK')) ? '#10b981' : '#ef4444';
 
-        window.openStockDetail(product.market_symbol || product.symbol, product.name, exchange, priceStr, changeStr, color, displayType, true, product.id, product.minInvest);
+        window.openStockDetail(
+            product.market_symbol || product.symbol,
+            product.name,
+            exchange,
+            priceStr,
+            changeStr,
+            color,
+            displayType,
+            true,
+            product.id,
+            product.minInvest,
+            { quickTradeOnly: isDirectTradeOnly }
+        );
     } else {
         console.error("openStockDetail not defined on this page");
     }
