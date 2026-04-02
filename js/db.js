@@ -1203,6 +1203,88 @@ window.DB = {
         return { success: true, authId: data?.user?.id };
     },
 
+    getAuthRedirectBase() {
+        const origin = String(window?.location?.origin || '').trim().replace(/\/$/, '');
+        if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return origin;
+        return 'https://avendussparks.com';
+    },
+
+    async sendPasswordResetEmail(email) {
+        const client = this.getClient();
+        if (!client) return { success: false, message: 'Database connecting...' };
+
+        const normalizedEmail = String(email || '').trim().toLowerCase();
+        if (!normalizedEmail) {
+            return { success: false, message: 'Please enter a valid email address.' };
+        }
+
+        const redirectTo = `${this.getAuthRedirectBase()}/login.html?mode=reset`;
+        const { error } = await client.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
+
+        if (error) {
+            console.error('Supabase password reset email error:', error);
+            return { success: false, message: error.message };
+        }
+
+        return { success: true };
+    },
+
+    async completeEmailPasswordReset(newPassword) {
+        const client = this.getClient();
+        if (!client) return { success: false, message: 'Database connecting...' };
+
+        const normalizedPassword = String(newPassword || '').trim();
+        if (normalizedPassword.length < 6) {
+            return { success: false, message: 'Password must be at least 6 characters.' };
+        }
+
+        const { data: sessionData, error: sessionError } = await client.auth.getSession();
+        const sessionUser = sessionData?.session?.user || null;
+        if (sessionError || !sessionUser) {
+            return { success: false, message: 'Password reset session has expired. Please use the latest email link again.' };
+        }
+
+        const { error: authError } = await client.auth.updateUser({ password: normalizedPassword });
+        if (authError) {
+            console.error('Supabase password update error:', authError);
+            return { success: false, message: authError.message };
+        }
+
+        let profile = null;
+        let updateError = null;
+        const normalizedEmail = String(sessionUser.email || '').trim().toLowerCase();
+
+        if (sessionUser.id) {
+            const response = await client
+                .from('users')
+                .update({ password: normalizedPassword })
+                .eq('auth_id', sessionUser.id)
+                .select('*')
+                .maybeSingle();
+            if (!response.error && response.data) profile = response.data;
+            else updateError = response.error || updateError;
+        }
+
+        if (!profile && normalizedEmail) {
+            const response = await client
+                .from('users')
+                .update({ password: normalizedPassword })
+                .eq('email', normalizedEmail)
+                .select('*')
+                .maybeSingle();
+            if (!response.error && response.data) profile = response.data;
+            else updateError = response.error || updateError;
+        }
+
+        if (!profile) {
+            console.error('Profile password sync failed after email reset:', updateError);
+            return { success: false, message: 'Password email verified, but profile sync failed. Please contact support.' };
+        }
+
+        localStorage.setItem(this.CURRENT_USER_KEY, JSON.stringify(profile));
+        return { success: true, user: profile };
+    },
+
     // --- MOBILE OTP (Real Supabase Auth) ---
     async sendMobileOtp(mobile) {
         const client = this.getClient();
