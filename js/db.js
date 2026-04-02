@@ -212,6 +212,7 @@ window.DB = {
         if (!Number.isFinite(changePercent) && Number.isFinite(prevClose) && prevClose !== 0 && Number.isFinite(change)) {
             changePercent = (change / prevClose) * 100;
         }
+        if (Number.isFinite(changePercent) && changePercent > 20) changePercent = 20;
         if (!Number.isFinite(changePercent)) changePercent = null;
 
         return {
@@ -3362,6 +3363,12 @@ window.DB = {
         if (!client) return { success: false, message: 'Database not connected' };
         const adminAuth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
         const normalizedProductData = { ...productData };
+        const profitPercent = Number(normalizedProductData.est_profit_percent ?? normalizedProductData.est_profit ?? normalizedProductData.profit);
+        if (Number.isFinite(profitPercent) && profitPercent > 20) {
+            normalizedProductData.est_profit_percent = 20;
+            if (normalizedProductData.est_profit !== undefined) normalizedProductData.est_profit = 20;
+            if (normalizedProductData.profit !== undefined) normalizedProductData.profit = 20;
+        }
         const isNewProduct = !normalizedProductData.id || normalizedProductData.id.toString().startsWith('local_');
         const adminId = Number(adminAuth?.id);
 

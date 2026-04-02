@@ -11,9 +11,9 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="js/supabase.js?v=1.0.5"></script>
-    <script src="js/db.js?v=1.0.17"></script>
+    <script src="js/db.js?v=1.0.18"></script>
     <script src="js/user.js?v=1.0.4"></script>
-    <script src="js/market_data.js?v=1.0.13"></script>
+    <script src="js/market_data.js?v=1.0.14"></script>
     <script src="js/trading.js?v=1.0.7"></script>
     <script src="script.js?v=20260326a"></script>
 
@@ -4850,6 +4850,12 @@
             return `${sign}${num.toFixed(digits)}%`;
         }
 
+        function capPositivePercentValue(value, max = 20) {
+            const num = toFiniteNumber(value);
+            if (num === null) return null;
+            return num > max ? max : num;
+        }
+
         function getConfiguredProfitRawValue(source) {
             if (!source) return null;
             return source.est_profit_percent
@@ -4868,9 +4874,10 @@
 
             const numeric = Number(rawText.replace(/,/g, '').replace('%', '').trim());
             if (Number.isFinite(numeric)) {
+                const cappedNumeric = capPositivePercentValue(numeric);
                 return {
-                    value: numeric,
-                    text: `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%`,
+                    value: cappedNumeric,
+                    text: `${cappedNumeric >= 0 ? '+' : ''}${cappedNumeric.toFixed(2)}%`,
                     hasValue: true
                 };
             }
@@ -7680,9 +7687,10 @@
 
                 const isPreListingIPO = isIPO ? isPreListingIpoTrade(s) : false;
                 const isListedIPO = isIPO && !isPreListingIPO;
-                const liveProfitPct = ((isOTC || isListedIPO) && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
+                const liveProfitPctRaw = ((isOTC || isListedIPO) && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
                     ? ((marketPrice - subscriptionPrice) / subscriptionPrice) * 100
                     : null;
+                const liveProfitPct = capPositivePercentValue(liveProfitPctRaw);
                 const ipoProfitInfo = getConfiguredProfitInfo(s);
                 const profitRange = isIPO
                     ? (isPreListingIPO
@@ -7692,7 +7700,7 @@
                             : '--'))
                     : (liveProfitPct !== null
                         ? `${liveProfitPct >= 0 ? '+' : ''}${liveProfitPct.toFixed(2)}%`
-                        : "20% - 60%");
+                        : "Up to 20%");
                 const profitColor = isIPO
                     ? (isPreListingIPO
                         ? (ipoProfitInfo.hasValue ? (ipoProfitInfo.value >= 0 ? '#10b981' : '#ef4444') : '#94a3b8')

@@ -171,9 +171,10 @@
 
             const numeric = Number(rawText.replace(/,/g, '').replace('%', '').trim());
             if (Number.isFinite(numeric)) {
+                const capped = numeric > 20 ? 20 : numeric;
                 return {
-                    value: numeric,
-                    text: `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%`
+                    value: capped,
+                    text: `${capped >= 0 ? '+' : ''}${capped.toFixed(2)}%`
                 };
             }
 

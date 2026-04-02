@@ -14,7 +14,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260326a"></script>
+    <script src="db.js?v=20260402b"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -6978,7 +6978,7 @@
                     if (priceInput) priceInput.value = data.price || '';
                     if (subPriceInput) subPriceInput.value = data.price || '';
                     if (profitInput && data.changePercent !== undefined) {
-                        profitInput.value = Math.abs(parseFloat(data.changePercent)) || 10;
+                        profitInput.value = capAdminPositivePercent(Math.abs(parseFloat(data.changePercent)) || 10) || 10;
                     }
                 } else {
                     // No Yahoo data provided (manual switch?) -> Clear manual entries to enforce market-only
@@ -7021,6 +7021,12 @@
             if (!cleaned) return null;
             const parsed = Number(cleaned);
             return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        function capAdminPositivePercent(value, max = 20) {
+            const parsed = parseAdminNumericValue(value);
+            if (!Number.isFinite(parsed)) return null;
+            return parsed > max ? max : parsed;
         }
 
         function hasAdminPositivePrice(value) {
@@ -7304,7 +7310,7 @@
                 if (quote && quote.status !== 'error' && hasAdminPositivePrice(quote.price)) {
                     enriched.price = Number(quote.price);
                     enriched.change = parseAdminNumericValue(quote.change);
-                    enriched.changePercent = parseAdminNumericValue(quote.changePercent);
+                    enriched.changePercent = capAdminPositivePercent(quote.changePercent);
                     enriched.previousClose = parseAdminNumericValue(quote.previousClose ?? quote.prevClose);
                 }
             } catch (error) {
@@ -7319,7 +7325,7 @@
             const symbol = product?.symbol || product?.market_symbol || '';
             const exchange = product?.exch || product?.exchange || 'NSE';
             const buyPrice = parseAdminNumericValue(product?.subscription_price ?? product?.price);
-            const profit = parseAdminNumericValue(product?.changePercent ?? product?.est_profit_percent ?? product?.profit);
+            const profit = capAdminPositivePercent(product?.changePercent ?? product?.est_profit_percent ?? product?.profit);
 
             if (document.getElementById('p_data_source')) {
                 document.getElementById('p_data_source').value = 'manual';
@@ -7525,7 +7531,7 @@
 
                 if (profitInput) {
                     if (Number.isFinite(liveChangePercent)) {
-                        profitInput.value = Math.abs(liveChangePercent);
+                        profitInput.value = capAdminPositivePercent(Math.abs(liveChangePercent));
                     } else if (!profitInput.value && !isManualMode) {
                         profitInput.value = '';
                     }
@@ -7884,7 +7890,8 @@
             document.getElementById('p_start').value = data.start_date || '';
             document.getElementById('p_end').value = data.end_date || '';
             document.getElementById('p_allotment').value = (data.allotment_date || data.end_date || '').toString().substring(0, 10);
-            document.getElementById('p_profit').value = data.est_profit_percent ?? data.est_profit ?? data.profit ?? '';
+            const turboProfit = capAdminPositivePercent(data.est_profit_percent ?? data.est_profit ?? data.profit);
+            document.getElementById('p_profit').value = Number.isFinite(turboProfit) ? String(turboProfit) : '';
             document.getElementById('p_desc').value = data.description || '';
             if (document.getElementById('p_min') && data.min_invest) {
                 document.getElementById('p_min').value = data.min_invest;
@@ -8140,7 +8147,8 @@
             document.getElementById('p_premium').checked = !!p.is_premium;
             document.getElementById('p_desc').value = p.description || '';
             if (document.getElementById('p_profit')) {
-                document.getElementById('p_profit').value = p.est_profit_percent || p.profit || '';
+                const savedProfit = capAdminPositivePercent(p.est_profit_percent ?? p.profit);
+                document.getElementById('p_profit').value = Number.isFinite(savedProfit) ? String(savedProfit) : '';
             }
             if (document.getElementById('p_market_symbol')) {
                 document.getElementById('p_market_symbol').value = p.market_symbol || '';
@@ -8206,7 +8214,7 @@
                 available_shares: parseFloat(document.getElementById('p_shares').value) || 1000000,
                 is_premium: document.getElementById('p_premium').checked,
                 description: document.getElementById('p_desc').value,
-                est_profit_percent: parseFloat(document.getElementById('p_profit').value) || 0,
+                est_profit_percent: capAdminPositivePercent(document.getElementById('p_profit').value) || 0,
                 product_type: document.getElementById('p_product_type') ? document.getElementById('p_product_type').value : 'IPO',
                 exchange: document.getElementById('p_exchange') ? document.getElementById('p_exchange').value : 'NSE',
                 status: 'Active',
@@ -8219,6 +8227,12 @@
             if (!p.market_symbol || p.market_symbol.length < 3) {
                 showAlert('warning', "Invalid Market Symbol! Must be at least 3 characters.");
                 return;
+            }
+            if (Number.isFinite(p.est_profit_percent) && p.est_profit_percent > 20) {
+                p.est_profit_percent = 20;
+            }
+            if (document.getElementById('p_profit') && Number.isFinite(p.est_profit_percent)) {
+                document.getElementById('p_profit').value = String(p.est_profit_percent);
             }
             if (p.product_type === 'Ins.stocks') {
                 if (productSource === 'manual') {
@@ -9191,7 +9205,7 @@
                 </div>
                 <div class="fm-group" style="grid-column: span 2;">
                     <label data-i18n="lbl_estimated_profit">Estimated Profit (%)</label>
-                    <input type="number" id="p_profit" class="vsl-input" placeholder="e.g. 25">
+                    <input type="number" id="p_profit" class="vsl-input" placeholder="e.g. 20">
                 </div>
             </div>
             <div style="margin-top:2rem; display:flex; justify-content:flex-end; gap:1rem;">

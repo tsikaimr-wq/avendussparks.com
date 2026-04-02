@@ -16,8 +16,8 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="stocktv_config.js?v=1.0.2"></script>
-    <script src="db.js?v=20260326a"></script>
-    <script src="market_data.js?v=20260402a"></script>
+    <script src="db.js?v=20260402b"></script>
+    <script src="market_data.js?v=20260402b"></script>
     <style>
         /* Using global styles from styles.css */
 
@@ -4856,6 +4856,12 @@
             return `${sign}${num.toFixed(digits)}%`;
         }
 
+        function capPositivePercentValue(value, max = 20) {
+            const num = toFiniteNumber(value);
+            if (num === null) return null;
+            return num > max ? max : num;
+        }
+
         function getConfiguredProfitRawValue(source) {
             if (!source) return null;
             return source.est_profit_percent
@@ -4874,9 +4880,10 @@
 
             const numeric = Number(rawText.replace(/,/g, '').replace('%', '').trim());
             if (Number.isFinite(numeric)) {
+                const cappedNumeric = capPositivePercentValue(numeric);
                 return {
-                    value: numeric,
-                    text: `${numeric >= 0 ? '+' : ''}${numeric.toFixed(2)}%`,
+                    value: cappedNumeric,
+                    text: `${cappedNumeric >= 0 ? '+' : ''}${cappedNumeric.toFixed(2)}%`,
                     hasValue: true
                 };
             }
@@ -7252,9 +7259,10 @@
 
                     const isPreListingIPO = isIPO ? isPreListingIpoTrade(s) : false;
                     const isListedIPO = isIPO && !isPreListingIPO;
-                    const liveProfitPct = ((isOTC || isListedIPO) && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
+                    const liveProfitPctRaw = ((isOTC || isListedIPO) && subscriptionPrice > 0 && Number.isFinite(marketPrice) && marketPrice > 0)
                         ? ((marketPrice - subscriptionPrice) / subscriptionPrice) * 100
                         : null;
+                    const liveProfitPct = capPositivePercentValue(liveProfitPctRaw);
                     const ipoProfitInfo = getConfiguredProfitInfo(s);
                     const profitRange = isIPO
                         ? (isPreListingIPO
@@ -7264,7 +7272,7 @@
                                 : '--'))
                         : (liveProfitPct !== null
                             ? `${liveProfitPct >= 0 ? '+' : ''}${liveProfitPct.toFixed(2)}%`
-                            : "20% - 60%");
+                            : "Up to 20%");
                     const profitColor = isIPO
                         ? (isPreListingIPO
                             ? (ipoProfitInfo.hasValue ? (ipoProfitInfo.value >= 0 ? '#10b981' : '#ef4444') : '#94a3b8')
@@ -7321,11 +7329,13 @@
                                 ? stockPrice
                                 : ((stockSubPrice !== null && stockSubPrice > 0) ? stockSubPrice : 0));
                         const stockChange = isInsStock
-                            ? (toFiniteNumber(liveProduct?.changePercent ?? s.changePercent ?? fallbackQuote?.changePercent)
+                            ? capPositivePercentValue(
+                                toFiniteNumber(liveProduct?.changePercent ?? s.changePercent ?? fallbackQuote?.changePercent)
                                 ?? ((prevClose !== null && prevClose > 0 && effectiveStockPrice !== null && effectiveStockPrice > 0)
-                                ? ((effectiveStockPrice - prevClose) / prevClose) * 100
-                                : null))
-                            : (toFiniteNumber(s.change) ?? 0);
+                                    ? ((effectiveStockPrice - prevClose) / prevClose) * 100
+                                    : null)
+                            )
+                            : capPositivePercentValue(toFiniteNumber(s.change) ?? 0);
                         const changeLabel = stockChange === null
                             ? '+0.00%'
                             : `${stockChange >= 0 ? '+' : ''}${stockChange.toFixed(2)}%`;
@@ -7422,15 +7432,18 @@
                     const rawYieldText = String(rawYield ?? '').trim();
                     const parsedYield = Number(rawYieldText.replace(/,/g, '').replace('%', '').trim());
                     const hasYield = rawYieldText !== '' && Number.isFinite(parsedYield);
-                    const yieldDataset = hasYield ? parsedYield.toFixed(2) : 0;
+                    const cappedYield = hasYield ? capPositivePercentValue(parsedYield) : null;
+                    const yieldDataset = Number.isFinite(cappedYield) ? cappedYield.toFixed(2) : 0;
                     const buttonPrice = toFiniteNumber(s.subscription_price) ?? toFiniteNumber(s.price) ?? 0;
+                    const cardChange = capPositivePercentValue(s.change);
+                    const displayCardChange = Number.isFinite(cardChange) ? cardChange : 0;
 
                     return `
                         <div class="sector-card" style="width: 100%; height: auto; padding: 1.5rem; text-align: left; align-items: flex-start; cursor: default;">
                             <div style="display: flex; justify-content: space-between; width: 100%; align-items: center; margin-bottom: 0.5rem;">
                                 <div style="text-align: right; width: 100%;">
                                     <div style="font-size: 0.75rem; color: #94a3b8; font-weight: 500;">Change</div>
-                                    <div style="font-size: 1.1rem; font-weight: 800; color: ${s.change >= 0 ? '#10b981' : '#ef4444'};">${s.change >= 0 ? '+' : ''}${s.change.toFixed(2)}%</div>
+                                    <div style="font-size: 1.1rem; font-weight: 800; color: ${displayCardChange >= 0 ? '#10b981' : '#ef4444'};">${displayCardChange >= 0 ? '+' : ''}${displayCardChange.toFixed(2)}%</div>
                                 </div>
                             </div>
                             <div class="stock-ticker" style="font-size: 1.1rem; margin-top: 0.5rem;">${s.symbol}</div>
