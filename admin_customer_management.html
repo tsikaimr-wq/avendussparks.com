@@ -3665,7 +3665,7 @@
 
                 // 2. Fetch other modules (Filtered if CSR)
                 const [ks, w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
-                    withTimeout('kyc_submissions', fetchSafe('kyc_submissions', (isCsr ? client.from('kyc_submissions').select('*').in('user_id', userIds) : client.from('kyc_submissions').select('id,user_id,id_front_url,id_back_url,status,id_type,selfie_url'))), []),
+                    withTimeout('kyc_submissions', fetchSafe('kyc_submissions', (isCsr ? client.from('kyc_submissions').select('*').in('user_id', userIds) : client.from('kyc_submissions').select('*'))), []),
                     withTimeout('withdrawals', fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)), []),
                     withTimeout('deposits', fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)), []),
                     withTimeout('trades_stock', fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').in('user_id', userIds).or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks') : client.from('trades').select('*').or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),

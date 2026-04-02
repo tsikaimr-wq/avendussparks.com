@@ -3597,7 +3597,7 @@ window.DB = {
             .from('platform_settings')
             .select('value')
             .eq('key', key)
-            .single();
+            .maybeSingle();
 
         if (error) {
             const message = String(error.message || '');
