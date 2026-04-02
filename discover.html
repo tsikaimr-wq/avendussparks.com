@@ -17,7 +17,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="db.js?v=20260326a"></script>
-    <script src="market_data.js?v=20260322c"></script>
+    <script src="market_data.js?v=20260402a"></script>
     <style>
         /* Using global styles from styles.css */
 
@@ -5739,18 +5739,19 @@
                     || window.MarketEngine?.getProduct?.(`${compact}.BO`);
                 const isUnlistedDetail = /UNLISTED/i.test(String(product?.exchange || ''));
                 const isDetailInsStock = isInsStockType(product?.type);
+                const shouldUseRealtimeQuotes = window.MarketEngine?.isWithinPriceUpdateWindow?.() !== false;
                 const insFallbackQuote = isDetailInsStock
                     ? getInsStockFallbackQuote(product || lookupSymbol, { productId: currentProductId, snapshotPrice: detailStatsSnapshot?.currentPrice })
                     : null;
-                const directQuote = isUnlistedDetail ? null : await fetchDetailQuoteDirect(lookupSymbol, name);
-                const liveQuote = directQuote || ((!isUnlistedDetail && window.DB && typeof window.DB.getMarketPrice === 'function')
+                const directQuote = (!shouldUseRealtimeQuotes || isUnlistedDetail) ? null : await fetchDetailQuoteDirect(lookupSymbol, name);
+                const liveQuote = directQuote || ((shouldUseRealtimeQuotes && !isUnlistedDetail && window.DB && typeof window.DB.getMarketPrice === 'function')
                     ? await window.DB.getMarketPrice(lookupSymbol, name)
                     : null);
                 const livePriceValue = toFiniteNumber(liveQuote?.price);
                 const hasLivePrice = liveQuote && liveQuote.status !== 'error' && livePriceValue !== null && livePriceValue > 0;
-                const cacheData = hasLivePrice
+                const cacheData = shouldUseRealtimeQuotes && hasLivePrice
                     ? { price: livePriceValue, updated_at: new Date().toISOString() }
-                    : await fetchCachedPrice(lookupSymbol);
+                    : (shouldUseRealtimeQuotes ? await fetchCachedPrice(lookupSymbol) : null);
                 const el = document.getElementById("detPrice");
                 const timestampEl = document.getElementById("detTimestamp");
 
@@ -5787,9 +5788,15 @@
                             detChangeEl.className = `index-chg ${pctChange >= 0 ? 'green' : 'red'}`;
                         }
                         if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
-                        if (timestampEl) timestampEl.innerHTML = `<span style="color:#f59e0b;">Estimated price</span>`;
+                        if (timestampEl) {
+                            timestampEl.innerHTML = shouldUseRealtimeQuotes
+                                ? `<span style="color:#f59e0b;">Estimated price</span>`
+                                : `<span style="color:#94a3b8;">Market closed · price frozen</span>`;
+                        }
                     } else if (timestampEl) {
-                        timestampEl.innerHTML = `<span style="color:#ef4444;">Price unavailable</span>`;
+                        timestampEl.innerHTML = shouldUseRealtimeQuotes
+                            ? `<span style="color:#ef4444;">Price unavailable</span>`
+                            : `<span style="color:#94a3b8;">Market closed</span>`;
                     }
                     return;
                 }
@@ -6564,6 +6571,7 @@
                 if (!isUnlistedChart) {
                     yahooUpdateTimer = setInterval(async () => {
                         try {
+                            if (window.MarketEngine?.isWithinPriceUpdateWindow?.() === false) return;
                             const quote = await fetchQuoteFromLocalApi(usedSymbol);
                             if (!quote || !Number.isFinite(quote.price)) return;
                             const nowTs = Math.floor(Date.now() / 1000);

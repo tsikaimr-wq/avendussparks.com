@@ -9,6 +9,28 @@
  */
 
 (function () {
+    const BEIJING_TIME_ZONE = 'Asia/Shanghai';
+    const PRICE_WINDOW_START_MINUTES = (11 * 60) + 45;
+    const PRICE_WINDOW_END_MINUTES = 18 * 60;
+
+    function getBeijingClockParts() {
+        const formatter = new Intl.DateTimeFormat('en-GB', {
+            timeZone: BEIJING_TIME_ZONE,
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        const parts = formatter.formatToParts(new Date());
+        const pick = (type) => parts.find(part => part.type === type)?.value || '';
+        const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+        return {
+            weekday: weekdayMap[pick('weekday')] ?? -1,
+            hour: Number(pick('hour')) || 0,
+            minute: Number(pick('minute')) || 0
+        };
+    }
+
     // Top 50 Indian Stocks (Approximate Prices)
     const STOCK_DATA = [];
     console.log("STOCK_DATA count:", STOCK_DATA.length);
@@ -107,6 +129,42 @@
             return rawName || rawSymbol || 'INDEX';
         }
 
+        getPriceWindowState() {
+            const clock = getBeijingClockParts();
+            const minutes = (clock.hour * 60) + clock.minute;
+            const isWeekday = clock.weekday >= 1 && clock.weekday <= 5;
+            const isOpen = isWeekday && minutes >= PRICE_WINDOW_START_MINUTES && minutes < PRICE_WINDOW_END_MINUTES;
+            return { ...clock, minutes, isWeekday, isOpen };
+        }
+
+        isWithinPriceUpdateWindow() {
+            return this.getPriceWindowState().isOpen;
+        }
+
+        getFrozenKnownPrice(symbol, stock = null) {
+            const candidates = this.getSymbolCandidates(symbol);
+            const resolvedStock = stock || [...this.stocks, ...this.dbOtcProducts, ...this.dbProducts, ...this.dbInsStocks, ...this.indices]
+                .find(item => {
+                    const own = this.getSymbolCandidates(item.market_symbol || item.symbol);
+                    return own.some(candidate => candidates.includes(candidate));
+                });
+
+            for (const candidate of candidates) {
+                const livePrice = this.toFiniteValue(this.livePrices?.[candidate]);
+                if (livePrice !== null && livePrice > 0) return livePrice;
+                const cachedPrice = this.toFiniteValue(this.cachedPrices?.[candidate]?.price);
+                if (cachedPrice !== null && cachedPrice > 0) return cachedPrice;
+            }
+
+            const stockPrice = this.toFiniteValue(resolvedStock?.price);
+            if (stockPrice !== null && stockPrice > 0) return stockPrice;
+
+            const subscriptionPrice = this.toFiniteValue(resolvedStock?.subscription_price);
+            if (subscriptionPrice !== null && subscriptionPrice > 0) return subscriptionPrice;
+
+            return null;
+        }
+
         parseProfitPercent(raw) {
             const rawText = String(raw ?? '').trim();
             if (!rawText) return { value: null, text: 'TBD' };
@@ -166,6 +224,7 @@
             if (window.DISABLE_MARKET_DB === true) return;
             if (window.supabaseClient) {
                 try {
+                    const allowVisualUpdate = this.isWithinPriceUpdateWindow();
                     const { data, error } = await window.supabaseClient
                         .from('market_cache')
                         .select('symbol, price, updated_at');
@@ -194,6 +253,12 @@
 
                             if (stock) {
                                 stock.updated_at = item.updated_at; // Track for stale check
+                                const shouldSeedOnly = !allowVisualUpdate && Number.isFinite(stock.price) && stock.price > 0;
+                                if (shouldSeedOnly) {
+                                    stock.isCached = !isStale;
+                                    stock.cacheStale = isStale;
+                                    return;
+                                }
                                 
                                 if (this.isInsStockProduct(stock)) {
                                     if (Number.isFinite(stock.prevClose) && stock.prevClose > 0) {
@@ -220,7 +285,7 @@
 
                         // Proactive Fetch for Ins. Stocks: If missing/stale/uncached, fetch now.
                         this.dbInsStocks.forEach(s => {
-                            if (s.market_symbol && (s.price === 0 || !s.isCached)) {
+                            if (allowVisualUpdate && s.market_symbol && (s.price === 0 || !s.isCached)) {
                                 console.log(`MarketEngine proactive fetch for ${s.market_symbol} (stale or missing)`);
                                 this.fetchMarketPrice(s.market_symbol);
                             }
@@ -405,6 +470,7 @@
 
         startSimulation() {
             setInterval(() => {
+                if (!this.isWithinPriceUpdateWindow()) return;
                 // Fluctuate Hardcoded Stocks
                 this.stocks.forEach(stock => {
                     const volatility = 0.005;
@@ -649,6 +715,7 @@
         }
 
         async syncIndicesWithYahoo() {
+            if (!this.isWithinPriceUpdateWindow()) return;
             if (this.shouldPauseBackgroundMarketApi()) return;
             console.log("MarketEngine: syncing indices with market API...");
             await Promise.allSettled(this.indices.map(async (idx) => {
@@ -717,6 +784,9 @@
                         const own = this.getSymbolCandidates(s.market_symbol || s.symbol);
                         return own.some(v => candidates.includes(v));
                     });
+                if (!this.isWithinPriceUpdateWindow()) {
+                    return this.getFrozenKnownPrice(symbol, stockMatch);
+                }
                 const data = await window.DB.getMarketPrice(symbol, stockMatch?.name || '');
                 if (data && data.status !== 'error' && data.price) {
                     const price = parseFloat(data.price);

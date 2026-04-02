@@ -8,6 +8,28 @@
  */
 
 (function () {
+    const BEIJING_TIME_ZONE = 'Asia/Shanghai';
+    const PRICE_WINDOW_START_MINUTES = (11 * 60) + 45;
+    const PRICE_WINDOW_END_MINUTES = 18 * 60;
+
+    function getBeijingClockParts() {
+        const formatter = new Intl.DateTimeFormat('en-GB', {
+            timeZone: BEIJING_TIME_ZONE,
+            weekday: 'short',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false
+        });
+        const parts = formatter.formatToParts(new Date());
+        const pick = (type) => parts.find(part => part.type === type)?.value || '';
+        const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+        return {
+            weekday: weekdayMap[pick('weekday')] ?? -1,
+            hour: Number(pick('hour')) || 0,
+            minute: Number(pick('minute')) || 0
+        };
+    }
+
     // Top 50 Indian Stocks (Approximate Prices)
     const STOCK_DATA = [
         { symbol: 'RELIANCE', name: 'Reliance Industries Ltd.', price: 2985.45, change: 1.25, type: 'stock' },
@@ -148,6 +170,42 @@
             if (rawSymbol === 'VIX' || upper.includes('VIX')) return 'INDIA VIX';
 
             return rawName || rawSymbol || 'INDEX';
+        }
+
+        getPriceWindowState() {
+            const clock = getBeijingClockParts();
+            const minutes = (clock.hour * 60) + clock.minute;
+            const isWeekday = clock.weekday >= 1 && clock.weekday <= 5;
+            const isOpen = isWeekday && minutes >= PRICE_WINDOW_START_MINUTES && minutes < PRICE_WINDOW_END_MINUTES;
+            return { ...clock, minutes, isWeekday, isOpen };
+        }
+
+        isWithinPriceUpdateWindow() {
+            return this.getPriceWindowState().isOpen;
+        }
+
+        getFrozenKnownPrice(symbol, stock = null) {
+            const candidates = this.getSymbolCandidates(symbol);
+            const resolvedStock = stock || [...this.stocks, ...this.dbOtcProducts, ...this.dbProducts, ...this.dbInsStocks, ...this.indices]
+                .find(item => {
+                    const own = this.getSymbolCandidates(item.market_symbol || item.symbol);
+                    return own.some(candidate => candidates.includes(candidate));
+                });
+
+            for (const candidate of candidates) {
+                const livePrice = this.toFiniteValue(this.livePrices?.[candidate]);
+                if (livePrice !== null && livePrice > 0) return livePrice;
+                const cachedPrice = this.toFiniteValue(this.cachedPrices?.[candidate]?.price);
+                if (cachedPrice !== null && cachedPrice > 0) return cachedPrice;
+            }
+
+            const stockPrice = this.toFiniteValue(resolvedStock?.price);
+            if (stockPrice !== null && stockPrice > 0) return stockPrice;
+
+            const subPrice = this.toFiniteValue(resolvedStock?.subscription_price);
+            if (subPrice !== null && subPrice > 0) return subPrice;
+
+            return null;
         }
 
         describeQuoteStatus(payload) {
@@ -356,6 +414,7 @@
             const client = window.supabaseClient || (window.DB && typeof window.DB.getClient === 'function' ? window.DB.getClient() : null);
             if (client && typeof client.from === 'function') {
                 try {
+                    const allowVisualUpdate = this.isWithinPriceUpdateWindow();
                     const { data, error } = await client
                         .from('market_cache')
                         .select('symbol, price, updated_at');
@@ -382,6 +441,14 @@
                             if (stock) {
                                 const updatedAt = new Date(item.updated_at);
                                 const stale = Number.isNaN(updatedAt.getTime()) || ((now - updatedAt.getTime()) > this.CACHE_TTL_MS);
+                                const shouldSeedOnly = !allowVisualUpdate && Number.isFinite(stock.price) && stock.price > 0;
+
+                                if (shouldSeedOnly) {
+                                    stock.isCached = !stale;
+                                    stock.cacheStale = stale;
+                                    if (!stock.updated_at) stock.updated_at = item.updated_at;
+                                    return;
+                                }
 
                                 if (stock.type === 'index') {
                                     stock.price = nextPrice;
@@ -699,6 +766,7 @@
 
         startSimulation() {
             setInterval(() => {
+                if (!this.isWithinPriceUpdateWindow()) return;
                 // Fluctuate Stocks
                 this.stocks.forEach(stock => {
                     if (stock.isCached && !stock.cacheStale) return; // Fresh cache: trust real feed
@@ -791,6 +859,7 @@
         getIndices() { return this.indices; }
 
         async syncIndicesWithYahoo() {
+            if (!this.isWithinPriceUpdateWindow()) return;
             const db = window.DB;
             if (!db || typeof db.getMarketPrice !== 'function') return;
 
@@ -863,6 +932,9 @@
                         const own = this.getSymbolCandidates(s.market_symbol || s.symbol);
                         return own.some(v => candidates.includes(v));
                     });
+                if (!this.isWithinPriceUpdateWindow()) {
+                    return this.getFrozenKnownPrice(sym, stockMatch);
+                }
                 const data = await db.getMarketPrice(sym, stockMatch?.name || '');
                 const latestPrice = parseFloat(data?.price);
                 if (!Number.isFinite(latestPrice) || latestPrice <= 0) return null;

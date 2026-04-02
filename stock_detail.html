@@ -18,7 +18,7 @@
     <script src="js/supabase.js?v=1.0.5"></script>
     <script src="js/db.js?v=1.0.16"></script>
     <script src="js/user.js?v=1.0.4"></script>
-    <script src="js/market_data.js?v=1.0.12"></script>
+    <script src="js/market_data.js?v=1.0.13"></script>
     <script src="js/trading.js?v=1.0.7"></script>
     <script src="script.js?v=20260326a"></script>
     <script src="js/credit_notifier.js?v=1.0.4"></script>
@@ -1061,7 +1061,9 @@
                     }
                 }
 
-                if (!klinePayload && !isInsStockChart) {
+                const shouldUseRealtimeQuotes = window.MarketEngine?.isWithinPriceUpdateWindow?.() !== false;
+
+                if (!klinePayload && !isInsStockChart && shouldUseRealtimeQuotes) {
                     const quote = await fetchQuoteFromLocalApi(usedSymbol, window.MarketEngine?.getProduct?.(usedSymbol)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
                     const quotePrice = Number(quote?.price);
                     const fallbackProduct = window.MarketEngine?.getProduct?.(usedSymbol)
@@ -1075,6 +1077,19 @@
                         ? quotePrice
                         : productPrice;
                     if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, quote?.symbol || usedSymbol);
+                }
+                if (!klinePayload && !isInsStockChart) {
+                    const fallbackProduct = window.MarketEngine?.getProduct?.(usedSymbol)
+                        || window.MarketEngine?.getProduct?.(baseSymbol);
+                    const fallbackPrice = Number(fallbackProduct?.price);
+                    const fallbackSubPrice = Number(fallbackProduct?.subscription_price);
+                    const frozenPrice = Number(window.MarketEngine?.getFrozenKnownPrice?.(usedSymbol, fallbackProduct));
+                    const seedPrice = (Number.isFinite(frozenPrice) && frozenPrice > 0)
+                        ? frozenPrice
+                        : ((Number.isFinite(fallbackPrice) && fallbackPrice > 0)
+                            ? fallbackPrice
+                            : ((Number.isFinite(fallbackSubPrice) && fallbackSubPrice > 0) ? fallbackSubPrice : null));
+                    if (seedPrice) klinePayload = buildSyntheticKline(seedPrice, usedSymbol);
                 }
                 if (!klinePayload && isInsStockChart) {
                     const currentProduct = window.MarketEngine?.getProduct?.(currentProductId)
@@ -1148,6 +1163,7 @@
 
                 yahooUpdateTimer = setInterval(async () => {
                     try {
+                        if (window.MarketEngine?.isWithinPriceUpdateWindow?.() === false) return;
                         const quote = await fetchQuoteFromLocalApi(usedSymbol);
                         if (!quote || !Number.isFinite(quote.price)) return;
                         const nowTs = Math.floor(Date.now() / 1000);
@@ -1699,6 +1715,7 @@
             if (!symbol) symbol = currentActiveSymbol;
 
             try {
+                const shouldUseRealtimeQuotes = window.MarketEngine?.isWithinPriceUpdateWindow?.() !== false;
                 let price = null;
                 let productName = '';
                 let marketSymbol = symbol;
@@ -1710,8 +1727,28 @@
                 const fallbackQuote = isCurrentInsStock
                     ? getInsStockFallbackQuote(product || marketSymbol, { productId: currentProductId })
                     : null;
+                const parsedPrice = (value) => {
+                    const numeric = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
+                    return Number.isFinite(numeric) ? numeric : NaN;
+                };
 
-                if (price === null) {
+                if (!shouldUseRealtimeQuotes) {
+                    const frozenEnginePrice = Number(window.MarketEngine?.getFrozenKnownPrice?.(marketSymbol, product));
+                    const fallbackProductPrice = Number(product?.price);
+                    const fallbackSubscriptionPrice = Number(product?.subscription_price);
+                    const previousScreenPrice = Number(currentMarketPrice || currentPrice);
+                    if (Number.isFinite(frozenEnginePrice) && frozenEnginePrice > 0) {
+                        price = frozenEnginePrice;
+                    } else if (Number.isFinite(fallbackProductPrice) && fallbackProductPrice > 0) {
+                        price = fallbackProductPrice;
+                    } else if (Number.isFinite(fallbackSubscriptionPrice) && fallbackSubscriptionPrice > 0) {
+                        price = fallbackSubscriptionPrice;
+                    } else if (Number.isFinite(previousScreenPrice) && previousScreenPrice > 0) {
+                        price = previousScreenPrice;
+                    }
+                }
+
+                if (price === null && shouldUseRealtimeQuotes) {
                     const data = await window.DB.getMarketPrice(marketSymbol, productName);
                     if (data && data.status !== 'error' && data.price) {
                         price = parseFloat(data.price);
@@ -1728,14 +1765,9 @@
                     }
                 }
 
-                if (price === null) {
+                if (price === null && shouldUseRealtimeQuotes) {
                     price = await window.DB.getCachedMarketPrice(marketSymbol, productName);
                 }
-
-                const parsedPrice = (value) => {
-                    const numeric = Number(String(value ?? '').replace(/[^0-9.-]/g, ''));
-                    return Number.isFinite(numeric) ? numeric : NaN;
-                };
 
                 if ((!Number.isFinite(parsedPrice(price)) || parsedPrice(price) <= 0) && isCurrentInsStock) {
                     const fallbackPrice = Number(fallbackQuote?.price);
@@ -1823,7 +1855,10 @@
 
             // Poll every 10 seconds safely
             if (priceInterval) clearInterval(priceInterval);
-            priceInterval = setInterval(fetchLivePrice, 10000);
+            priceInterval = setInterval(() => {
+                if (window.MarketEngine?.isWithinPriceUpdateWindow?.() === false) return;
+                fetchLivePrice();
+            }, 10000);
         }
 
         window.addEventListener('beforeunload', () => {
