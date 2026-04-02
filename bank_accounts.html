@@ -836,8 +836,56 @@
 
         async function loadAccounts() {
             const user = DB.getCurrentUser();
-            allAccounts = await DB.getBankAccounts(user.id);
+            allAccounts = typeof DB.getSelectableBankAccounts === 'function'
+                ? await DB.getSelectableBankAccounts(user.id)
+                : await DB.getBankAccounts(user.id);
             renderAccounts();
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function maskAccountNumber(value) {
+            const rawNum = String(value || '').replace(/\s+/g, '').trim();
+            if (!rawNum) return '----';
+            if (rawNum.length <= 4) return rawNum;
+            if (rawNum.length <= 7) return `****${rawNum.slice(-4)}`;
+            return `${rawNum.substring(0, 3)}*****${rawNum.substring(rawNum.length - 3)}`;
+        }
+
+        function getBankAccountDisplayData(account) {
+            const rawBankName = String(account?.bank_name || '').trim();
+            const bankParts = rawBankName.split('|').map(part => part.trim()).filter(Boolean);
+            const primaryBankName = bankParts[0] || 'Saved Bank Account';
+            const extractedIfsc = bankParts.find(part => /^IFSC\s+/i.test(part))?.replace(/^IFSC\s+/i, '').trim() || '';
+            const extractedName = bankParts.find(part => !/^A\/C\s+/i.test(part) && !/^IFSC\s+/i.test(part) && part !== primaryBankName) || '';
+            const rawFullName = String(
+                account?.full_name
+                || `${String(account?.first_name || '').trim()} ${String(account?.last_name || '').trim()}`
+            ).trim();
+            const holderName = rawFullName || extractedName || 'Account Holder';
+            const maskedAccountNumber = maskAccountNumber(account?.account_number);
+            const ifsc = String(account?.ifsc || extractedIfsc || '').trim().toUpperCase() || 'N/A';
+            const mobile = String(account?.mobile || '').trim();
+            const source = String(account?.source || '').trim();
+            const isHistorical = source === 'withdrawal_history' || String(account?.id || '').startsWith('history_');
+
+            return {
+                id: account?.id,
+                bankName: primaryBankName,
+                holderName,
+                mobile,
+                maskedAccountNumber,
+                ifsc,
+                isHistorical,
+                canManage: !isHistorical
+            };
         }
 
         function renderAccounts() {
@@ -848,24 +896,32 @@
             }
 
             container.innerHTML = allAccounts.map(acc => {
-                const rawNum = acc.account_number || '';
-                const masked = rawNum.length > 4 ? rawNum.substring(0, 3) + "*****" + rawNum.substring(rawNum.length - 3) : rawNum;
+                const view = getBankAccountDisplayData(acc);
+                const actionButtons = view.canManage
+                    ? `
+                            <div class="ba-list-actions" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
+                                <button class="ba-action-btn" onclick="openEditAccountModal('${escapeHtml(view.id)}')" title="Edit"><i data-lucide="pencil" size="16"></i></button>
+                                <button class="ba-action-btn delete" onclick="onDeleteClick(event, '${escapeHtml(view.id)}')" title="Delete"><i data-lucide="trash-2" size="16"></i></button>
+                            </div>
+                    `
+                    : `
+                            <div class="ba-list-actions" style="background: rgba(212,175,55,0.08); border-radius: 999px; padding: 6px 10px; color: #d4af37; font-size: 0.72rem; font-weight: 700;">
+                                Saved History
+                            </div>
+                    `;
 
                 return `
                     <div class="ba-blue-card" style="margin-bottom: 2rem;">
                         <div class="ba-blue-top">
-                            <div class="ba-bank-name">${acc.bank_name} <span class="ba-country-tag">IN</span></div>
-                            <div class="ba-list-actions" style="background: rgba(0,0,0,0.2); border-radius: 8px; padding: 4px;">
-                                <button class="ba-action-btn" onclick="openEditAccountModal('${acc.id}')" title="Edit"><i data-lucide="pencil" size="16"></i></button>
-                                <button class="ba-action-btn delete" onclick="onDeleteClick(event, '${acc.id}')" title="Delete"><i data-lucide="trash-2" size="16"></i></button>
-                            </div>
+                            <div class="ba-bank-name">${escapeHtml(view.bankName)} <span class="ba-country-tag">IN</span></div>
+                            ${actionButtons}
                         </div>
-                        <div class="ba-account-num" style="font-family: monospace; letter-spacing: 4px;">${masked}</div>
-                        <div class="ba-account-name" style="margin-top: 1rem; font-weight: 600; color: #fff;">${acc.first_name} ${acc.last_name}</div>
-                        <div class="ba-account-phone" style="font-size: 0.8rem; margin-top: 2px;">${acc.mobile || ''}</div>
+                        <div class="ba-account-num" style="font-family: monospace; letter-spacing: 4px;">${escapeHtml(view.maskedAccountNumber)}</div>
+                        <div class="ba-account-name" style="margin-top: 1rem; font-weight: 600; color: #fff;">${escapeHtml(view.holderName)}</div>
+                        <div class="ba-account-phone" style="font-size: 0.8rem; margin-top: 2px;">${escapeHtml(view.mobile || (view.isHistorical ? 'Imported from your withdrawal history' : ''))}</div>
                         <div class="ba-blue-bottom">
                             <span>IFSC CODE</span>
-                            <span style="font-family: monospace; letter-spacing: 1px;">${acc.ifsc}</span>
+                            <span style="font-family: monospace; letter-spacing: 1px;">${escapeHtml(view.ifsc)}</span>
                         </div>
                     </div>
                 `;
@@ -935,6 +991,10 @@
             editingAccountId = id;
             const acc = allAccounts.find(a => a.id == id);
             if (!acc) return;
+            if (String(id).startsWith('history_') || acc.source === 'withdrawal_history') {
+                showToast('This bank was imported from withdrawal history. Add it as a managed bank account to edit it.', true);
+                return;
+            }
 
             document.getElementById('editBankName').value = acc.bank_name;
             document.getElementById('editFirstName').value = acc.first_name;
@@ -992,6 +1052,10 @@
         }
 
         function handleDelete(id) {
+            if (String(id).startsWith('history_')) {
+                showToast('Historical withdrawal bank records cannot be deleted here.', true);
+                return;
+            }
             showConfirm("Are you sure you want to delete this bank account?", async () => {
                 const res = await window.DB.deleteBankAccount(id);
                 if (res.success) {
