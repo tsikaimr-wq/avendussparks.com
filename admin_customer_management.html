@@ -3563,100 +3563,146 @@
             showLoader(true);
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
 
-            // Show user search bar if user is Super Admin
-            if (auth.role === 'super_admin') {
-                const searchContainer = document.getElementById('superAdminSearchContainer');
-                if (searchContainer) searchContainer.style.display = 'block';
-            }
-
-            const client = window.DB.getClient();
-
-            // CSR Data Isolation Check
-            // const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}'); // This line is now redundant
-            const isCsr = auth.role === 'csr';
-            const csrId = auth.id;
-
-            if (isCsr) {
-                document.getElementById('th_salesperson')?.remove();
-                document.getElementById('th_info')?.remove();
-            }
-
-            const fetchSafe = async (table, query) => {
-                const { data, error } = await query;
-                if (error) {
-                    const msg = String(error.message || error.details || '');
-                    const isMissingTable =
-                        error.code === 'PGRST205' ||
-                        /Could not find the table/i.test(msg) ||
-                        /relation .* does not exist/i.test(msg);
-                    if (table === 'rewards' && isMissingTable) {
-                        console.warn("Rewards table missing. Continuing without rewards module.");
-                        const rewardsBtn = document.getElementById('btn_rewards');
-                        if (rewardsBtn) rewardsBtn.style.display = 'none';
-                        return [];
-                    }
-                    console.error("Fetch error on table:", table, error);
-                    return [];
+            const withTimeout = async (label, task, fallback, timeoutMs = 12000) => {
+                let timeoutId = null;
+                try {
+                    return await Promise.race([
+                        Promise.resolve(task),
+                        new Promise(resolve => {
+                            timeoutId = setTimeout(() => {
+                                console.warn(`${label} timed out after ${timeoutMs}ms. Using fallback.`);
+                                resolve(fallback);
+                            }, timeoutMs);
+                        })
+                    ]);
+                } catch (error) {
+                    console.error(`${label} failed:`, error);
+                    return fallback;
+                } finally {
+                    if (timeoutId) clearTimeout(timeoutId);
                 }
-                console.log(`Table ${table} loaded:`, data?.length);
-                return data || [];
             };
 
-            // 1. Fetch Users (Filtered if CSR)
-            let userQuery = client.from('users').select('id,mobile,email,dob,gender,username,full_name,id_number,address,balance,vip,credit_score,withdrawal_pin,created_at,kyc,trading_frozen,csr_id,invitation_code,loan_enabled').or('is_deleted.is.null,is_deleted.eq.false').order('created_at', { ascending: false });
-
-            if (isCsr) {
-                const invCode = auth.invitation_code;
-                if (invCode) {
-                    userQuery = userQuery.or(`csr_id.eq.${csrId},invitation_code.eq.${invCode}`);
-                } else {
-                    userQuery = userQuery.eq('csr_id', csrId);
-                }
-            }
-
-            const u = await fetchSafe('users', userQuery.limit(500));
-            allUsers = u; // Global update
-
-            // Fetch CSRs for name mapping
-            const { data: csrs } = await client.from('admins').select('id, full_name, invitation_code').eq('role', 'csr');
-            allCsrs = csrs || [];
-            const userIds = u.map(x => x.id);
-
-            // If CSR and no users assigned, return empty states immediately
-            if (isCsr && userIds.length === 0) {
-                console.warn("CSR has no assigned users. Rendering blank state.");
-                renderDashboard([], [], [], [], [], [], [], [], {});
-                showLoader(false);
-                return;
-            }
-
-            // 2. Fetch other modules (Filtered if CSR)
-            const [ks, w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
-                fetchSafe('kyc_submissions', (isCsr ? client.from('kyc_submissions').select('*').in('user_id', userIds) : client.from('kyc_submissions').select('id,user_id,id_front_url,id_back_url,status,id_type,selfie_url'))),
-                fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)),
-                fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)),
-                fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').in('user_id', userIds).or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks') : client.from('trades').select('*').or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })),
-                fetchSafe('trades_otc', (isCsr ? client.from('trades').select('*').eq('type', 'otc').in('user_id', userIds) : client.from('trades').select('*').eq('type', 'otc')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })),
-                fetchSafe('trades_ipo', (isCsr ? client.from('trades').select('*').ilike('type', 'ipo').in('user_id', userIds) : client.from('trades').select('*').ilike('type', 'ipo')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })),
-                window.DB.getAllLoans(),
-                fetchSafe('messages', (isCsr ? client.from('messages').select('*').in('user_id', userIds) : client.from('messages').select('*')).order('created_at', { ascending: false }).limit(100)),
-                fetchSafe('rewards', (isCsr ? client.from('rewards').select('*').in('user_id', userIds) : client.from('rewards').select('*')).order('created_at', { ascending: false }).limit(100)),
-                fetchSafe('products_meta', client.from('products').select('id, product_type').or('is_deleted.is.null,is_deleted.eq.false'))
-            ]);
-
-            adminProductTypeById = new Map((productsMeta || []).map(product => [String(product.id), product.product_type || '']));
-
-            // Combine trades
-            const allTrades = [...(tStock || []), ...(tOtc || []), ...(tIpo || [])];
-
-            // Fetch Extra KPIs (Filtered if CSR)
-            let kpis = {};
             try {
-                kpis = await fetchDashboardKPIs(client, isCsr ? userIds : null);
-            } catch (e) { console.error("KPI Fetch Failed", e); }
+                // Show user search bar if user is Super Admin
+                if (auth.role === 'super_admin') {
+                    const searchContainer = document.getElementById('superAdminSearchContainer');
+                    if (searchContainer) searchContainer.style.display = 'block';
+                }
 
-            renderDashboard(u || [], ks || [], w || [], d || [], allTrades, l || [], m || [], r || [], kpis);
-            showLoader(false);
+                const client = window.DB.getClient();
+
+                // CSR Data Isolation Check
+                const isCsr = auth.role === 'csr';
+                const csrId = auth.id;
+
+                if (isCsr) {
+                    document.getElementById('th_salesperson')?.remove();
+                    document.getElementById('th_info')?.remove();
+                }
+
+                const existingDashboardText = (document.getElementById('stat_summary')?.textContent || '').trim();
+                if (!existingDashboardText) {
+                    try {
+                        renderDashboard(allUsers || [], [], [], [], adminTradeRows || [], [], [], [], {});
+                    } catch (bootstrapRenderError) {
+                        console.warn('Initial dashboard bootstrap render skipped:', bootstrapRenderError);
+                    }
+                    showLoader(false);
+                }
+
+                const fetchSafe = async (table, query) => {
+                    const { data, error } = await query;
+                    if (error) {
+                        const msg = String(error.message || error.details || '');
+                        const isMissingTable =
+                            error.code === 'PGRST205' ||
+                            /Could not find the table/i.test(msg) ||
+                            /relation .* does not exist/i.test(msg);
+                        if (table === 'rewards' && isMissingTable) {
+                            console.warn("Rewards table missing. Continuing without rewards module.");
+                            const rewardsBtn = document.getElementById('btn_rewards');
+                            if (rewardsBtn) rewardsBtn.style.display = 'none';
+                            return [];
+                        }
+                        console.error("Fetch error on table:", table, error);
+                        return [];
+                    }
+                    console.log(`Table ${table} loaded:`, data?.length);
+                    return data || [];
+                };
+
+                // 1. Fetch Users (Filtered if CSR)
+                let userQuery = client.from('users').select('id,mobile,email,dob,gender,username,full_name,id_number,address,balance,vip,credit_score,withdrawal_pin,created_at,kyc,trading_frozen,csr_id,invitation_code,loan_enabled').or('is_deleted.is.null,is_deleted.eq.false').order('created_at', { ascending: false });
+
+                if (isCsr) {
+                    const invCode = auth.invitation_code;
+                    if (invCode) {
+                        userQuery = userQuery.or(`csr_id.eq.${csrId},invitation_code.eq.${invCode}`);
+                    } else {
+                        userQuery = userQuery.eq('csr_id', csrId);
+                    }
+                }
+
+                const u = await withTimeout('users', fetchSafe('users', userQuery.limit(500)), []);
+                allUsers = u; // Global update
+
+                // Fetch CSRs for name mapping
+                const { data: csrs } = await withTimeout(
+                    'admins',
+                    client.from('admins').select('id, full_name, invitation_code').eq('role', 'csr'),
+                    { data: [], error: null }
+                );
+                allCsrs = csrs || [];
+                const userIds = u.map(x => x.id);
+
+                // If CSR and no users assigned, return empty states immediately
+                if (isCsr && userIds.length === 0) {
+                    console.warn("CSR has no assigned users. Rendering blank state.");
+                    renderDashboard([], [], [], [], [], [], [], [], {});
+                    return;
+                }
+
+                // 2. Fetch other modules (Filtered if CSR)
+                const [ks, w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
+                    withTimeout('kyc_submissions', fetchSafe('kyc_submissions', (isCsr ? client.from('kyc_submissions').select('*').in('user_id', userIds) : client.from('kyc_submissions').select('id,user_id,id_front_url,id_back_url,status,id_type,selfie_url'))), []),
+                    withTimeout('withdrawals', fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)), []),
+                    withTimeout('deposits', fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)), []),
+                    withTimeout('trades_stock', fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').in('user_id', userIds).or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks') : client.from('trades').select('*').or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),
+                    withTimeout('trades_otc', fetchSafe('trades_otc', (isCsr ? client.from('trades').select('*').eq('type', 'otc').in('user_id', userIds) : client.from('trades').select('*').eq('type', 'otc')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),
+                    withTimeout('trades_ipo', fetchSafe('trades_ipo', (isCsr ? client.from('trades').select('*').ilike('type', 'ipo').in('user_id', userIds) : client.from('trades').select('*').ilike('type', 'ipo')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),
+                    withTimeout('loans', window.DB.getAllLoans(), []),
+                    withTimeout('messages', fetchSafe('messages', (isCsr ? client.from('messages').select('*').in('user_id', userIds) : client.from('messages').select('*')).order('created_at', { ascending: false }).limit(100)), []),
+                    withTimeout('rewards', fetchSafe('rewards', (isCsr ? client.from('rewards').select('*').in('user_id', userIds) : client.from('rewards').select('*')).order('created_at', { ascending: false }).limit(100)), []),
+                    withTimeout('products_meta', fetchSafe('products_meta', client.from('products').select('id, product_type').or('is_deleted.is.null,is_deleted.eq.false')), [])
+                ]);
+
+                adminProductTypeById = new Map((productsMeta || []).map(product => [String(product.id), product.product_type || '']));
+
+                // Combine trades
+                const allTrades = [...(tStock || []), ...(tOtc || []), ...(tIpo || [])];
+
+                renderDashboard(u || [], ks || [], w || [], d || [], allTrades, l || [], m || [], r || [], {});
+
+                // Fetch dashboard KPIs asynchronously so slow count queries never freeze the whole admin page.
+                void (async () => {
+                    try {
+                        const kpis = await withTimeout('dashboard_kpis', fetchDashboardKPIs(client, isCsr ? userIds : null), {});
+                        renderDashboard(u || [], ks || [], w || [], d || [], allTrades, l || [], m || [], r || [], kpis || {});
+                    } catch (e) {
+                        console.error("KPI Fetch Failed", e);
+                    }
+                })();
+            } catch (error) {
+                console.error('Admin dashboard init failed:', error);
+                try {
+                    renderDashboard(allUsers || [], [], [], [], [], [], [], [], {});
+                } catch (renderError) {
+                    console.error('Admin dashboard fallback render failed:', renderError);
+                }
+            } finally {
+                showLoader(false);
+            }
         }
 
         // --- NEW HELPER FUNCTIONS FOR ROW ACTIONS ---
