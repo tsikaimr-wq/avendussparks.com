@@ -7469,21 +7469,45 @@
                 'AXISBANK'
             ];
 
+            const allStandardStocks = me.getAllStocks()
+                .filter(item => normalizeProductType(item?.type || 'stock') === 'STOCK');
+
+            const normalizeBluechipLookupKey = (value) => {
+                if (typeof me.normalizeSymbol === 'function') {
+                    const normalized = me.normalizeSymbol(value);
+                    if (normalized) return normalized;
+                }
+                return String(value || '')
+                    .trim()
+                    .toUpperCase()
+                    .replace(/^NSE:|^BSE:/, '')
+                    .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+            };
+
             const stockMap = new Map();
-            me.getAllStocks()
-                .filter(item => normalizeProductType(item?.type || 'stock') === 'STOCK')
-                .forEach(item => {
-                    const key = String(item.symbol || item.market_symbol || item.id || '').trim().toUpperCase();
-                    if (key) stockMap.set(key, item);
+            allStandardStocks.forEach(item => {
+                const rawKeys = [
+                    item?.symbol,
+                    item?.market_symbol,
+                    item?.id
+                ];
+                rawKeys.forEach(rawKey => {
+                    const key = normalizeBluechipLookupKey(rawKey);
+                    if (key && !stockMap.has(key)) stockMap.set(key, item);
                 });
+            });
 
             const selected = curatedSymbols
-                .map(symbol => stockMap.get(symbol))
+                .map(symbol => stockMap.get(normalizeBluechipLookupKey(symbol)))
                 .filter(Boolean);
 
-            const fallbackStocks = selected.length
-                ? selected
-                : me.getAllStocks().filter(item => normalizeProductType(item?.type || 'stock') === 'STOCK').slice(0, 12);
+            const selectedIds = new Set(selected.map(item => String(item?.id || item?.market_symbol || item?.symbol || '')));
+            const backfillStocks = allStandardStocks.filter(item => {
+                const uniqueKey = String(item?.id || item?.market_symbol || item?.symbol || '');
+                return uniqueKey && !selectedIds.has(uniqueKey);
+            });
+
+            const fallbackStocks = [...selected, ...backfillStocks].slice(0, 12);
 
             return fallbackStocks.map((item, index) => {
                 const rawMarketSymbol = String(item.market_symbol || item.symbol || '').trim().toUpperCase();
