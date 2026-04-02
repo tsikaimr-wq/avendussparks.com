@@ -7568,8 +7568,10 @@
         }
 
         const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
+        const PRODUCT_PRICE_LOCKS_KEY = 'product_price_locks';
         const USER_SELL_LOCKS_KEY = 'user_sell_locks';
         let cachedProductSellLockMap = null;
+        let cachedProductPriceLockMap = null;
         let cachedUserSellLockMap = null;
 
         function parseAdminPlatformSettingObject(value) {
@@ -7592,7 +7594,40 @@
             return cachedProductSellLockMap;
         }
 
+        async function loadProductPriceLockMap(force = false) {
+            if (!force && cachedProductPriceLockMap) return cachedProductPriceLockMap;
+            const rawValue = await window.DB.getPlatformSettings(PRODUCT_PRICE_LOCKS_KEY);
+            cachedProductPriceLockMap = parseAdminPlatformSettingObject(rawValue);
+            return cachedProductPriceLockMap;
+        }
+
         function getProductSellLockEntry(product, lockMap = cachedProductSellLockMap || {}) {
+            if (!product) return null;
+            const directKey = String(product.id || '').trim();
+            if (directKey && lockMap[directKey]?.locked) return lockMap[directKey];
+
+            const aliases = new Set();
+            [product.symbol, product.market_symbol, product.id].forEach((value) => {
+                const normalized = String(value || '').trim().toUpperCase();
+                if (normalized) aliases.add(normalized);
+            });
+
+            for (const entry of Object.values(lockMap || {})) {
+                if (!entry?.locked) continue;
+                const entryAliases = [
+                    entry.id,
+                    entry.product_id,
+                    entry.symbol,
+                    entry.market_symbol
+                ].map(v => String(v || '').trim().toUpperCase()).filter(Boolean);
+                if (entryAliases.some(alias => aliases.has(alias))) {
+                    return entry;
+                }
+            }
+            return null;
+        }
+
+        function getProductPriceLockEntry(product, lockMap = cachedProductPriceLockMap || {}) {
             if (!product) return null;
             const directKey = String(product.id || '').trim();
             if (directKey && lockMap[directKey]?.locked) return lockMap[directKey];
@@ -7642,6 +7677,38 @@
 
             const result = await window.DB.updatePlatformSettings(PRODUCT_SELL_LOCKS_KEY, nextMap);
             if (result.success) cachedProductSellLockMap = nextMap;
+            return result;
+        }
+
+        async function persistProductPriceLockState(product, locked, lockedPrice = 0) {
+            const productId = String(product?.id || '').trim();
+            if (!productId) return { success: false, error: { message: 'Product ID is required to sync price lock state.' } };
+
+            const currentMap = await loadProductPriceLockMap(true);
+            const nextMap = { ...currentMap };
+            if (locked) {
+                const normalizedPrice = Number(lockedPrice);
+                if (!Number.isFinite(normalizedPrice) || normalizedPrice <= 0) {
+                    return { success: false, error: { message: 'Locked price must be greater than 0.' } };
+                }
+                nextMap[productId] = {
+                    locked: true,
+                    id: productId,
+                    product_id: productId,
+                    symbol: product.symbol || product.market_symbol || '',
+                    market_symbol: product.market_symbol || product.symbol || '',
+                    product_type: product.product_type || product.type || '',
+                    name: product.name || '',
+                    locked_price: normalizedPrice,
+                    updated_at: new Date().toISOString(),
+                    reason: 'Manual board price lock is enabled by backend.'
+                };
+            } else {
+                delete nextMap[productId];
+            }
+
+            const result = await window.DB.updatePlatformSettings(PRODUCT_PRICE_LOCKS_KEY, nextMap);
+            if (result.success) cachedProductPriceLockMap = nextMap;
             return result;
         }
 
@@ -8111,6 +8178,12 @@
             if (document.getElementById('p_sell_locked')) {
                 document.getElementById('p_sell_locked').checked = false;
             }
+            if (document.getElementById('p_price_locked')) {
+                document.getElementById('p_price_locked').checked = false;
+            }
+            if (document.getElementById('p_locked_price')) {
+                document.getElementById('p_locked_price').value = '';
+            }
             if (document.getElementById('p_turbo_search')) {
                 document.getElementById('p_turbo_search').value = '';
             }
@@ -8166,6 +8239,16 @@
             if (document.getElementById('p_sell_locked')) {
                 const sellLockMap = await loadProductSellLockMap();
                 document.getElementById('p_sell_locked').checked = !!getProductSellLockEntry(p, sellLockMap)?.locked;
+            }
+            if (document.getElementById('p_price_locked')) {
+                const priceLockMap = await loadProductPriceLockMap();
+                const priceLockEntry = getProductPriceLockEntry(p, priceLockMap);
+                document.getElementById('p_price_locked').checked = !!priceLockEntry?.locked;
+                if (document.getElementById('p_locked_price')) {
+                    document.getElementById('p_locked_price').value = Number.isFinite(Number(priceLockEntry?.locked_price))
+                        ? String(priceLockEntry.locked_price)
+                        : '';
+                }
             }
             if (document.getElementById('p_turbo_search')) {
                 document.getElementById('p_turbo_search').value = '';
@@ -8250,6 +8333,13 @@
             if (p.subscription_price <= 0) { showAlert('warning', "Subscription Price is required!"); return; }
             if (p.product_type !== 'IPO' && p.product_type !== 'OTC' && p.product_type !== 'Ins.stocks') { showAlert('warning', "Invalid Product Type! Must be IPO, OTC, or Ins.stocks."); return; }
 
+            const shouldLockPrice = !!document.getElementById('p_price_locked')?.checked;
+            const lockedPriceValue = parseAdminNumericValue(document.getElementById('p_locked_price')?.value) || 0;
+            if (shouldLockPrice && lockedPriceValue <= 0) {
+                showAlert('warning', "Locked Price must be greater than 0 when price lock is enabled.");
+                return;
+            }
+
             showLoader(true);
             try {
                 const shouldLockSell = !!document.getElementById('p_sell_locked')?.checked && ['IPO', 'OTC'].includes(p.product_type);
@@ -8265,6 +8355,10 @@
                     ? await persistProductSellLockState(savedProduct, shouldLockSell)
                     : { success: true };
                 const sellLockSyncError = sellLockRes.success ? null : (sellLockRes.error?.message || 'Failed to update sell lock state.');
+                const priceLockRes = savedProduct.id
+                    ? await persistProductPriceLockState(savedProduct, shouldLockPrice, lockedPriceValue)
+                    : { success: true };
+                const priceLockSyncError = priceLockRes.success ? null : (priceLockRes.error?.message || 'Failed to update board price lock.');
 
                 // --- Sync to market_cache ---
                 try {
@@ -8282,7 +8376,8 @@
                 }
                 // ----------------------------
 
-                showAlert(sellLockSyncError ? 'warning' : 'success', sellLockSyncError ? `Product saved, but sell lock sync failed: ${sellLockSyncError}` : "Product saved successfully!");
+                const syncErrors = [sellLockSyncError, priceLockSyncError].filter(Boolean);
+                showAlert(syncErrors.length ? 'warning' : 'success', syncErrors.length ? `Product saved, but sync failed: ${syncErrors.join(' | ')}` : "Product saved successfully!");
                 closeProductModal();
                 renderProducts();
             } catch (err) {
@@ -8377,6 +8472,7 @@
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
             const isCsr = auth.role === 'csr';
             const sellLockMap = await loadProductSellLockMap();
+            const priceLockMap = await loadProductPriceLockMap();
             if (requestId !== productRenderRequestId) return;
 
             const dbProducts = await getAdminVisibleProducts(currentProductFilter, isCsr ? auth.id : null);
@@ -8398,8 +8494,12 @@
                 const statusKey = isActive ? 'status_active' : 'status_inactive';
                 const displayStatus = isTurboOnly ? 'Turbo Template' : window.i18n(statusKey, isActive ? 'Active' : 'Inactive');
                 const sellLockEntry = isTurboOnly ? null : getProductSellLockEntry(p, sellLockMap);
+                const priceLockEntry = isTurboOnly ? null : getProductPriceLockEntry(p, priceLockMap);
                 const sellLockBadge = sellLockEntry?.locked
                     ? `<div style="margin-top:6px; font-size:0.68rem; color:#991b1b; font-weight:700;">SELL LOCKED</div>`
+                    : '';
+                const priceLockBadge = priceLockEntry?.locked
+                    ? `<div style="margin-top:6px; font-size:0.68rem; color:#92400e; font-weight:700;">PRICE LOCKED @ ₹${Number(priceLockEntry.locked_price || 0).toFixed(2)}</div>`
                     : '';
                 const safeTurboPayload = encodeURIComponent(JSON.stringify(p));
                 const safeProductId = JSON.stringify(p.id);
@@ -8423,7 +8523,7 @@
                            <div style="color:#64748b;">Tot: ${(p.total_shares || 0).toLocaleString()}</div>
                         </td>
                         <td>${p.listing_date || ''}</td>
-                        <td><span class="pm-badge ${badgeClass}" data-i18n="${isTurboOnly ? '' : statusKey}">${displayStatus}</span>${sellLockBadge}</td>
+                        <td><span class="pm-badge ${badgeClass}" data-i18n="${isTurboOnly ? '' : statusKey}">${displayStatus}</span>${sellLockBadge}${priceLockBadge}</td>
                         <td>
                             <div style="display:flex; gap:5px;">
                                 ${actionButtons}
@@ -9182,6 +9282,19 @@
                 <div class="fm-group" id="p_sell_lock_group" style="grid-column: span 2; display:flex; align-items:center; gap:1rem;">
                     <label style="margin:0;">Lock Sell (IPO/OTC)</label>
                     <input type="checkbox" id="p_sell_locked" style="width:20px; height:20px;">
+                </div>
+                <div class="fm-group" style="grid-column: span 2;">
+                    <label>Board Price Lock</label>
+                    <div style="display:flex; align-items:center; gap:0.9rem; flex-wrap:wrap;">
+                        <label style="margin:0; display:flex; align-items:center; gap:0.5rem; color:#92400e; font-weight:600;">
+                            <input type="checkbox" id="p_price_locked" style="width:20px; height:20px;">
+                            Lock intraday price
+                        </label>
+                        <input type="number" step="0.01" id="p_locked_price" class="vsl-input" style="max-width:220px;" placeholder="e.g. 635.60">
+                    </div>
+                    <div style="margin-top:6px; font-size:0.75rem; color:#92400e;">
+                        When enabled, this product will stay fixed at the locked price during the day until you manually turn the switch off.
+                    </div>
                 </div>
                 <div class="fm-group">
                     <label data-i18n="lbl_min_invest">Minimum Investment</label>

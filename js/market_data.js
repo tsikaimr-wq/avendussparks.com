@@ -77,6 +77,11 @@
             this.dbOtcProducts = []; // Cache for database products (OTC)
             this.dbInsStocks = []; // Cache for database products (Ins.stocks)
             this.livePrices = {}; // Real-time market prices (Yahoo)
+            this.cachedPrices = {};
+            this.productPriceLocks = {};
+            this.productPriceLocksLoadedAt = 0;
+            this.PRODUCT_PRICE_LOCKS_KEY = 'product_price_locks';
+            this.PRODUCT_PRICE_LOCKS_TTL_MS = 10 * 1000;
             this.CACHE_TTL_MS = 10 * 60 * 1000;
             this.listeners = [];
 
@@ -149,6 +154,9 @@
                     return own.some(candidate => candidates.includes(candidate));
                 });
 
+            const lockedPrice = this.getLockedPriceValue(resolvedStock || symbol);
+            if (lockedPrice !== null) return lockedPrice;
+
             for (const candidate of candidates) {
                 const livePrice = this.toFiniteValue(this.livePrices?.[candidate]);
                 if (livePrice !== null && livePrice > 0) return livePrice;
@@ -163,6 +171,111 @@
             if (subscriptionPrice !== null && subscriptionPrice > 0) return subscriptionPrice;
 
             return null;
+        }
+
+        parsePriceLockMap(value) {
+            if (!value) return {};
+            if (typeof value === 'string') {
+                try {
+                    const parsed = JSON.parse(value);
+                    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+                } catch (_) {
+                    return {};
+                }
+            }
+            return (typeof value === 'object' && !Array.isArray(value)) ? value : {};
+        }
+
+        async loadProductPriceLocks(force = false) {
+            const now = Date.now();
+            if (!force && this.productPriceLocks && (now - this.productPriceLocksLoadedAt) < this.PRODUCT_PRICE_LOCKS_TTL_MS) {
+                return this.productPriceLocks;
+            }
+            if (!(window.DB && typeof window.DB.getPlatformSettings === 'function')) {
+                this.productPriceLocks = {};
+                this.productPriceLocksLoadedAt = now;
+                return this.productPriceLocks;
+            }
+            const rawValue = await window.DB.getPlatformSettings(this.PRODUCT_PRICE_LOCKS_KEY);
+            this.productPriceLocks = this.parsePriceLockMap(rawValue);
+            this.productPriceLocksLoadedAt = now;
+            return this.productPriceLocks;
+        }
+
+        buildPriceLockAliases(target) {
+            const aliases = new Set();
+            const addAlias = (value) => {
+                const raw = String(value || '').trim();
+                if (!raw) return;
+                aliases.add(raw.toUpperCase());
+                this.getSymbolCandidates(raw).forEach(candidate => aliases.add(String(candidate || '').trim().toUpperCase()));
+            };
+
+            if (typeof target === 'string' || typeof target === 'number') {
+                addAlias(target);
+            } else if (target && typeof target === 'object') {
+                [target.id, target.product_id, target.symbol, target.market_symbol].forEach(addAlias);
+            }
+
+            return aliases;
+        }
+
+        getProductPriceLockEntry(target, lockMap = this.productPriceLocks || {}) {
+            const aliases = this.buildPriceLockAliases(target);
+            if (!aliases.size) return null;
+
+            for (const [key, entry] of Object.entries(lockMap || {})) {
+                if (!entry?.locked) continue;
+                const entryAliases = this.buildPriceLockAliases({ ...entry, id: entry.id || key });
+                if ([...entryAliases].some(alias => aliases.has(alias))) {
+                    return entry;
+                }
+            }
+
+            return null;
+        }
+
+        getLockedPriceValue(target, lockMap = this.productPriceLocks || {}) {
+            const entry = this.getProductPriceLockEntry(target, lockMap);
+            const lockedPrice = this.toFiniteValue(entry?.locked_price ?? entry?.price);
+            return (entry?.locked && lockedPrice !== null && lockedPrice > 0) ? lockedPrice : null;
+        }
+
+        applyLockedPrice(target, lockMap = this.productPriceLocks || {}) {
+            if (!target || String(target.type || '').trim().toLowerCase() === 'index') return false;
+            const lockedPrice = this.getLockedPriceValue(target, lockMap);
+            if (lockedPrice === null) {
+                if (target) target.priceLocked = false;
+                return false;
+            }
+
+            target.price = lockedPrice;
+            if ('subscription_price' in target || target.type !== 'stock') {
+                target.subscription_price = lockedPrice;
+            }
+            target.prevClose = lockedPrice;
+            target.change = 0;
+            target.changePercent = 0;
+            target.quoteSource = 'manual_price_lock';
+            target.delayed = true;
+            target.isSimulated = false;
+            target.isCached = true;
+            target.cacheStale = false;
+            target.updated_at = new Date().toISOString();
+            target.priceLocked = true;
+
+            this.getSymbolCandidates(target.market_symbol || target.symbol || target.id).forEach(candidate => {
+                this.livePrices[candidate] = lockedPrice;
+                this.cachedPrices = this.cachedPrices || {};
+                this.cachedPrices[candidate] = { price: lockedPrice, updated_at: target.updated_at };
+            });
+            return true;
+        }
+
+        applyPriceLocksToCollections(lockMap = this.productPriceLocks || {}) {
+            [this.stocks, this.otc, this.ipo, this.dbInsStocks, this.dbOtcProducts, this.dbProducts].forEach((list) => {
+                (Array.isArray(list) ? list : []).forEach(item => this.applyLockedPrice(item, lockMap));
+            });
         }
 
         parseProfitPercent(raw) {
@@ -223,6 +336,7 @@
 
         async syncMarketCache() {
             if (window.DISABLE_MARKET_DB === true) return;
+            const priceLockMap = await this.loadProductPriceLocks();
             if (window.supabaseClient) {
                 try {
                     const allowVisualUpdate = this.isWithinPriceUpdateWindow();
@@ -242,6 +356,10 @@
                             
                             const isStale = (now - updatedAt) > this.CACHE_TTL_MS;
 
+                            this.cachedPrices[item.symbol] = {
+                                price: parseFloat(item.price) || 0,
+                                updated_at: item.updated_at
+                            };
                             this.livePrices[item.symbol] = parseFloat(item.price);
 
                             // Update local arrays immediately (symbol-aware matching)
@@ -253,6 +371,9 @@
                                 });
 
                             if (stock) {
+                                if (this.applyLockedPrice(stock, priceLockMap)) {
+                                    return;
+                                }
                                 stock.updated_at = item.updated_at; // Track for stale check
                                 const shouldSeedOnly = !allowVisualUpdate && Number.isFinite(stock.price) && stock.price > 0;
                                 if (shouldSeedOnly) {
@@ -282,6 +403,7 @@
                                 stock.cacheStale = isStale;
                             }
                         });
+                        this.applyPriceLocksToCollections(priceLockMap);
                         this.notifyListeners();
 
                         // Proactive Fetch for Ins. Stocks: If missing/stale/uncached, fetch now.
@@ -452,6 +574,8 @@
                             changePercent: null
                         }));
                         this.dbInsStocks.forEach(stock => this.applyInsStockFallbackQuote(stock));
+                        const priceLockMap = await this.loadProductPriceLocks(true);
+                        this.applyPriceLocksToCollections(priceLockMap);
 
                         console.log(`Synced ${this.dbProducts.length} IPOs, ${this.dbOtcProducts.length} OTCs, and ${this.dbInsStocks.length} Ins.stocks`);
                         this.notifyListeners();
@@ -474,6 +598,7 @@
                 if (!this.isWithinPriceUpdateWindow()) return;
                 // Fluctuate Hardcoded Stocks
                 this.stocks.forEach(stock => {
+                    if (this.applyLockedPrice(stock)) return;
                     const volatility = 0.005;
                     const changePercent = (Math.random() * volatility * 2) - volatility;
                     stock.price += (stock.price * changePercent);
@@ -487,6 +612,7 @@
                 const dbLists = [this.dbInsStocks, this.dbOtcProducts, this.dbProducts];
                 dbLists.forEach(list => {
                     list.forEach(stock => {
+                        if (this.applyLockedPrice(stock)) return;
                         if (this.isInsStockProduct(stock)) {
                             const hasReliableLiveQuote = stock.quoteSource !== 'simulated_fallback'
                                 && stock.isCached
@@ -518,6 +644,7 @@
                     });
                 });
 
+                this.applyPriceLocksToCollections();
                 this.notifyListeners();
             }, 5000); // 5 second refresh for simulation
         }
@@ -777,6 +904,7 @@
 
         async fetchMarketPrice(symbol) {
             if (!symbol) return null;
+            await this.loadProductPriceLocks();
             if (!this.shouldAllowMarketQuote(symbol)) return null;
             try {
                 const candidates = this.getSymbolCandidates(symbol);
@@ -785,6 +913,9 @@
                         const own = this.getSymbolCandidates(s.market_symbol || s.symbol);
                         return own.some(v => candidates.includes(v));
                     });
+                if (this.applyLockedPrice(stockMatch || symbol)) {
+                    return this.getLockedPriceValue(stockMatch || symbol);
+                }
                 if (!this.isWithinPriceUpdateWindow()) {
                     return this.getFrozenKnownPrice(symbol, stockMatch);
                 }

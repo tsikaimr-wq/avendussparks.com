@@ -8,6 +8,7 @@ const SUPABASE_URL = "https://xizuwvmepfcfodwfwqce.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_gj30etPyQjlvfH062VUeSw_F83Eii85";
 const MARKET_CACHE_DISABLED_STORAGE_KEY = 'avendus_market_cache_disabled_until';
 const MARKET_CACHE_DISABLED_TTL_MS = 60 * 60 * 1000;
+const PRODUCT_PRICE_LOCKS_KEY = 'product_price_locks';
 
 try {
     const disabledUntil = Number(window.localStorage?.getItem(MARKET_CACHE_DISABLED_STORAGE_KEY) || 0);
@@ -52,6 +53,10 @@ window.DB = {
     MARKET_PRICE_FAIL_COOLDOWN_MS: 15000,
     MARKET_CACHE_DISABLED_STORAGE_KEY: MARKET_CACHE_DISABLED_STORAGE_KEY,
     MARKET_CACHE_DISABLED_TTL_MS: MARKET_CACHE_DISABLED_TTL_MS,
+    PRODUCT_PRICE_LOCKS_KEY: PRODUCT_PRICE_LOCKS_KEY,
+    PRODUCT_PRICE_LOCK_CACHE_TTL_MS: 10000,
+    productPriceLockCache: null,
+    productPriceLockCacheTs: 0,
     MARKET_SYMBOL_ALIAS: {
         KCEIL: 'KCEIL-SM.NS',
         KRISHFLRE: 'KRISHIVAL.NS',
@@ -661,10 +666,109 @@ window.DB = {
         return null;
     },
 
+    parsePlatformSettingObject(value) {
+        if (!value) return {};
+        if (typeof value === 'string') {
+            try {
+                const parsed = JSON.parse(value);
+                return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+            } catch (_) {
+                return {};
+            }
+        }
+        return (typeof value === 'object' && !Array.isArray(value)) ? value : {};
+    },
+
+    async getProductPriceLockMap(force = false) {
+        const now = Date.now();
+        if (!force && this.productPriceLockCache && (now - this.productPriceLockCacheTs) < this.PRODUCT_PRICE_LOCK_CACHE_TTL_MS) {
+            return this.productPriceLockCache;
+        }
+
+        const rawValue = await this.getPlatformSettings(this.PRODUCT_PRICE_LOCKS_KEY);
+        this.productPriceLockCache = this.parsePlatformSettingObject(rawValue);
+        this.productPriceLockCacheTs = now;
+        return this.productPriceLockCache;
+    },
+
+    buildPriceLockAliases(target) {
+        const aliases = new Set();
+        const addAlias = (value) => {
+            const raw = String(value || '').trim();
+            if (!raw) return;
+            aliases.add(raw.toUpperCase());
+            const normalized = this.normalizeMarketSymbolKey(raw);
+            if (normalized) aliases.add(normalized);
+            const candidates = this.getMarketApiSymbolCandidates(raw);
+            candidates.forEach((candidate) => {
+                const upper = String(candidate || '').trim().toUpperCase();
+                if (upper) aliases.add(upper);
+                const compact = this.normalizeMarketSymbolKey(candidate);
+                if (compact) aliases.add(compact);
+            });
+        };
+
+        if (typeof target === 'string' || typeof target === 'number') {
+            addAlias(target);
+        } else if (target && typeof target === 'object') {
+            [target.id, target.product_id, target.symbol, target.market_symbol].forEach(addAlias);
+        }
+
+        return aliases;
+    },
+
+    findProductPriceLockEntry(target, lockMap = null) {
+        const resolvedMap = lockMap || this.productPriceLockCache || {};
+        const aliases = this.buildPriceLockAliases(target);
+        if (!aliases.size) return null;
+
+        for (const [key, entry] of Object.entries(resolvedMap || {})) {
+            if (!entry?.locked) continue;
+            const entryAliases = this.buildPriceLockAliases({ ...entry, id: entry.id || key });
+            if ([...entryAliases].some(alias => aliases.has(alias))) {
+                return entry;
+            }
+        }
+
+        return null;
+    },
+
+    buildLockedMarketQuote(target, lockMap = null) {
+        const entry = this.findProductPriceLockEntry(target, lockMap);
+        const lockedPrice = Number(entry?.locked_price ?? entry?.price);
+        if (!entry?.locked || !Number.isFinite(lockedPrice) || lockedPrice <= 0) return null;
+
+        const symbol = typeof target === 'object'
+            ? String(target?.market_symbol || target?.symbol || entry?.market_symbol || entry?.symbol || '').trim()
+            : String(target || entry?.market_symbol || entry?.symbol || '').trim();
+
+        return {
+            status: 'success',
+            symbol: symbol || String(entry?.market_symbol || entry?.symbol || '').trim(),
+            price: lockedPrice,
+            previousClose: lockedPrice,
+            prevClose: lockedPrice,
+            change: 0,
+            changePercent: 0,
+            source: 'manual_price_lock',
+            delayed: true,
+            locked: true,
+            locked_price: lockedPrice
+        };
+    },
+
     async getMarketPrice(symbol, name = '') {
         const client = this.getClient();
         const sym = String(symbol || '').trim();
         if (!sym) return { status: 'error', message: 'Invalid symbol' };
+
+        const priceLockMap = await this.getProductPriceLockMap();
+        const lockedQuote = this.buildLockedMarketQuote(sym, priceLockMap);
+        if (lockedQuote) {
+            const lockedCacheKey = this.normalizeMarketSymbolKey(this.getMarketApiSymbolCandidates(sym, name)[0] || sym) || sym.toUpperCase();
+            this.marketPriceCache[lockedCacheKey] = { ts: Date.now(), data: lockedQuote };
+            return lockedQuote;
+        }
 
         const now = Date.now();
         const cacheKey = this.normalizeMarketSymbolKey(this.getMarketApiSymbolCandidates(sym, name)[0] || sym) || sym.toUpperCase();
@@ -3499,6 +3603,11 @@ window.DB = {
         const { error } = await client
             .from('platform_settings')
             .upsert({ key, value, updated_at: new Date().toISOString() });
+
+        if (!error && key === this.PRODUCT_PRICE_LOCKS_KEY) {
+            this.productPriceLockCache = this.parsePlatformSettingObject(value);
+            this.productPriceLockCacheTs = Date.now();
+        }
 
         return { success: !error, error };
     },
