@@ -1322,15 +1322,28 @@ window.DB = {
             return { success: false, message: 'Please enter a valid email address.' };
         }
 
-        const redirectTo = `${this.getAuthRedirectBase()}/login.html?mode=reset`;
-        const { error } = await client.auth.resetPasswordForEmail(normalizedEmail, { redirectTo });
+        const { error } = await client.auth.signInWithOtp({
+            email: normalizedEmail,
+            options: {
+                shouldCreateUser: false,
+                emailRedirectTo: `${this.getAuthRedirectBase()}/login.html`,
+                data: {
+                    password_reset: true,
+                    reg_email: normalizedEmail
+                }
+            }
+        });
 
         if (error) {
-            console.error('Supabase password reset email error:', error);
+            console.error('Supabase password reset OTP error:', error);
             return { success: false, message: error.message };
         }
 
         return { success: true };
+    },
+
+    async verifyPasswordResetOtp(email, token) {
+        return this.verifyEmailOtp(email, token);
     },
 
     async completeEmailPasswordReset(newPassword) {
