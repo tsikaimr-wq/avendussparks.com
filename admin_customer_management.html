@@ -884,6 +884,111 @@
             font-weight: 400;
             pointer-events: none;
         }
+
+        @media (max-width: 768px) {
+            body:has(> aside + main) {
+                flex-direction: column !important;
+                height: auto !important;
+                min-height: 100vh !important;
+            }
+
+            body:has(> aside + main)>aside {
+                width: 100% !important;
+                border-right: none !important;
+                border-bottom: 1px solid var(--border-color) !important;
+            }
+
+            body:has(> aside + main)>aside .logo-area {
+                padding: 14px 16px !important;
+                position: sticky !important;
+                top: 0 !important;
+                z-index: 20 !important;
+                background: #fff !important;
+            }
+
+            body:has(> aside + main)>aside .nav-menu {
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 10px !important;
+                padding: 14px 12px 16px !important;
+                overflow: visible !important;
+            }
+
+            body:has(> aside + main)>aside .menu-item,
+            body:has(> aside + main)>aside .sub-item,
+            body:has(> aside + main)>aside a.menu-item {
+                min-width: 0 !important;
+                width: 100% !important;
+                min-height: 50px !important;
+                margin-bottom: 0 !important;
+                padding: 12px 10px !important;
+                border-radius: 14px !important;
+                justify-content: center !important;
+                text-align: center !important;
+                white-space: normal !important;
+                line-height: 1.25 !important;
+                gap: 8px !important;
+            }
+
+            body:has(> aside + main)>aside .menu-item i[style*="margin-left:auto"],
+            body:has(> aside + main)>aside .sub-item i[style*="margin-left:auto"] {
+                display: none !important;
+            }
+
+            body:has(> aside + main)>aside .sub-menu,
+            body:has(> aside + main)>aside .sub-menu.show,
+            body:has(> aside + main)>aside #withdrawalsSub {
+                display: grid !important;
+                grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+                gap: 10px !important;
+                padding-left: 0 !important;
+                margin: 0 !important;
+                grid-column: 1 / -1 !important;
+            }
+
+            body:has(> aside + main)>aside [data-i18n="group_communication"] {
+                grid-column: 1 / -1 !important;
+                padding: 4px 2px 0 !important;
+            }
+
+            body:has(> aside + main)>aside #btn_financial,
+            body:has(> aside + main)>aside #btn_transaction {
+                grid-column: 1 / -1 !important;
+                justify-content: flex-start !important;
+                text-align: left !important;
+                padding-left: 14px !important;
+                background: #f8fafc !important;
+                border: 1px solid #e2e8f0 !important;
+            }
+
+            body:has(> aside + main)>aside .sub-item {
+                background: #f8fafc !important;
+                border: 1px solid #e2e8f0 !important;
+                color: #475569 !important;
+                font-weight: 600 !important;
+            }
+
+            body:has(> aside + main)>aside .sub-item.active {
+                background: #fff7ed !important;
+                border-color: #fdba74 !important;
+                color: #f97316 !important;
+            }
+
+            body:has(> aside + main)>main>header {
+                height: auto !important;
+                padding: 12px 16px !important;
+                flex-wrap: wrap !important;
+                justify-content: center !important;
+            }
+
+            body:has(> aside + main)>main .page-tabs {
+                padding: 8px 12px !important;
+            }
+
+            body:has(> aside + main)>main .container {
+                padding: 12px !important;
+            }
+        }
     </style>
 </head>
 
@@ -7568,7 +7673,7 @@
         }
 
         const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
-        const PRODUCT_PRICE_LOCKS_KEY = 'product_price_locks';
+        const ADMIN_PRODUCT_PRICE_LOCKS_KEY = 'product_price_locks';
         const USER_SELL_LOCKS_KEY = 'user_sell_locks';
         let cachedProductSellLockMap = null;
         let cachedProductPriceLockMap = null;
@@ -7596,7 +7701,7 @@
 
         async function loadProductPriceLockMap(force = false) {
             if (!force && cachedProductPriceLockMap) return cachedProductPriceLockMap;
-            const rawValue = await window.DB.getPlatformSettings(PRODUCT_PRICE_LOCKS_KEY);
+            const rawValue = await window.DB.getPlatformSettings(ADMIN_PRODUCT_PRICE_LOCKS_KEY);
             cachedProductPriceLockMap = parseAdminPlatformSettingObject(rawValue);
             return cachedProductPriceLockMap;
         }
@@ -7707,7 +7812,7 @@
                 delete nextMap[productId];
             }
 
-            const result = await window.DB.updatePlatformSettings(PRODUCT_PRICE_LOCKS_KEY, nextMap);
+            const result = await window.DB.updatePlatformSettings(ADMIN_PRODUCT_PRICE_LOCKS_KEY, nextMap);
             if (result.success) cachedProductPriceLockMap = nextMap;
             return result;
         }
