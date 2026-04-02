@@ -8185,6 +8185,7 @@
             btn.innerText = "EXECUTING...";
             btn.disabled = true;
             const normalizedType = normalizeTradeExecutionType(type);
+            const requiresApproval = isApprovalRequiredTradeType(normalizedType);
 
             try {
                 // 1. Force Refresh User Data to get latest Balance
