@@ -995,13 +995,19 @@
                                             }
 
                                             // 3. Load user bank accounts
-                                            const banks = await window.DB.getBankAccounts(dbUser.id);
+                                            const banks = typeof window.DB.getSelectableBankAccounts === 'function'
+                                                ? await window.DB.getSelectableBankAccounts(dbUser.id)
+                                                : await window.DB.getBankAccounts(dbUser.id);
                                             const bankSelect = document.getElementById('withdrawBankSelect');
 
                                             if (bankSelect) {
                                                 const currentVal = bankSelect.value;
 
-                                                bankSelect.innerHTML = '<option value="">Select Bank Account</option>' + banks.map(b => `<option value="${b.id}">${b.bank_name} (${b.account_number.slice(-4)})</option>`).join('');
+                                                bankSelect.innerHTML = '<option value="">Select Bank Account</option>' + banks.map(b => {
+                                                    const accountSuffix = String(b.account_number || '').slice(-4) || '----';
+                                                    const label = String(b.bank_name || 'Saved Bank Account').trim() || 'Saved Bank Account';
+                                                    return `<option value="${b.id}">${label} (${accountSuffix})</option>`;
+                                                }).join('');
                                                 if (currentVal) bankSelect.value = currentVal;
                                             }
                                         }
@@ -1060,7 +1066,10 @@
                                     btn.textContent = "Processing...";
 
                                     try {
-                                        const bank = (await window.DB.getBankAccounts(user.id)).find(b => b.id == bankId);
+                                        const bankAccounts = typeof window.DB.getSelectableBankAccounts === 'function'
+                                            ? await window.DB.getSelectableBankAccounts(user.id)
+                                            : await window.DB.getBankAccounts(user.id);
+                                        const bank = bankAccounts.find(b => b.id == bankId);
 
                                         const withdrawalData = {
                                             user_id: user.id,

@@ -2133,15 +2133,86 @@ window.DB = {
         try {
             const raw = localStorage.getItem('avendus_offline_banks');
             const all = raw ? JSON.parse(raw) : [];
-            return all.filter(b => b.user_id === userId);
+            return all.filter(b => String(b.user_id) === String(userId));
         } catch (e) { return []; }
+    },
+
+    normalizeBankAccountData(accountData = {}) {
+        const normalized = { ...accountData };
+        normalized.bank_name = String(accountData?.bank_name || '').trim();
+        normalized.account_number = String(accountData?.account_number || '').replace(/\s+/g, '').trim();
+        normalized.ifsc = String(accountData?.ifsc || '').trim().toUpperCase();
+        normalized.mobile = String(accountData?.mobile || '').trim();
+        normalized.full_name = String(
+            accountData?.full_name
+            || `${String(accountData?.first_name || '').trim()} ${String(accountData?.last_name || '').trim()}`
+        ).trim();
+
+        normalized.first_name = String(accountData?.first_name || '').trim();
+        normalized.last_name = String(accountData?.last_name || '').trim();
+
+        if ((!normalized.first_name || !normalized.last_name) && normalized.full_name) {
+            const parts = normalized.full_name.split(/\s+/).filter(Boolean);
+            if (!normalized.first_name) normalized.first_name = parts.shift() || '';
+            if (!normalized.last_name) normalized.last_name = parts.join(' ');
+        }
+
+        return normalized;
+    },
+
+    getBankAccountSignature(accountData = {}) {
+        const normalized = this.normalizeBankAccountData(accountData);
+        const bank = String(normalized.bank_name || '').toUpperCase();
+        const account = String(normalized.account_number || '');
+        const ifsc = String(normalized.ifsc || '').toUpperCase();
+        if (!bank && !account && !ifsc) return '';
+        return `${bank}|${account}|${ifsc}`;
+    },
+
+    mergeUniqueBankAccounts(...lists) {
+        const merged = [];
+        const seenIds = new Set();
+        const seenSignatures = new Set();
+
+        for (const list of lists) {
+            for (const item of Array.isArray(list) ? list : []) {
+                const normalized = this.normalizeBankAccountData(item);
+                const idKey = String(normalized?.id || '').trim();
+                const signature = this.getBankAccountSignature(normalized);
+
+                if (idKey && seenIds.has(idKey)) continue;
+                if (signature && seenSignatures.has(signature)) continue;
+
+                if (idKey) seenIds.add(idKey);
+                if (signature) seenSignatures.add(signature);
+                merged.push(normalized);
+            }
+        }
+
+        return merged;
     },
 
     saveOfflineBank(userId, accountData) {
         const raw = localStorage.getItem('avendus_offline_banks');
         const all = raw ? JSON.parse(raw) : [];
-        const newBank = { id: 'local_' + Date.now(), user_id: userId, ...accountData, created_at: new Date().toISOString() };
-        all.push(newBank);
+        const normalizedUserId = String(userId);
+        const normalizedAccount = this.normalizeBankAccountData(accountData);
+        const signature = this.getBankAccountSignature(normalizedAccount);
+        const existingIndex = all.findIndex((bank) =>
+            String(bank.user_id) === normalizedUserId
+            && signature
+            && this.getBankAccountSignature(bank) === signature
+        );
+
+        const newBank = {
+            id: existingIndex >= 0 ? all[existingIndex].id : 'local_' + Date.now(),
+            user_id: userId,
+            ...normalizedAccount,
+            created_at: existingIndex >= 0 ? (all[existingIndex].created_at || new Date().toISOString()) : new Date().toISOString()
+        };
+
+        if (existingIndex >= 0) all[existingIndex] = { ...all[existingIndex], ...newBank };
+        else all.push(newBank);
         localStorage.setItem('avendus_offline_banks', JSON.stringify(all));
         return newBank;
     },
@@ -2165,31 +2236,93 @@ window.DB = {
         localStorage.setItem('avendus_offline_banks', JSON.stringify(filtered));
     },
 
+    async getHistoricalBankAccounts(userId) {
+        const client = this.getClient();
+        if (!client) return [];
+
+        const numericId = await this._getNumericUserId(userId);
+
+        try {
+            const { data, error } = await client
+                .from('withdrawals')
+                .select('id, bank_name, account_number, ifsc, full_name, created_at')
+                .eq('user_id', numericId)
+                .order('created_at', { ascending: false });
+
+            if (error || !Array.isArray(data)) return [];
+
+            return data
+                .filter((item) => item && (item.account_number || item.bank_name || item.ifsc))
+                .map((item) => {
+                    const normalized = this.normalizeBankAccountData(item);
+                    return {
+                        id: `history_${item.id}`,
+                        user_id: numericId,
+                        bank_name: normalized.bank_name,
+                        first_name: normalized.first_name,
+                        last_name: normalized.last_name,
+                        full_name: normalized.full_name,
+                        account_number: normalized.account_number,
+                        mobile: normalized.mobile,
+                        ifsc: normalized.ifsc,
+                        created_at: item.created_at,
+                        source: 'withdrawal_history'
+                    };
+                });
+        } catch (error) {
+            console.warn('Historical bank account fetch failed:', error);
+            return [];
+        }
+    },
+
     async getBankAccounts(userId) {
         const client = this.getClient();
+        const numericId = await this._getNumericUserId(userId);
 
         let onlineData = [];
         try {
             const { data, error } = await client
                 .from('bank_accounts')
                 .select('*')
-                .eq('user_id', userId)
+                .eq('user_id', numericId)
                 .or('is_deleted.is.null,is_deleted.eq.false')
                 .order('created_at', { ascending: false });
 
             if (!error && data) onlineData = data;
         } catch (e) { console.warn("Supabase Fetch Failed, using offline."); }
 
-        // Merge with offline data
-        const offlineData = this.getOfflineBanks(userId);
+        const offlineData = this.mergeUniqueBankAccounts(
+            this.getOfflineBanks(userId),
+            String(numericId) === String(userId) ? [] : this.getOfflineBanks(numericId)
+        );
 
-        // Combine (Unique by ID if needed, but usually distinct)
-        return [...onlineData, ...offlineData];
+        return this.mergeUniqueBankAccounts(onlineData, offlineData);
     },
 
-    async addBankAccount(userId, accountData) {
+    async getSelectableBankAccounts(userId) {
+        const numericId = await this._getNumericUserId(userId);
+        const [managedAccounts, historicalAccounts] = await Promise.all([
+            this.getBankAccounts(numericId),
+            this.getHistoricalBankAccounts(numericId)
+        ]);
+
+        return this.mergeUniqueBankAccounts(managedAccounts, historicalAccounts);
+    },
+
+    async addBankAccount(userId, accountData, options = {}) {
         const client = this.getClient();
-        const packet = { user_id: userId, ...accountData }; // Simplified packet
+        const normalizedUserId = await this._getNumericUserId(userId);
+        const normalizedAccount = this.normalizeBankAccountData(accountData);
+        const packet = { user_id: normalizedUserId, ...normalizedAccount };
+
+        if (!options.skipDedupCheck) {
+            const existingAccounts = await this.getSelectableBankAccounts(normalizedUserId);
+            const signature = this.getBankAccountSignature(normalizedAccount);
+            const matched = existingAccounts.find((item) => this.getBankAccountSignature(item) === signature);
+            if (signature && matched) {
+                return { success: true, existing: true, data: matched };
+            }
+        }
 
         // Since user changed DB column to TEXT, we can accept ANY ID now.
         // No more UUID restriction.
@@ -2202,11 +2335,23 @@ window.DB = {
             console.error("Supabase Error:", error);
             // Fallback to offline IF online actually fails (network/server error)
             console.warn("Online Add Failed, saving offline:", error);
-            this.saveOfflineBank(userId, accountData);
+            this.saveOfflineBank(normalizedUserId, normalizedAccount);
             return { success: true, offline: true };
         } else {
             return { success: true };
         }
+    },
+
+    async rememberBankAccountUsage(userId, accountData) {
+        const normalizedUserId = await this._getNumericUserId(userId);
+        const normalizedAccount = this.normalizeBankAccountData(accountData);
+        const signature = this.getBankAccountSignature(normalizedAccount);
+
+        if (!signature || !normalizedAccount.account_number) {
+            return { success: false, skipped: true };
+        }
+
+        return this.addBankAccount(normalizedUserId, normalizedAccount);
     },
 
     async updateBankAccount(id, accountData) {
@@ -2471,6 +2616,11 @@ window.DB = {
             error = result.error || null;
 
             if (!error) {
+                try {
+                    await this.rememberBankAccountUsage(withdrawalData?.user_id, withdrawalData);
+                } catch (rememberError) {
+                    console.warn('Failed to remember withdrawal bank account:', rememberError);
+                }
                 return { success: true, data, error: null };
             }
 
