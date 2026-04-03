@@ -7413,14 +7413,31 @@
                         }
                         const stockPrice = toFiniteNumber(s.price);
                         const stockSubPrice = toFiniteNumber(s.subscription_price);
-                        const effectiveStockPrice = isInsStock
-                            ? ((isFresh ? livePrice : null)
-                                ?? toFiniteNumber(fallbackQuote?.price)
+                        const lockedStockPrice = toFiniteNumber(
+                            liveProduct?.locked_price
+                            ?? fallbackQuote?.locked_price
+                            ?? s.locked_price
+                        );
+                        const effectiveStockPrice = isPriceLocked
+                            ? (lockedStockPrice
                                 ?? toFiniteNumber(liveProduct?.price)
-                                ?? toFiniteNumber(s.price))
-                            : ((stockPrice !== null && stockPrice > 0)
-                                ? stockPrice
-                                : ((stockSubPrice !== null && stockSubPrice > 0) ? stockSubPrice : 0));
+                                ?? toFiniteNumber(fallbackQuote?.price)
+                                ?? livePrice
+                                ?? stockPrice
+                                ?? stockSubPrice
+                                ?? 0)
+                            : (isInsStock
+                                ? ((isFresh ? livePrice : null)
+                                    ?? toFiniteNumber(fallbackQuote?.price)
+                                    ?? toFiniteNumber(liveProduct?.price)
+                                    ?? stockPrice
+                                    ?? stockSubPrice
+                                    ?? 0)
+                                : (livePrice
+                                    ?? toFiniteNumber(liveProduct?.price)
+                                    ?? stockPrice
+                                    ?? stockSubPrice
+                                    ?? 0));
                         const stockChange = isInsStock
                             ? (isPriceLocked
                                 ? null

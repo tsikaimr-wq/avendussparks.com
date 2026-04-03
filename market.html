@@ -7701,14 +7701,31 @@
 
                     const priceVal = toFiniteNumber(s.price);
                     const subPriceVal = toFiniteNumber(s.subscription_price);
-                    const effectivePrice = isInsStock
-                        ? ((isFresh ? livePrice : null)
-                            ?? toFiniteNumber(fallbackQuote?.price)
+                    const lockedPriceVal = toFiniteNumber(
+                        liveProduct?.locked_price
+                        ?? fallbackQuote?.locked_price
+                        ?? s.locked_price
+                    );
+                    const effectivePrice = isPriceLocked
+                        ? (lockedPriceVal
                             ?? toFiniteNumber(liveProduct?.price)
-                            ?? toFiniteNumber(s.price))
-                        : ((priceVal !== null && priceVal > 0)
-                            ? priceVal
-                            : ((subPriceVal !== null && subPriceVal > 0) ? subPriceVal : 0));
+                            ?? toFiniteNumber(fallbackQuote?.price)
+                            ?? livePrice
+                            ?? priceVal
+                            ?? subPriceVal
+                            ?? 0)
+                        : (isInsStock
+                            ? ((isFresh ? livePrice : null)
+                                ?? toFiniteNumber(fallbackQuote?.price)
+                                ?? toFiniteNumber(liveProduct?.price)
+                                ?? priceVal
+                                ?? subPriceVal
+                                ?? 0)
+                            : (livePrice
+                                ?? toFiniteNumber(liveProduct?.price)
+                                ?? priceVal
+                                ?? subPriceVal
+                                ?? 0));
                     const changeVal = isInsStock
                         ? (isPriceLocked
                             ? null
