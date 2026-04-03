@@ -738,11 +738,12 @@ window.DB = {
             price: lockedPrice,
             previousClose: lockedPrice,
             prevClose: lockedPrice,
-            change: 0,
-            changePercent: 0,
+            change: null,
+            changePercent: null,
             source: 'manual_price_lock',
             delayed: true,
             locked: true,
+            priceLocked: true,
             locked_price: lockedPrice
         };
     },

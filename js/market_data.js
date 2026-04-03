@@ -254,8 +254,8 @@
                 target.subscription_price = lockedPrice;
             }
             target.prevClose = lockedPrice;
-            target.change = 0;
-            target.changePercent = 0;
+            target.change = null;
+            target.changePercent = null;
             target.quoteSource = 'manual_price_lock';
             target.delayed = true;
             target.isSimulated = false;
@@ -263,6 +263,8 @@
             target.cacheStale = false;
             target.updated_at = new Date().toISOString();
             target.priceLocked = true;
+            target.locked = true;
+            target.locked_price = lockedPrice;
 
             this.getSymbolCandidates(target.market_symbol || target.symbol || target.id).forEach(candidate => {
                 this.livePrices[candidate] = lockedPrice;

@@ -4818,15 +4818,23 @@
                 ?? toFiniteNumber(options.snapshotPrice);
             if (fallbackPrice === null || fallbackPrice <= 0) return null;
 
-            const prevClose = toFiniteNumber(product?.prevClose) ?? fallbackPrice;
-            const changePercent = prevClose > 0 ? ((fallbackPrice - prevClose) / prevClose) * 100 : 0;
+            const isPriceLocked = !!(product?.priceLocked || product?.locked);
+            const prevClose = isPriceLocked
+                ? fallbackPrice
+                : (toFiniteNumber(product?.prevClose) ?? fallbackPrice);
+            const changePercent = isPriceLocked
+                ? null
+                : (prevClose > 0 ? ((fallbackPrice - prevClose) / prevClose) * 100 : 0);
             return {
                 price: fallbackPrice,
                 previousClose: prevClose,
                 prevClose,
                 changePercent,
                 source: 'configured_fallback',
-                delayed: true
+                delayed: true,
+                locked: isPriceLocked,
+                priceLocked: isPriceLocked,
+                locked_price: isPriceLocked ? fallbackPrice : null
             };
         }
 
@@ -5810,6 +5818,7 @@
                             : ((snapshotPrice !== null && snapshotPrice > 0) ? snapshotPrice : 0)));
 
                     if (effectiveFallbackPrice > 0) {
+                        const isLockedFallbackQuote = !!(insFallbackQuote?.priceLocked || insFallbackQuote?.locked || liveQuote?.priceLocked || liveQuote?.locked);
                         const fallbackPrevClose = toFiniteNumber(insFallbackQuote?.previousClose ?? insFallbackQuote?.prevClose ?? liveQuote?.previousClose ?? liveQuote?.prevClose ?? detailStatsSnapshot?.prevClose);
                         const formattedFallback = `₹${effectiveFallbackPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
                         el.innerText = formattedFallback;
@@ -5818,7 +5827,10 @@
                             if (detBuyPriceEl) detBuyPriceEl.innerText = formattedFallback;
                         }
                         const detChangeEl = document.getElementById('detChange');
-                        if (detChangeEl && fallbackPrevClose !== null && fallbackPrevClose > 0) {
+                        if (detChangeEl && isLockedFallbackQuote) {
+                            detChangeEl.innerText = 'Locked';
+                            detChangeEl.className = 'index-chg';
+                        } else if (detChangeEl && fallbackPrevClose !== null && fallbackPrevClose > 0) {
                             const absChange = effectiveFallbackPrice - fallbackPrevClose;
                             const pctChange = (absChange / fallbackPrevClose) * 100;
                             detChangeEl.innerText = `${absChange >= 0 ? '+' : ''}${absChange.toFixed(2)} (${formatPercentValue(pctChange, 2, true)})`;
@@ -5830,9 +5842,11 @@
                         }
                         if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
                         if (timestampEl) {
-                            timestampEl.innerHTML = shouldUseRealtimeQuotes
+                            timestampEl.innerHTML = isLockedFallbackQuote
+                                ? `<span style="color:#f59e0b;">Locked price</span>`
+                                : (shouldUseRealtimeQuotes
                                 ? `<span style="color:#f59e0b;">Estimated price</span>`
-                                : `<span style="color:#94a3b8;">Market closed · price frozen</span>`;
+                                : `<span style="color:#94a3b8;">Market closed · price frozen</span>`);
                         }
                     } else if (timestampEl) {
                         timestampEl.innerHTML = shouldUseRealtimeQuotes
@@ -5889,7 +5903,11 @@
                     if (detGridClose) detGridClose.innerText = formatInrValue(livePrevClose ?? snap.prevClose ?? (price * 0.99));
 
                     const detChangeEl = document.getElementById('detChange');
-                    if (detChangeEl && livePrevClose !== null && livePrevClose > 0) {
+                    const isLockedCachedQuote = !!(insFallbackQuote?.priceLocked || insFallbackQuote?.locked || liveQuote?.priceLocked || liveQuote?.locked);
+                    if (detChangeEl && isLockedCachedQuote) {
+                        detChangeEl.innerText = 'Locked';
+                        detChangeEl.className = 'index-chg';
+                    } else if (detChangeEl && livePrevClose !== null && livePrevClose > 0) {
                         const absChange = price - livePrevClose;
                         const pctChange = (absChange / livePrevClose) * 100;
                         detChangeEl.innerText = `${absChange >= 0 ? '+' : ''}${absChange.toFixed(2)} (${formatPercentValue(pctChange, 2, true)})`;
@@ -5906,7 +5924,9 @@
                     }
 
                     if (timestampEl) {
-                        if (isDetailInsStock && !hasLivePrice && ageMins > 5 && insFallbackQuote) {
+                        if (isLockedCachedQuote) {
+                            timestampEl.innerHTML = `<span style="color:#f59e0b;">Locked price</span>`;
+                        } else if (isDetailInsStock && !hasLivePrice && ageMins > 5 && insFallbackQuote) {
                             timestampEl.innerHTML = `<span style="color:#f59e0b;">Estimated price</span>`;
                         } else if (ageMins > 5) {
                             timestampEl.innerHTML = `<span style="color:#ef4444;">Price unavailable</span>`;
@@ -7379,6 +7399,7 @@
                         const prevClose = toFiniteNumber(liveProduct?.prevClose ?? s.prevClose);
                         const quoteSource = String(liveProduct?.quoteSource || s.quoteSource || '').toLowerCase();
                         const isSimulatedQuote = isInsStock && quoteSource.includes('simulated');
+                        const isPriceLocked = !!(liveProduct?.priceLocked || liveProduct?.locked || s.priceLocked || s.locked || fallbackQuote?.priceLocked || fallbackQuote?.locked);
                         const updatedAtValue = liveProduct?.updated_at || s.updated_at || '';
                         const updatedDate = updatedAtValue ? new Date(updatedAtValue) : null;
                         const isFresh = !!updatedDate
@@ -7401,12 +7422,14 @@
                                 ? stockPrice
                                 : ((stockSubPrice !== null && stockSubPrice > 0) ? stockSubPrice : 0));
                         const stockChange = isInsStock
-                            ? capPositivePercentValue(
+                            ? (isPriceLocked
+                                ? null
+                                : capPositivePercentValue(
                                 toFiniteNumber(liveProduct?.changePercent ?? s.changePercent ?? fallbackQuote?.changePercent)
                                 ?? ((prevClose !== null && prevClose > 0 && effectiveStockPrice !== null && effectiveStockPrice > 0)
                                     ? ((effectiveStockPrice - prevClose) / prevClose) * 100
                                     : null)
-                            )
+                            ))
                             : capPositivePercentValue(toFiniteNumber(s.change) ?? 0);
                         const changeLabel = stockChange === null
                             ? '+0.00%'
@@ -7415,13 +7438,22 @@
                         const unitPriceLabel = effectiveStockPrice !== null && effectiveStockPrice > 0
                             ? `₹${effectiveStockPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             : 'Loading...';
-                        const stockStatusLabel = isInsStock
-                            ? (isFresh
-                                ? (updatedDate ? `Synced: ${updatedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : '')
-                                : (fallbackQuote && toFiniteNumber(fallbackQuote.price) !== null && Number(fallbackQuote.price) > 0 ? 'Estimated price' : 'Loading realtime price...'))
-                            : (isFresh
-                                ? (updatedDate ? `Synced: ${updatedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : '')
-                                : ((livePrice !== null && livePrice > 0) ? 'Syncing realtime price...' : 'Loading realtime price...'));
+                        const stockStatusLabel = isPriceLocked
+                            ? 'Locked price'
+                            : (isInsStock
+                                ? (isFresh
+                                    ? (updatedDate ? `Synced: ${updatedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : '')
+                                    : (fallbackQuote && toFiniteNumber(fallbackQuote.price) !== null && Number(fallbackQuote.price) > 0 ? 'Estimated price' : 'Loading realtime price...'))
+                                : (isFresh
+                                    ? (updatedDate ? `Synced: ${updatedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : '')
+                                    : ((livePrice !== null && livePrice > 0) ? 'Syncing realtime price...' : 'Loading realtime price...')));
+                        const stockStatusColor = isPriceLocked ? '#f59e0b' : (isFresh ? '#10b981' : '#f59e0b');
+                        const volatilityHtml = isPriceLocked ? '' : `
+                                    <div class="premium-return-rate">
+                                        <span class="premium-return-label">Volatility</span>
+                                        <span class="premium-return-val" style="color:${changeColor}">${changeLabel}</span>
+                                    </div>
+                                `;
                         // Regular stocks in "All" view still look premium but slightly different if mixed
                         return `
                             <div class="premium-trade-card">
@@ -7429,12 +7461,9 @@
                                     <div class="premium-asset-info">
                                         <div class="premium-asset-name">${s.name}</div>
                                         <div class="premium-asset-meta">${exchange}  - Standard Stock</div>
-                                        ${stockStatusLabel ? `<div style="font-size: 0.7rem; color: ${isFresh ? '#10b981' : '#f59e0b'}; margin-top: 4px; font-weight: 500;">${stockStatusLabel}</div>` : ''}
+                                        ${stockStatusLabel ? `<div style="font-size: 0.7rem; color: ${stockStatusColor}; margin-top: 4px; font-weight: 500;">${stockStatusLabel}</div>` : ''}
                                     </div>
-                                    <div class="premium-return-rate">
-                                        <span class="premium-return-label">Volatility</span>
-                                        <span class="premium-return-val" style="color:${changeColor}">${changeLabel}</span>
-                                    </div>
+                                    ${volatilityHtml}
                                 </div>
                                 <div class="premium-details-grid">
                                     <div class="premium-detail-item">
