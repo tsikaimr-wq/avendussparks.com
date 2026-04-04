@@ -14,7 +14,7 @@
     <script src="js/db.js?v=1.0.18"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.14"></script>
-    <script src="js/trading.js?v=1.0.8"></script>
+    <script src="js/trading.js?v=1.0.9"></script>
     <script src="script.js?v=20260326a"></script>
 
     <link rel="stylesheet" href="styles.css">
@@ -8257,6 +8257,14 @@
             const requiresApproval = isApprovalRequiredTradeType(normalizedType);
 
             try {
+                const tradeWindowCheck = window.TradeExecutionWindow?.canExecute?.(normalizedType, 'buy');
+                if (tradeWindowCheck && !tradeWindowCheck.allowed) {
+                    showModal('error', 'Market Closed', window.TradeExecutionWindow.getClosedMessage(normalizedType, 'buy'));
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                    return;
+                }
+
                 // 1. Force Refresh User Data to get latest Balance
                 const freshUser = await window.DB.refreshCurrentUser();
                 if (!freshUser) {

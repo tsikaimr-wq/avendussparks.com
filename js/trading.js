@@ -37,6 +37,71 @@ const normalizeTradeType = (value) => {
     return raw;
 };
 
+const INDIA_TRADING_TIME_ZONE = 'Asia/Kolkata';
+const INDIA_TRADE_START_MINUTES = (9 * 60) + 15;
+const INDIA_TRADE_END_MINUTES = (15 * 60) + 30;
+
+const getIndiaTradingClockParts = (date = new Date()) => {
+    const formatter = new Intl.DateTimeFormat('en-GB', {
+        timeZone: INDIA_TRADING_TIME_ZONE,
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    const pick = (type) => parts.find(part => part.type === type)?.value || '';
+    const weekdayMap = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 0 };
+    return {
+        weekday: weekdayMap[pick('weekday')] ?? -1,
+        hour: Number(pick('hour')) || 0,
+        minute: Number(pick('minute')) || 0
+    };
+};
+
+const getIndiaTradingWindowState = (date = new Date()) => {
+    const clock = getIndiaTradingClockParts(date);
+    const minutes = (clock.hour * 60) + clock.minute;
+    const isWeekday = clock.weekday >= 1 && clock.weekday <= 5;
+    const isOpen = isWeekday && minutes >= INDIA_TRADE_START_MINUTES && minutes < INDIA_TRADE_END_MINUTES;
+    return { ...clock, minutes, isWeekday, isOpen };
+};
+
+const isSubscriptionOrderType = (value) => ['ipo', 'otc'].includes(normalizeTradeType(value));
+
+const canExecuteTradeByWindow = (type, action = 'buy', date = new Date()) => {
+    const normalizedType = normalizeTradeType(type);
+    const state = getIndiaTradingWindowState(date);
+    if (action === 'buy' && isSubscriptionOrderType(normalizedType)) {
+        return {
+            allowed: true,
+            normalizedType,
+            state
+        };
+    }
+    return {
+        allowed: state.isOpen,
+        normalizedType,
+        state
+    };
+};
+
+const getTradeWindowClosedMessage = (type, action = 'buy') => {
+    const normalizedType = normalizeTradeType(type);
+    if (action === 'buy' && isSubscriptionOrderType(normalizedType)) return '';
+    if (action === 'sell') {
+        return 'Trading is only available Monday to Friday, 09:15-15:30 India time (11:45-18:00 Beijing time). Outside these hours, selling is unavailable.';
+    }
+    return 'Regular stock trading is only available Monday to Friday, 09:15-15:30 India time (11:45-18:00 Beijing time). Outside these hours, stock trading is unavailable, but IPO/OTC subscriptions can still be submitted.';
+};
+
+window.TradeExecutionWindow = window.TradeExecutionWindow || {
+    getState: getIndiaTradingWindowState,
+    canExecute: canExecuteTradeByWindow,
+    getClosedMessage: getTradeWindowClosedMessage,
+    isSubscriptionOrderType
+};
+
 const parseListingGateDate = (value) => {
     const raw = String(value || '').trim();
     if (!raw) return null;
@@ -723,6 +788,11 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
         const { data: trade, error: fetchErr } = await client.from('trades').select('*, products(*)').eq('id', tradeId).single();
         if (fetchErr || !trade) throw new Error("Could not find the original trade record.");
         if (trade.status === 'Sold') throw new Error("This position is already closed.");
+
+        const tradeWindowCheck = canExecuteTradeByWindow(trade?.type || 'stock', 'sell');
+        if (!tradeWindowCheck.allowed) {
+            throw new Error(getTradeWindowClosedMessage(trade?.type || 'stock', 'sell'));
+        }
 
         // IPO LOCKUP GUARD
         const lockupUntil = trade.lockup_until ? new Date(trade.lockup_until) : null;

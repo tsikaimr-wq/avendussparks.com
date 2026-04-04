@@ -7953,6 +7953,14 @@
             const requiresApproval = isApprovalRequiredTradeType(normalizedType);
 
             try {
+                const tradeWindowCheck = window.TradeExecutionWindow?.canExecute?.(normalizedType, 'buy');
+                if (tradeWindowCheck && !tradeWindowCheck.allowed) {
+                    showModal('error', 'Market Closed', window.TradeExecutionWindow.getClosedMessage(normalizedType, 'buy'));
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                    return;
+                }
+
                 // 1. Force Refresh User Data to get latest Balance
                 const freshUser = await window.DB.refreshCurrentUser();
                 if (!freshUser) {
@@ -11217,7 +11225,7 @@
             color: #fff;
         }
     </style>
-    <script src="js/trading.js?v=1.0.8"></script>
+    <script src="js/trading.js?v=1.0.9"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             if (typeof openStockDetailFromRoute === 'function' && await openStockDetailFromRoute(false, { requireReady: true })) {
