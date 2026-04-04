@@ -2780,7 +2780,7 @@ window.DB = {
     async getKycs() {
         const client = this.getClient();
         const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
-        const fields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,admin_note,rejection_reason,processed_at';
+        const fields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,admin_note,reviewed_at';
         let query = client.from('kyc_submissions').select(fields);
         if (auth.role === 'csr') {
             query = client.from('kyc_submissions').select(`${fields}, users!inner(id,csr_id,invitation_code)`);
@@ -2852,7 +2852,7 @@ window.DB = {
                 return { success: false, error: { message: "Unauthorized Scope Violation" } };
             }
         }
-        const { error } = await client.from('kyc_submissions').update({ status, processed_at: new Date().toISOString() }).eq('id', id);
+        const { error } = await client.from('kyc_submissions').update({ status, reviewed_at: new Date().toISOString() }).eq('id', id);
         return { success: !error, error };
     },
 
