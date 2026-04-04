@@ -3679,17 +3679,18 @@
                 ]);
 
                 adminProductTypeById = new Map((productsMeta || []).map(product => [String(product.id), product.product_type || '']));
+                allSubmissions = await hydrateAdminKycSubmissionMedia(ks || []);
 
                 // Combine trades
                 const allTrades = [...(tStock || []), ...(tOtc || []), ...(tIpo || [])];
 
-                renderDashboard(u || [], ks || [], w || [], d || [], allTrades, l || [], m || [], r || [], {});
+                renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], {});
 
                 // Fetch dashboard KPIs asynchronously so slow count queries never freeze the whole admin page.
                 void (async () => {
                     try {
                         const kpis = await withTimeout('dashboard_kpis', fetchDashboardKPIs(client, isCsr ? userIds : null), {});
-                        renderDashboard(u || [], ks || [], w || [], d || [], allTrades, l || [], m || [], r || [], kpis || {});
+                        renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], kpis || {});
                     } catch (e) {
                         console.error("KPI Fetch Failed", e);
                     }
@@ -4975,6 +4976,22 @@
 
         function getLatestUserKycSubmission(userId) {
             return getLatestUserKycSubmissionFromList(allSubmissions, userId);
+        }
+
+        async function hydrateAdminKycSubmissionMedia(submissions = []) {
+            const rows = Array.isArray(submissions) ? submissions : [];
+            if (!(window.DB && typeof window.DB.resolveKycImageUrl === 'function')) {
+                return rows;
+            }
+
+            return await Promise.all(rows.map(async (submission) => {
+                if (!submission || typeof submission !== 'object') return submission;
+                const next = { ...submission };
+                next.id_front_url = await window.DB.resolveKycImageUrl(submission.id_front_url || '');
+                next.id_back_url = await window.DB.resolveKycImageUrl(submission.id_back_url || '');
+                next.selfie_url = await window.DB.resolveKycImageUrl(submission.selfie_url || '');
+                return next;
+            }));
         }
 
         function deriveKycStatus(user, submission) {
@@ -6279,9 +6296,13 @@
                 document.getElementById('ek_notes').value = kyc?.admin_note || kyc?.rejection_reason || '';
             }
 
-            setKycImagePreview('front', kyc?.id_front_url || '');
-            setKycImagePreview('back', kyc?.id_back_url || '');
-            setKycImagePreview('selfie', kyc?.selfie_url || '');
+            const frontUrl = await window.DB.resolveKycImageUrl?.(kyc?.id_front_url || '') || (kyc?.id_front_url || '');
+            const backUrl = await window.DB.resolveKycImageUrl?.(kyc?.id_back_url || '') || (kyc?.id_back_url || '');
+            const selfieUrl = await window.DB.resolveKycImageUrl?.(kyc?.selfie_url || '') || (kyc?.selfie_url || '');
+
+            setKycImagePreview('front', frontUrl);
+            setKycImagePreview('back', backUrl);
+            setKycImagePreview('selfie', selfieUrl);
 
             if (user) {
                 document.getElementById('ek_idnum').value = user.id_number || kyc?.id_number || '';

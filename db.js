@@ -2142,6 +2142,66 @@ window.DB = {
         return [...new Set([...configured, 'kyc-documents', 'kyc'].filter(Boolean).map(v => String(v).trim()).filter(Boolean))];
     },
 
+    extractKycStorageRef(value) {
+        const raw = String(value || '').trim();
+        if (!raw || /^data:|^blob:/i.test(raw)) return null;
+
+        const rawNoOrigin = raw.replace(/^https?:\/\/[^/]+/i, '');
+        const storageMatch = rawNoOrigin.match(/\/storage\/v1\/object\/(?:sign|public|authenticated)\/([^/?#]+)\/([^?#]+)/i);
+        if (storageMatch) {
+            return {
+                bucket: decodeURIComponent(storageMatch[1] || ''),
+                path: decodeURIComponent(storageMatch[2] || '').replace(/^\/+/, '')
+            };
+        }
+
+        if (!/^https?:/i.test(raw) && raw.includes('/')) {
+            return {
+                bucket: '',
+                path: raw.replace(/^\/+/, '')
+            };
+        }
+
+        return null;
+    },
+
+    async resolveKycImageUrl(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return '';
+        if (/^data:|^blob:/i.test(raw)) return raw;
+
+        const client = this.getClient();
+        if (!client) return raw;
+
+        const ref = this.extractKycStorageRef(raw);
+        if (!ref) return raw;
+
+        const buckets = ref.bucket ? [ref.bucket] : this.getKycStorageBuckets();
+        for (const bucket of buckets) {
+            const normalizedBucket = String(bucket || '').trim();
+            if (!normalizedBucket || !ref.path) continue;
+            try {
+                const { data, error } = await client.storage
+                    .from(normalizedBucket)
+                    .createSignedUrl(ref.path, 60 * 60 * 24 * 7);
+                if (!error && data?.signedUrl) {
+                    return data.signedUrl;
+                }
+            } catch (_) { }
+
+            try {
+                const { data } = client.storage
+                    .from(normalizedBucket)
+                    .getPublicUrl(ref.path);
+                if (data?.publicUrl) {
+                    return data.publicUrl;
+                }
+            } catch (_) { }
+        }
+
+        return raw;
+    },
+
     async uploadKycImage(file, userId) {
         const client = this.getClient();
         if (!client) return { error: 'No client' };
