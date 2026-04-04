@@ -758,24 +758,33 @@ window.DB = {
         };
     },
 
-    async getMarketPrice(symbol, name = '') {
+    async getMarketPrice(symbol, name = '', options = {}) {
         const client = this.getClient();
         const sym = String(symbol || '').trim();
         if (!sym) return { status: 'error', message: 'Invalid symbol' };
+        const ignorePriceLock = options?.ignorePriceLock === true;
 
-        const priceLockMap = await this.getProductPriceLockMap();
-        const lockedQuote = this.buildLockedMarketQuote(sym, priceLockMap);
-        if (lockedQuote) {
-            const lockedCacheKey = this.normalizeMarketSymbolKey(this.getMarketApiSymbolCandidates(sym, name)[0] || sym) || sym.toUpperCase();
-            this.marketPriceCache[lockedCacheKey] = { ts: Date.now(), data: lockedQuote };
-            return lockedQuote;
+        if (!ignorePriceLock) {
+            const priceLockMap = await this.getProductPriceLockMap();
+            const lockedQuote = this.buildLockedMarketQuote(sym, priceLockMap);
+            if (lockedQuote) {
+                const lockedCacheKey = this.normalizeMarketSymbolKey(this.getMarketApiSymbolCandidates(sym, name)[0] || sym) || sym.toUpperCase();
+                this.marketPriceCache[lockedCacheKey] = { ts: Date.now(), data: lockedQuote };
+                return lockedQuote;
+            }
         }
 
         const now = Date.now();
         const cacheKey = this.normalizeMarketSymbolKey(this.getMarketApiSymbolCandidates(sym, name)[0] || sym) || sym.toUpperCase();
         const cached = this.marketPriceCache[cacheKey];
         if (cached && (now - cached.ts) < this.MARKET_PRICE_CACHE_TTL_MS) {
-            return cached.data;
+            const isLockedCachedQuote = !!(cached.data?.priceLocked || cached.data?.locked || String(cached.data?.source || '').trim().toLowerCase() === 'manual_price_lock');
+            if (!(ignorePriceLock && isLockedCachedQuote)) {
+                return cached.data;
+            }
+        }
+        if (ignorePriceLock && cached) {
+            delete this.marketPriceCache[cacheKey];
         }
         const blockedUntil = this.marketPriceFailUntil[cacheKey] || 0;
         if (blockedUntil > now) {
@@ -783,7 +792,11 @@ window.DB = {
         }
 
         if (this.marketPricePending[cacheKey]) {
-            return await this.marketPricePending[cacheKey];
+            const pendingResult = await this.marketPricePending[cacheKey];
+            const isLockedPendingQuote = !!(pendingResult?.priceLocked || pendingResult?.locked || String(pendingResult?.source || '').trim().toLowerCase() === 'manual_price_lock');
+            if (!(ignorePriceLock && isLockedPendingQuote)) {
+                return pendingResult;
+            }
         }
 
         const fetchPromise = (async () => {
@@ -3498,7 +3511,7 @@ window.DB = {
                     console.log(`Fetching price: ${product.name} | Symbol: ${symbol}`);
 
                     // 4. Call the Edge Function
-                    const res = await this.getMarketPrice(symbol);
+                    const res = await this.getMarketPrice(symbol, product.name || '', { ignorePriceLock: true });
 
                     if (res && res.status === 'error') {
                         throw new Error(res.message || "Failed to fetch price");

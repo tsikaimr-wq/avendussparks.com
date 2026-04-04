@@ -14,7 +14,7 @@
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260402b"></script>
+    <script src="db.js?v=20260404a"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -7418,7 +7418,11 @@
                 results = normalizeAdminSearchResults(await window.DB.searchStocks(normalizedQuery, true));
             }
 
-            return dedupeAdminSearchResults([...(savedResults || []), ...(turboResults || []), ...(results || [])]);
+            const mergedResults = dedupeAdminSearchResults([...(savedResults || []), ...(turboResults || []), ...(results || [])]);
+            if (normalizeAdminProductType(productType) === 'INS.STOCKS') {
+                return await Promise.all(mergedResults.map(item => enrichAdminSelectedProduct(item)));
+            }
+            return mergedResults;
         }
 
         function getAdminDetectedProductType(data) {
@@ -7445,10 +7449,10 @@
 
         async function enrichAdminSelectedProduct(data) {
             const enriched = { ...(data || {}) };
-            if (String(enriched?._source || '').trim().toLowerCase() === 'saved_product') {
+            if (getAdminDetectedProductType(enriched) !== 'Ins.stocks') {
                 return enriched;
             }
-            if (!isAdminListedSearchCandidate(enriched) || hasAdminPositivePrice(enriched.price)) {
+            if (!String(enriched?.symbol || enriched?.market_symbol || '').trim()) {
                 return enriched;
             }
 
@@ -7457,9 +7461,10 @@
             }
 
             try {
-                const quote = await window.DB.getMarketPrice(enriched.symbol, enriched.name || '');
+                const quote = await window.DB.getMarketPrice(enriched.symbol || enriched.market_symbol, enriched.name || '', { ignorePriceLock: true });
                 if (quote && quote.status !== 'error' && hasAdminPositivePrice(quote.price)) {
                     enriched.price = Number(quote.price);
+                    enriched.subscription_price = Number(quote.price);
                     enriched.change = parseAdminNumericValue(quote.change);
                     enriched.changePercent = capAdminPositivePercent(quote.changePercent);
                     enriched.previousClose = parseAdminNumericValue(quote.previousClose ?? quote.prevClose);
