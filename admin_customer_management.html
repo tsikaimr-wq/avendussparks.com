@@ -7208,6 +7208,46 @@
             return preferred.length > 0 ? preferred : allRows;
         }
 
+        function mergeAdminDuplicateSearchResultRows(preferredRow, alternateRow) {
+            const preferred = { ...(preferredRow || {}) };
+            const alternate = alternateRow && typeof alternateRow === 'object' ? alternateRow : {};
+            const alternateSource = String(alternate?._source || 'market').trim().toLowerCase();
+            const alternateLooksLive = alternateSource !== 'saved_product'
+                && alternateSource !== 'turbo_product'
+                && hasAdminPositivePrice(alternate?.price ?? alternate?.subscription_price);
+
+            if (!alternateLooksLive) {
+                return preferred;
+            }
+
+            const livePrice = parseAdminNumericValue(alternate?.price ?? alternate?.subscription_price);
+            if (Number.isFinite(livePrice) && livePrice > 0) {
+                preferred.price = livePrice;
+                preferred.subscription_price = livePrice;
+            }
+
+            const liveChange = parseAdminNumericValue(alternate?.change);
+            if (Number.isFinite(liveChange)) {
+                preferred.change = liveChange;
+            }
+
+            const liveChangePercent = parseAdminNumericValue(alternate?.changePercent);
+            if (Number.isFinite(liveChangePercent)) {
+                preferred.changePercent = capAdminPositivePercent(liveChangePercent);
+            }
+
+            const livePrevClose = parseAdminNumericValue(alternate?.previousClose ?? alternate?.prevClose);
+            if (Number.isFinite(livePrevClose) && livePrevClose > 0) {
+                preferred.previousClose = livePrevClose;
+            }
+
+            if (!String(preferred?.exch || '').trim() && String(alternate?.exch || alternate?.exchange || '').trim()) {
+                preferred.exch = alternate.exch || alternate.exchange;
+            }
+
+            return preferred;
+        }
+
         function dedupeAdminSearchResults(rows = []) {
             const priorityOf = (row) => {
                 const sourceKey = String(row?._source || 'market').trim().toLowerCase();
@@ -7235,8 +7275,11 @@
                 const existingIndex = indexByKey.get(key);
                 const existing = deduped[existingIndex];
                 if (priorityOf(row) > priorityOf(existing)) {
-                    deduped[existingIndex] = row;
+                    deduped[existingIndex] = mergeAdminDuplicateSearchResultRows(row, existing);
+                    return;
                 }
+
+                deduped[existingIndex] = mergeAdminDuplicateSearchResultRows(existing, row);
             });
             return deduped.filter(Boolean);
         }
