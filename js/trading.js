@@ -90,9 +90,9 @@ const getTradeWindowClosedMessage = (type, action = 'buy') => {
     const normalizedType = normalizeTradeType(type);
     if (action === 'buy' && isSubscriptionOrderType(normalizedType)) return '';
     if (action === 'sell') {
-        return 'Trading is only available Monday to Friday, 09:15-15:30 India time (11:45-18:00 Beijing time). Outside these hours, selling is unavailable.';
+        return 'Trading is only available Monday to Friday, 09:15-15:30 India time. Outside these hours, selling is unavailable.';
     }
-    return 'Regular stock trading is only available Monday to Friday, 09:15-15:30 India time (11:45-18:00 Beijing time). Outside these hours, stock trading is unavailable, but IPO/OTC subscriptions can still be submitted.';
+    return 'Regular stock trading is only available Monday to Friday, 09:15-15:30 India time. Outside these hours, stock trading is unavailable, but IPO/OTC subscriptions can still be submitted.';
 };
 
 window.TradeExecutionWindow = window.TradeExecutionWindow || {
