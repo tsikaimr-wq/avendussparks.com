@@ -5871,7 +5871,7 @@
                         if (typeof updateBuyCalculations === 'function') updateBuyCalculations();
                         if (timestampEl) {
                             timestampEl.innerHTML = isLockedFallbackQuote
-                                ? `<span style="color:#f59e0b;">Locked price</span>`
+                                ? ``
                                 : (shouldUseRealtimeQuotes
                                 ? `<span style="color:#f59e0b;">Estimated price</span>`
                                 : `<span style="color:#94a3b8;">Market closed · price frozen</span>`);
@@ -5953,7 +5953,7 @@
 
                     if (timestampEl) {
                         if (isLockedCachedQuote) {
-                            timestampEl.innerHTML = `<span style="color:#f59e0b;">Locked price</span>`;
+                            timestampEl.innerHTML = ``;
                         } else if (isDetailInsStock && !hasLivePrice && ageMins > 5 && insFallbackQuote) {
                             timestampEl.innerHTML = `<span style="color:#f59e0b;">Estimated price</span>`;
                         } else if (ageMins > 5) {
