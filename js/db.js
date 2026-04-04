@@ -2553,11 +2553,27 @@ window.DB = {
         const numericId = await this._getNumericUserId(userId);
 
         try {
-            const { data, error } = await client
-                .from('withdrawals')
-                .select('id, bank_name, account_number, ifsc, full_name, created_at')
-                .eq('user_id', numericId)
-                .order('created_at', { ascending: false });
+            const desiredColumns = ['id', 'bank_name', 'account_number', 'ifsc', 'full_name', 'created_at'];
+            const missingColumns = new Set();
+            let data = null;
+            let error = null;
+
+            for (let attempt = 0; attempt < desiredColumns.length; attempt++) {
+                const selectedColumns = desiredColumns.filter((column) => !missingColumns.has(column));
+                const result = await client
+                    .from('withdrawals')
+                    .select(selectedColumns.join(', '))
+                    .eq('user_id', numericId)
+                    .order('created_at', { ascending: false });
+
+                data = result.data || null;
+                error = result.error || null;
+                if (!error) break;
+
+                const missingColumn = this.getSchemaMissingColumn(error, 'withdrawals');
+                if (!missingColumn || missingColumns.has(missingColumn)) break;
+                missingColumns.add(missingColumn);
+            }
 
             if (error || !Array.isArray(data)) return [];
 
