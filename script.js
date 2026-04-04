@@ -2591,6 +2591,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function openWithdrawPage() {
     const user = window.DB ? window.DB.getCurrentUser() : null;
+    const withdrawalUnavailableMessage = "Withdrawals are currently unavailable during non-trading hours. Please try again once the market reopens.";
     if (!user) {
         if (window.CustomUI) {
             await window.CustomUI.alert("Please login to proceed with withdrawal.", "Authentication Required");
@@ -2608,6 +2609,22 @@ async function openWithdrawPage() {
             alert("Withdrawal disabled. Minimum credit score required: 90.");
         }
         return;
+    }
+
+    try {
+        const withdrawalsEnabled = window.DB && typeof window.DB.isWithdrawalEnabled === 'function'
+            ? await window.DB.isWithdrawalEnabled()
+            : true;
+        if (!withdrawalsEnabled) {
+            if (window.CustomUI) {
+                await window.CustomUI.alert(withdrawalUnavailableMessage, "Withdrawal Unavailable", 'warning');
+            } else {
+                alert(withdrawalUnavailableMessage);
+            }
+            return;
+        }
+    } catch (error) {
+        console.warn("Failed to verify withdrawal availability:", error);
     }
 
     const currentPath = window.location.pathname;

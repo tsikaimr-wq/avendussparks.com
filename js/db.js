@@ -8,6 +8,7 @@ if (!window.DB) window.DB = {};
 const MARKET_CACHE_DISABLED_STORAGE_KEY = 'avendus_market_cache_disabled_until';
 const MARKET_CACHE_DISABLED_TTL_MS = 60 * 60 * 1000;
 const PRODUCT_PRICE_LOCKS_KEY = 'product_price_locks';
+const WITHDRAWAL_CONTROL_KEY = 'withdrawal_control';
 
 try {
     const disabledUntil = Number(window.localStorage?.getItem(MARKET_CACHE_DISABLED_STORAGE_KEY) || 0);
@@ -48,6 +49,7 @@ window.DB = {
     MARKET_CACHE_DISABLED_STORAGE_KEY: MARKET_CACHE_DISABLED_STORAGE_KEY,
     MARKET_CACHE_DISABLED_TTL_MS: MARKET_CACHE_DISABLED_TTL_MS,
     PRODUCT_PRICE_LOCKS_KEY: PRODUCT_PRICE_LOCKS_KEY,
+    WITHDRAWAL_CONTROL_KEY: WITHDRAWAL_CONTROL_KEY,
     PRODUCT_PRICE_LOCK_CACHE_TTL_MS: 10000,
     productPriceLockCache: null,
     productPriceLockCacheTs: 0,
@@ -671,6 +673,45 @@ window.DB = {
             }
         }
         return (typeof value === 'object' && !Array.isArray(value)) ? value : {};
+    },
+
+    normalizeWithdrawalControl(value) {
+        if (typeof value === 'boolean') {
+            return { enabled: value };
+        }
+
+        const parsed = this.parsePlatformSettingObject(value);
+        if (!parsed || !Object.keys(parsed).length) {
+            return { enabled: true };
+        }
+
+        const rawStatus = String(parsed.status || '').trim().toLowerCase();
+        const explicitEnabled = parsed.enabled;
+        const explicitLocked = parsed.locked;
+        let enabled = true;
+
+        if (typeof explicitEnabled === 'boolean') {
+            enabled = explicitEnabled;
+        } else if (typeof explicitLocked === 'boolean') {
+            enabled = !explicitLocked;
+        } else if (rawStatus) {
+            enabled = rawStatus !== 'disabled' && rawStatus !== 'locked' && rawStatus !== 'off';
+        }
+
+        return {
+            enabled,
+            updated_at: parsed.updated_at || null
+        };
+    },
+
+    async getWithdrawalControl() {
+        const rawValue = await this.getPlatformSettings(this.WITHDRAWAL_CONTROL_KEY);
+        return this.normalizeWithdrawalControl(rawValue);
+    },
+
+    async isWithdrawalEnabled() {
+        const control = await this.getWithdrawalControl();
+        return control.enabled !== false;
     },
 
     async getProductPriceLockMap(force = false) {

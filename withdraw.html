@@ -15,7 +15,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="db.js?v=20260405b"></script>
+    <script src="db.js?v=20260405c"></script>
     <style>
         body {
             background-color: #f1f5f9;
@@ -828,9 +828,12 @@
                                     <button id="cModalBtn" class="c-modal-btn" onclick="closeCustomModal()">OK</button>
                                 </div>
                             </div>
-                            <script src="script.js"></script>
+                            <script src="script.js?v=20260405a"></script>
                             <script src="js/credit_notifier.js"></script>
                             <script>
+                                const WITHDRAWAL_UNAVAILABLE_MESSAGE = "Withdrawals are currently unavailable during non-trading hours. Please try again once the market reopens.";
+                                let withdrawalAvailabilityEnabled = true;
+
                                 window.showCustomModal = ({ type, message }) => {
                                     const overlay = document.getElementById('customModalOverlay');
                                     const icon = document.getElementById('cModalIcon');
@@ -862,6 +865,60 @@
                                     const overlay = document.getElementById('customModalOverlay');
                                     if (overlay) overlay.classList.remove('active');
                                 };
+
+                                function applyWithdrawalAvailabilityState(enabled) {
+                                    withdrawalAvailabilityEnabled = enabled !== false;
+                                    const errorMsg = document.getElementById('withdrawErrorMsg');
+                                    const submitBtn = document.getElementById('withdrawSubmitBtn');
+
+                                    if (errorMsg && !errorMsg.dataset.defaultText) {
+                                        errorMsg.dataset.defaultText = errorMsg.textContent.trim();
+                                    }
+
+                                    if (!withdrawalAvailabilityEnabled) {
+                                        if (errorMsg) {
+                                            errorMsg.dataset.lockReason = 'withdrawal_control';
+                                            errorMsg.textContent = WITHDRAWAL_UNAVAILABLE_MESSAGE;
+                                            errorMsg.style.display = 'block';
+                                        }
+                                        if (submitBtn) {
+                                            submitBtn.dataset.withdrawalsLocked = 'true';
+                                            submitBtn.disabled = false;
+                                            submitBtn.style.background = '#94a3b8';
+                                            submitBtn.style.cursor = 'pointer';
+                                            submitBtn.style.pointerEvents = 'auto';
+                                            submitBtn.style.opacity = '1';
+                                        }
+                                        return;
+                                    }
+
+                                    if (errorMsg && errorMsg.dataset.lockReason === 'withdrawal_control') {
+                                        errorMsg.textContent = errorMsg.dataset.defaultText || 'You cannot withdraw until outstanding balances are cleared.';
+                                        errorMsg.style.display = 'none';
+                                        delete errorMsg.dataset.lockReason;
+                                    }
+
+                                    if (submitBtn && submitBtn.dataset.withdrawalsLocked === 'true') {
+                                        delete submitBtn.dataset.withdrawalsLocked;
+                                        submitBtn.disabled = false;
+                                        submitBtn.style.background = '#1e56a0';
+                                        submitBtn.style.cursor = 'pointer';
+                                        submitBtn.style.pointerEvents = 'auto';
+                                        submitBtn.style.opacity = '1';
+                                    }
+                                }
+
+                                async function syncWithdrawalAvailabilityUI() {
+                                    try {
+                                        const enabled = window.DB && typeof window.DB.isWithdrawalEnabled === 'function'
+                                            ? await window.DB.isWithdrawalEnabled()
+                                            : true;
+                                        applyWithdrawalAvailabilityState(enabled);
+                                    } catch (error) {
+                                        console.warn('Failed to sync withdrawal availability:', error);
+                                        applyWithdrawalAvailabilityState(true);
+                                    }
+                                }
 
                                 document.addEventListener('DOMContentLoaded', async () => {
                                     const user = DB.getCurrentUser();
@@ -1010,6 +1067,8 @@
                                                 }).join('');
                                                 if (currentVal) bankSelect.value = currentVal;
                                             }
+
+                                            await syncWithdrawalAvailabilityUI();
                                         }
                                     }
 
@@ -1021,6 +1080,12 @@
                                 async function handleWithdrawalSubmit() {
                                     const btn = document.getElementById('withdrawSubmitBtn');
                                     if (btn.disabled) return;
+
+                                    await syncWithdrawalAvailabilityUI();
+                                    if (!withdrawalAvailabilityEnabled) {
+                                        showCustomModal({ type: 'warning', message: WITHDRAWAL_UNAVAILABLE_MESSAGE });
+                                        return;
+                                    }
 
                                     const bankId = document.getElementById('withdrawBankSelect').value;
                                     const amount = parseFloat(document.getElementById('withdrawAmountInput').value);

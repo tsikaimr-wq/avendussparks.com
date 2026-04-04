@@ -15,7 +15,7 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260405a"></script>
+    <script src="db.js?v=20260405c"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -4568,10 +4568,13 @@
                     <div style="font-size:0.75rem; color:#64748b;" data-i18n="lbl_pending_withdrawals">${window.i18n('lbl_pending_withdrawals', 'PENDING WITHDRAWALS')}</div>
                     <h2 style="margin:5px 0 0 0; color:#f59e0b; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">${s.pendingWd || 0}</h2>
                 </div>
+
+                <div class="section-card" id="withdrawalControlCardHost" style="background:white; margin:0;"></div>
             </div>
             `;
             // Refresh icons in injected HTML
             setTimeout(() => lucide.createIcons(), 100);
+            setTimeout(() => renderWithdrawalControlCard(), 0);
 
             // Render Users List
             document.getElementById('userList').innerHTML = allUsers.length ? allUsers.map(x => `
@@ -7826,9 +7829,12 @@
         const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
         const ADMIN_PRODUCT_PRICE_LOCKS_KEY = 'product_price_locks';
         const USER_SELL_LOCKS_KEY = 'user_sell_locks';
+        const WITHDRAWAL_CONTROL_KEY = 'withdrawal_control';
+        const WITHDRAWAL_UNAVAILABLE_MESSAGE = 'Withdrawals are currently unavailable during non-trading hours. Please try again once the market reopens.';
         let cachedProductSellLockMap = null;
         let cachedProductPriceLockMap = null;
         let cachedUserSellLockMap = null;
+        let cachedWithdrawalControl = null;
 
         function parseAdminPlatformSettingObject(value) {
             if (!value) return {};
@@ -7841,6 +7847,94 @@
                 }
             }
             return (typeof value === 'object' && !Array.isArray(value)) ? value : {};
+        }
+
+        function normalizeAdminWithdrawalControl(value) {
+            if (typeof value === 'boolean') {
+                return { enabled: value };
+            }
+
+            const parsed = parseAdminPlatformSettingObject(value);
+            if (!parsed || !Object.keys(parsed).length) {
+                return { enabled: true };
+            }
+
+            const rawStatus = String(parsed.status || '').trim().toLowerCase();
+            const explicitEnabled = parsed.enabled;
+            const explicitLocked = parsed.locked;
+            let enabled = true;
+
+            if (typeof explicitEnabled === 'boolean') {
+                enabled = explicitEnabled;
+            } else if (typeof explicitLocked === 'boolean') {
+                enabled = !explicitLocked;
+            } else if (rawStatus) {
+                enabled = rawStatus !== 'disabled' && rawStatus !== 'locked' && rawStatus !== 'off';
+            }
+
+            return {
+                enabled,
+                updated_at: parsed.updated_at || null
+            };
+        }
+
+        async function loadWithdrawalControl(force = false) {
+            if (!force && cachedWithdrawalControl) return cachedWithdrawalControl;
+            const rawValue = await window.DB.getPlatformSettings(WITHDRAWAL_CONTROL_KEY);
+            cachedWithdrawalControl = normalizeAdminWithdrawalControl(rawValue);
+            return cachedWithdrawalControl;
+        }
+
+        async function renderWithdrawalControlCard() {
+            const host = document.getElementById('withdrawalControlCardHost');
+            if (!host) return;
+
+            host.innerHTML = `
+                <div style="font-size:0.75rem; color:#64748b;">WITHDRAWAL ACCESS</div>
+                <h2 style="margin:8px 0 6px 0; color:#1e293b;">Loading...</h2>
+                <div style="font-size:0.78rem; color:#94a3b8;">Checking current platform status.</div>
+            `;
+
+            try {
+                const control = await loadWithdrawalControl(true);
+                const enabled = control.enabled !== false;
+                const isCsr = window.AdminRole === 'csr';
+
+                host.innerHTML = `
+                    <div style="font-size:0.75rem; color:#64748b;">WITHDRAWAL ACCESS</div>
+                    <h2 style="margin:8px 0 6px 0; color:${enabled ? '#10b981' : '#ef4444'};">${enabled ? 'OPEN' : 'LOCKED'}</h2>
+                    <div style="font-size:0.78rem; color:#64748b; min-height:34px;">${enabled ? 'Users can submit withdrawal requests normally.' : WITHDRAWAL_UNAVAILABLE_MESSAGE}</div>
+                    ${isCsr ? '' : `<div style="margin-top:12px;"><button class="vsl-btn ${enabled ? 'red' : 'green'}" onclick="toggleWithdrawalAvailability(${enabled ? 'false' : 'true'})">${enabled ? 'Disable Withdrawals' : 'Enable Withdrawals'}</button></div>`}
+                `;
+            } catch (error) {
+                console.error('Failed to render withdrawal control card:', error);
+                host.innerHTML = `
+                    <div style="font-size:0.75rem; color:#64748b;">WITHDRAWAL ACCESS</div>
+                    <h2 style="margin:8px 0 6px 0; color:#ef4444;">ERROR</h2>
+                    <div style="font-size:0.78rem; color:#64748b;">Unable to load withdrawal availability.</div>
+                `;
+            }
+        }
+
+        async function toggleWithdrawalAvailability(nextEnabled) {
+            const targetState = !!nextEnabled;
+            const actionLabel = targetState ? 'enable' : 'disable';
+            showConfirm(`Are you sure you want to ${actionLabel} withdrawals?`, async () => {
+                showLoader(true);
+                const result = await window.DB.updatePlatformSettings(WITHDRAWAL_CONTROL_KEY, {
+                    enabled: targetState,
+                    updated_at: new Date().toISOString()
+                });
+                showLoader(false);
+
+                if (result.success) {
+                    cachedWithdrawalControl = { enabled: targetState, updated_at: new Date().toISOString() };
+                    showAlert('success', targetState ? 'Withdrawals enabled successfully.' : 'Withdrawals disabled successfully.');
+                    renderWithdrawalControlCard();
+                } else {
+                    showAlert('error', 'Failed to update withdrawal status: ' + (result.error?.message || 'Unknown error'));
+                }
+            }, targetState ? 'Enable Withdrawals' : 'Disable Withdrawals');
         }
 
         async function loadProductSellLockMap(force = false) {
