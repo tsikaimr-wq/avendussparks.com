@@ -15,7 +15,7 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260404f"></script>
+    <script src="db.js?v=20260405a"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -3702,7 +3702,7 @@
                 void (async () => {
                     try {
                         if (!userIds.length) return;
-                        const batchSize = 40;
+                        const batchSize = 10;
                         const kycRows = [];
                         for (let start = 0; start < userIds.length; start += batchSize) {
                             const batchUserIds = userIds.slice(start, start + batchSize);
@@ -3714,7 +3714,6 @@
                                     client.from('kyc_submissions')
                                         .select(kycSelectFields)
                                         .in('user_id', batchUserIds)
-                                        .order('submitted_at', { ascending: false })
                                 ),
                                 [],
                                 8000
