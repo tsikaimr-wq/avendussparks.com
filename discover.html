@@ -7456,7 +7456,7 @@
                             ? `₹${effectiveStockPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                             : 'Loading...';
                         const stockStatusLabel = isPriceLocked
-                            ? 'Locked price'
+                            ? ''
                             : (isInsStock
                                 ? (isFresh
                                     ? (updatedDate ? `Synced: ${updatedDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}` : '')
