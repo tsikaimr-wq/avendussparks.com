@@ -2780,9 +2780,10 @@ window.DB = {
     async getKycs() {
         const client = this.getClient();
         const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
-        let query = client.from('kyc_submissions').select('*');
+        const fields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,created_at,admin_note,rejection_reason,processed_at';
+        let query = client.from('kyc_submissions').select(fields);
         if (auth.role === 'csr') {
-            query = client.from('kyc_submissions').select('*, users!inner(*)');
+            query = client.from('kyc_submissions').select(`${fields}, users!inner(id,csr_id,invitation_code)`);
             if (auth.invitation_code) {
                 query = query.or(`users.csr_id.eq.${auth.id},users.invitation_code.eq.${auth.invitation_code}`);
             } else {

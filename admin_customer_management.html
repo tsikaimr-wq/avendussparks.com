@@ -15,7 +15,7 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260404b"></script>
+    <script src="db.js?v=20260404c"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -3664,9 +3664,14 @@
                     return;
                 }
 
-                // 2. Fetch other modules (Filtered if CSR)
+                const kycSelectFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,created_at,admin_note,rejection_reason,processed_at';
+                const kycQuery = userIds.length > 0
+                    ? client.from('kyc_submissions').select(kycSelectFields).in('user_id', userIds)
+                    : Promise.resolve({ data: [], error: null });
+
+                // 2. Fetch other modules (Filtered to the current user scope)
                 const [ks, w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
-                    withTimeout('kyc_submissions', fetchSafe('kyc_submissions', (isCsr ? client.from('kyc_submissions').select('*').in('user_id', userIds) : client.from('kyc_submissions').select('*'))), []),
+                    withTimeout('kyc_submissions', fetchSafe('kyc_submissions', kycQuery), []),
                     withTimeout('withdrawals', fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)), []),
                     withTimeout('deposits', fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)), []),
                     withTimeout('trades_stock', fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').in('user_id', userIds).or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks') : client.from('trades').select('*').or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),
@@ -6276,7 +6281,8 @@
             const client = DB.getClient();
             showLoader(true);
             const { data: user } = await client.from('users').select('*').eq('id', uid).single();
-            const { data: kyc } = await client.from('kyc_submissions').select('*').eq('user_id', uid).order('submitted_at', { ascending: false }).limit(1).single();
+            const kycFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,created_at,admin_note,rejection_reason,processed_at';
+            const { data: kyc } = await client.from('kyc_submissions').select(kycFields).eq('user_id', uid).order('submitted_at', { ascending: false }).limit(1).single();
 
             targetKycUser = uid;
 
