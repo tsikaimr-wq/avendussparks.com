@@ -186,10 +186,14 @@ window.DB = {
     getLocalMarketApiBases() {
         const supabaseBase = (window.supabaseClient?.supabaseUrl || window.SUPABASE_URL || '').trim();
         const functionBase = supabaseBase ? `${supabaseBase.replace(/\/$/, '')}/functions/v1` : '';
+        const upstreamBase = (typeof window.STOCKTV_UPSTREAM_BASE === 'string' && window.STOCKTV_UPSTREAM_BASE.trim())
+            ? window.STOCKTV_UPSTREAM_BASE.trim()
+            : 'https://api.avendussparks.com';
         const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
-        const localBase = (allowLocal && typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
+        const configuredLocalBase = (typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
             ? window.INDIA_MARKET_API_BASE.trim()
             : '';
+        const localBase = allowLocal ? (configuredLocalBase || upstreamBase) : '';
         const preferExternal = window.PREFER_INDIA_MARKET_API_BASE !== false;
         const useEdgeFallback = window.ENABLE_SUPABASE_EDGE_FALLBACK === true;
 
