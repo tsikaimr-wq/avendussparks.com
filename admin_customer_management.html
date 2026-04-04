@@ -15,7 +15,7 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260404c"></script>
+    <script src="db.js?v=20260404d"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -3664,7 +3664,7 @@
                     return;
                 }
 
-                const kycSelectFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,created_at,admin_note,rejection_reason,processed_at';
+                const kycSelectFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,admin_note,rejection_reason,processed_at';
                 const kycQuery = userIds.length > 0
                     ? client.from('kyc_submissions').select(kycSelectFields).in('user_id', userIds)
                     : Promise.resolve({ data: [], error: null });
@@ -6281,7 +6281,7 @@
             const client = DB.getClient();
             showLoader(true);
             const { data: user } = await client.from('users').select('*').eq('id', uid).single();
-            const kycFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,created_at,admin_note,rejection_reason,processed_at';
+            const kycFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,admin_note,rejection_reason,processed_at';
             const { data: kyc } = await client.from('kyc_submissions').select(kycFields).eq('user_id', uid).order('submitted_at', { ascending: false }).limit(1).single();
 
             targetKycUser = uid;
