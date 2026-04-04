@@ -15,7 +15,7 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260404e"></script>
+    <script src="db.js?v=20260404f"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -3665,13 +3665,9 @@
                 }
 
                 const kycSelectFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,admin_note,reviewed_at';
-                const kycQuery = userIds.length > 0
-                    ? client.from('kyc_submissions').select(kycSelectFields).in('user_id', userIds)
-                    : Promise.resolve({ data: [], error: null });
 
                 // 2. Fetch other modules (Filtered to the current user scope)
-                const [ks, w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
-                    withTimeout('kyc_submissions', fetchSafe('kyc_submissions', kycQuery), []),
+                const [w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
                     withTimeout('withdrawals', fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)), []),
                     withTimeout('deposits', fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)), []),
                     withTimeout('trades_stock', fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').in('user_id', userIds).or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks') : client.from('trades').select('*').or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),
@@ -3684,20 +3680,54 @@
                 ]);
 
                 adminProductTypeById = new Map((productsMeta || []).map(product => [String(product.id), product.product_type || '']));
-                allSubmissions = await hydrateAdminKycSubmissionMedia(ks || []);
+                allSubmissions = [];
+
+                let dashboardKpis = {};
 
                 // Combine trades
                 const allTrades = [...(tStock || []), ...(tOtc || []), ...(tIpo || [])];
 
-                renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], {});
+                renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], dashboardKpis);
 
                 // Fetch dashboard KPIs asynchronously so slow count queries never freeze the whole admin page.
                 void (async () => {
                     try {
-                        const kpis = await withTimeout('dashboard_kpis', fetchDashboardKPIs(client, isCsr ? userIds : null), {});
-                        renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], kpis || {});
+                        dashboardKpis = await withTimeout('dashboard_kpis', fetchDashboardKPIs(client, isCsr ? userIds : null), {});
+                        renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], dashboardKpis || {});
                     } catch (e) {
                         console.error("KPI Fetch Failed", e);
+                    }
+                })();
+
+                void (async () => {
+                    try {
+                        if (!userIds.length) return;
+                        const batchSize = 40;
+                        const kycRows = [];
+                        for (let start = 0; start < userIds.length; start += batchSize) {
+                            const batchUserIds = userIds.slice(start, start + batchSize);
+                            if (!batchUserIds.length) continue;
+                            const batchRows = await withTimeout(
+                                `kyc_submissions_batch_${Math.floor(start / batchSize) + 1}`,
+                                fetchSafe(
+                                    'kyc_submissions',
+                                    client.from('kyc_submissions')
+                                        .select(kycSelectFields)
+                                        .in('user_id', batchUserIds)
+                                        .order('submitted_at', { ascending: false })
+                                ),
+                                [],
+                                8000
+                            );
+                            if (Array.isArray(batchRows) && batchRows.length) {
+                                kycRows.push(...batchRows);
+                            }
+                        }
+
+                        allSubmissions = await hydrateAdminKycSubmissionMedia(kycRows);
+                        renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], dashboardKpis || {});
+                    } catch (e) {
+                        console.error("Background KYC fetch failed:", e);
                     }
                 })();
             } catch (error) {
