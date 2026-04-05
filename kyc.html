@@ -393,6 +393,13 @@
                 }
             } catch (_) { }
 
+            if (String(effectiveStatus || '').trim().toLowerCase() === 'rejected') {
+                document.getElementById('kycFormView').style.display = 'block';
+                document.getElementById('kycStatusView').style.display = 'none';
+                nextStep(1);
+                return;
+            }
+
             if (effectiveStatus) {
                 showStatus(effectiveStatus);
             }
@@ -501,12 +508,9 @@
             } else if (status === 'Rejected') {
                 indicator.className = 'status-badge status-rejected';
                 indicator.innerHTML = '<i data-lucide="x-circle"></i> Verification Rejected';
-                if (window.DB && typeof window.DB.clearCurrentUser === 'function') {
-                    window.DB.clearCurrentUser();
-                }
                 if (returnLink) {
-                    returnLink.href = 'login.html?kyc_rejected=true';
-                    returnLink.textContent = 'Back to Login';
+                    returnLink.href = 'kyc.html?resubmit=true';
+                    returnLink.textContent = 'Resubmit Verification';
                 }
             } else {
                 indicator.className = 'status-badge status-pending';

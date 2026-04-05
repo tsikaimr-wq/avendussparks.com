@@ -1022,13 +1022,12 @@ window.DB = {
         }
 
         const normalizedKyc = this.normalizeKycStatus(data?.kyc);
-        if (!this.isKycApproved(normalizedKyc)) {
+        const requiresKycResubmission = normalizedKyc === 'rejected';
+        if (!this.isKycApproved(normalizedKyc) && !requiresKycResubmission) {
             return {
                 success: false,
-                code: normalizedKyc === 'rejected' ? 'KYC_REJECTED' : 'KYC_PENDING',
-                message: normalizedKyc === 'rejected'
-                    ? 'KYC verification has not been approved. Please contact support.'
-                    : 'KYC verification is under review. Please wait while it is being reviewed before logging in.',
+                code: 'KYC_PENDING',
+                message: 'KYC verification is under review. Please wait while it is being reviewed before logging in.',
                 user: data
             };
         }
@@ -1060,7 +1059,15 @@ window.DB = {
             } catch (e) { console.error("Credit alert error:", e); }
         }
 
-        return { success: true, user: data };
+        return {
+            success: true,
+            user: data,
+            requiresKycResubmission,
+            kycStatus: normalizedKyc,
+            message: requiresKycResubmission
+                ? 'Your previous KYC submission was rejected. Please resubmit your documents.'
+                : undefined
+        };
     },
 
     normalizeInvitationCode(invitationCode) {

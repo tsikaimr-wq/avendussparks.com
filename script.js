@@ -125,7 +125,7 @@ function isKycAccessAllowedPath(pathname = window.location.pathname) {
 function getKycRestrictionMessage(user) {
     const status = normalizeKycStatusValue(user?.kyc);
     if (status === 'rejected') {
-        return 'KYC verification has not been approved yet. Please contact support.';
+        return 'Your KYC submission was rejected. Please log in again and resubmit your information.';
     }
     return 'KYC verification is under review.';
 }
@@ -176,7 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 500);
     } else if (enforceKycRestrictions && urlParams.get('kyc_rejected') === 'true') {
         setTimeout(() => {
-            window.CustomUI.alert("KYC verification has not been approved yet. Please contact support.", "Verification Required");
+            window.CustomUI.alert("Your KYC submission was rejected. Please log in again and resubmit your information.", "Verification Required");
         }, 500);
     }
 

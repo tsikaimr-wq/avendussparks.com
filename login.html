@@ -1065,6 +1065,10 @@
                 const result = await DB.login(identifier, password);
 
                 if (result.success) {
+                    if (result.requiresKycResubmission) {
+                        window.location.replace('kyc.html?resubmit=true');
+                        return;
+                    }
                     redirectAfterLogin();
                 } else {
                     const kycBlocked = result.code === 'KYC_PENDING' || result.code === 'KYC_REJECTED';
@@ -1700,7 +1704,7 @@
                 }, 150);
             } else if (params.get('kyc_rejected') === 'true') {
                 setTimeout(() => {
-                    showAlert('warning', 'KYC verification has not been approved yet. Please contact support.', 'Verification Required');
+                    showAlert('warning', 'Your previous KYC submission was rejected. Please log in again to resubmit your information.', 'Verification Required');
                 }, 150);
             }
         })();
