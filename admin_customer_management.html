@@ -3373,6 +3373,7 @@
         let allUsers = [];
         let allMsgs = [];
         let allSubmissions = [];
+        let kycMediaLoadingUserIds = new Set();
         let allCsrs = [];
         let adminProductTypeById = new Map();
         let adminUserLookup = {};
@@ -5015,6 +5016,13 @@
             return getLatestUserKycSubmissionFromList(allSubmissions, userId);
         }
 
+        function hasHydratedKycMedia(submission) {
+            if (!submission || typeof submission !== 'object') return false;
+            return ['id_front_url', 'id_back_url', 'selfie_url'].every(field =>
+                Object.prototype.hasOwnProperty.call(submission, field)
+            );
+        }
+
         async function hydrateAdminKycSubmissionMedia(submissions = []) {
             const rows = Array.isArray(submissions) ? submissions : [];
             if (!(window.DB && typeof window.DB.resolveKycImageUrl === 'function')) {
@@ -5041,6 +5049,98 @@
             }
 
             return 'NotSubmitted';
+        }
+
+        function renderKycInfoHtml(user, submission) {
+            const selfieState = !submission
+                ? ''
+                : hasHydratedKycMedia(submission)
+                    ? (submission.selfie_url ? 'Selfie: Uploaded' : 'Selfie: Missing')
+                    : 'Selfie: Loading';
+
+            return [
+                submission?.id_type ? `Type: ${submission.id_type}` : '',
+                user?.address ? `Address: ${user.address}` : '',
+                selfieState
+            ].filter(Boolean).join('<br>');
+        }
+
+        function renderKycMediaSlot(userId, side, submission) {
+            const field = side === 'front' ? 'id_front_url' : (side === 'back' ? 'id_back_url' : 'selfie_url');
+            const mediaUrl = String(submission?.[field] || '').trim();
+            if (mediaUrl) {
+                return `<img src="${mediaUrl}" class="kyc-thumb" onclick="openKycEdit('${userId}')">`;
+            }
+            return `<div class="image-placeholder" onclick="openKycEdit('${userId}')"></div>`;
+        }
+
+        function refreshKycListMediaForUser(userId) {
+            const normalizedUserId = String(userId || '').trim();
+            if (!normalizedUserId) return;
+
+            const user = allUsers.find(item => String(item?.id) === normalizedUserId) || null;
+            const submission = getLatestUserKycSubmission(normalizedUserId);
+            const frontSlot = document.querySelector(`[data-kyc-media-slot="front"][data-user-id="${normalizedUserId}"]`);
+            const backSlot = document.querySelector(`[data-kyc-media-slot="back"][data-user-id="${normalizedUserId}"]`);
+            const infoSlot = document.querySelector(`[data-kyc-info-user-id="${normalizedUserId}"]`);
+
+            if (frontSlot) frontSlot.innerHTML = renderKycMediaSlot(normalizedUserId, 'front', submission);
+            if (backSlot) backSlot.innerHTML = renderKycMediaSlot(normalizedUserId, 'back', submission);
+            if (infoSlot) infoSlot.innerHTML = renderKycInfoHtml(user, submission) || '-';
+        }
+
+        async function loadKycMediaForUser(userId) {
+            const normalizedUserId = String(userId || '').trim();
+            if (!normalizedUserId || kycMediaLoadingUserIds.has(normalizedUserId)) return;
+
+            const submission = getLatestUserKycSubmission(normalizedUserId);
+            if (!submission?.id || hasHydratedKycMedia(submission)) return;
+            if (!(window.DB && typeof window.DB.getClient === 'function')) return;
+
+            kycMediaLoadingUserIds.add(normalizedUserId);
+            try {
+                const client = window.DB.getClient();
+                const { data, error } = await client
+                    .from('kyc_submissions')
+                    .select('id,id_front_url,id_back_url,selfie_url')
+                    .eq('id', submission.id)
+                    .maybeSingle();
+
+                if (error) {
+                    console.warn(`Failed to hydrate KYC media for user ${normalizedUserId}:`, error);
+                    return;
+                }
+                if (!data) return;
+
+                const [resolvedMedia] = await hydrateAdminKycSubmissionMedia([data]);
+                if (!resolvedMedia) return;
+
+                allSubmissions = (Array.isArray(allSubmissions) ? allSubmissions : []).map(item =>
+                    String(item?.id) === String(submission.id)
+                        ? { ...item, ...resolvedMedia }
+                        : item
+                );
+                refreshKycListMediaForUser(normalizedUserId);
+            } catch (error) {
+                console.error(`KYC media hydration failed for user ${normalizedUserId}:`, error);
+            } finally {
+                kycMediaLoadingUserIds.delete(normalizedUserId);
+            }
+        }
+
+        async function hydrateVisibleKycListMedia(users = []) {
+            const queue = (Array.isArray(users) ? users : [])
+                .map(user => String(user?.id || '').trim())
+                .filter(Boolean)
+                .filter((userId, index, ids) => ids.indexOf(userId) === index)
+                .filter(userId => {
+                    const submission = getLatestUserKycSubmission(userId);
+                    return submission?.id && !hasHydratedKycMedia(submission);
+                });
+
+            for (const userId of queue) {
+                await loadKycMediaForUser(userId);
+            }
         }
 
 
@@ -5107,11 +5207,7 @@
 
                 const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
                 const isCsr = auth.role === 'csr';
-                const infoHtml = [
-                    userKyc?.id_type ? `Type: ${userKyc.id_type}` : '',
-                    x.address ? `Address: ${x.address}` : '',
-                    userKyc?.selfie_url ? 'Selfie: Uploaded' : 'Selfie: Missing'
-                ].filter(Boolean).join('<br>');
+                const infoHtml = renderKycInfoHtml(x, userKyc);
 
                 return `
             <tr>
@@ -5124,18 +5220,18 @@
                 <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${x.dob || '-'}</td>
                 <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${x.id_number || '-'}</td>
                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-                    ${userKyc && userKyc.id_front_url
-                        ? `<img src="${userKyc.id_front_url}" class="kyc-thumb" onclick="openKycEdit('${x.id}')">`
-                        : `<div class="image-placeholder" onclick="openKycEdit('${x.id}')"></div>`}
+                    <div data-kyc-media-slot="front" data-user-id="${x.id}">
+                        ${renderKycMediaSlot(x.id, 'front', userKyc)}
+                    </div>
                 </td>
                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
-                    ${userKyc && userKyc.id_back_url
-                        ? `<img src="${userKyc.id_back_url}" class="kyc-thumb" onclick="openKycEdit('${x.id}')">`
-                        : `<div class="image-placeholder" onclick="openKycEdit('${x.id}')"></div>`}
+                    <div data-kyc-media-slot="back" data-user-id="${x.id}">
+                        ${renderKycMediaSlot(x.id, 'back', userKyc)}
+                    </div>
                 </td>
                 ${!isCsr ? `<td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${salesperson}</td>` : ''}
                 <td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem;">${new Date(x.created_at).toLocaleString()}</td>
-                ${!isCsr ? `<td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem; line-height:1.5;">${infoHtml || '-'}</td>` : ''}
+                ${!isCsr ? `<td style="padding:12px; border-bottom:1px solid #f1f5f9; font-size:0.75rem; line-height:1.5;"><div data-kyc-info-user-id="${x.id}">${infoHtml || '-'}</div></td>` : ''}
                 <td style="padding:12px; border-bottom:1px solid #f1f5f9;">
                     <div class="row-actions">
                         <div class="action-menu">
@@ -5152,6 +5248,7 @@
             }).join('');
             window.applyLanguage(localStorage.getItem('admin_lang') || 'cn');
             lucide.createIcons();
+            void hydrateVisibleKycListMedia(data);
 
             // Re-apply filter if a search was active
             filterUserTable();
