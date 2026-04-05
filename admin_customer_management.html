@@ -7829,7 +7829,7 @@
         const PRODUCT_SELL_LOCKS_KEY = 'product_sell_locks';
         const ADMIN_PRODUCT_PRICE_LOCKS_KEY = 'product_price_locks';
         const USER_SELL_LOCKS_KEY = 'user_sell_locks';
-        const WITHDRAWAL_CONTROL_KEY = 'withdrawal_control';
+        const ADMIN_WITHDRAWAL_CONTROL_KEY = (window.DB && window.DB.WITHDRAWAL_CONTROL_KEY) || 'withdrawal_control';
         const WITHDRAWAL_UNAVAILABLE_MESSAGE = 'Withdrawals are currently unavailable during non-trading hours. Please try again once the market reopens.';
         let cachedProductSellLockMap = null;
         let cachedProductPriceLockMap = null;
@@ -7880,7 +7880,7 @@
 
         async function loadWithdrawalControl(force = false) {
             if (!force && cachedWithdrawalControl) return cachedWithdrawalControl;
-            const rawValue = await window.DB.getPlatformSettings(WITHDRAWAL_CONTROL_KEY);
+            const rawValue = await window.DB.getPlatformSettings(ADMIN_WITHDRAWAL_CONTROL_KEY);
             cachedWithdrawalControl = normalizeAdminWithdrawalControl(rawValue);
             return cachedWithdrawalControl;
         }
@@ -7921,7 +7921,7 @@
             const actionLabel = targetState ? 'enable' : 'disable';
             showConfirm(`Are you sure you want to ${actionLabel} withdrawals?`, async () => {
                 showLoader(true);
-                const result = await window.DB.updatePlatformSettings(WITHDRAWAL_CONTROL_KEY, {
+                const result = await window.DB.updatePlatformSettings(ADMIN_WITHDRAWAL_CONTROL_KEY, {
                     enabled: targetState,
                     updated_at: new Date().toISOString()
                 });
