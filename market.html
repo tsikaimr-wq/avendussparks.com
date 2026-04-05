@@ -5820,10 +5820,17 @@
                 const insFallbackQuote = isDetailInsStock
                     ? getInsStockFallbackQuote(detailProduct || lookupSymbol, { productId: currentProductId, snapshotPrice: detailStatsSnapshot?.currentPrice })
                     : null;
-                const directQuote = (!shouldUseRealtimeQuotes || isUnlistedDetail) ? null : await fetchDetailQuoteDirect(lookupSymbol, name);
-                const liveQuote = directQuote || ((shouldUseRealtimeQuotes && !isUnlistedDetail && window.DB && typeof window.DB.getMarketPrice === 'function')
-                    ? await window.DB.getMarketPrice(lookupSymbol, name)
-                    : null);
+                const isLockedDetailQuote = !!(detailProduct?.priceLocked || detailProduct?.locked || insFallbackQuote?.priceLocked || insFallbackQuote?.locked);
+                const directQuote = (!shouldUseRealtimeQuotes || isUnlistedDetail || isLockedDetailQuote)
+                    ? null
+                    : await fetchDetailQuoteDirect(lookupSymbol, name);
+                const liveQuote = isLockedDetailQuote
+                    ? ((window.DB && typeof window.DB.getMarketPrice === 'function')
+                        ? await window.DB.getMarketPrice(lookupSymbol, name)
+                        : (insFallbackQuote || null))
+                    : (directQuote || ((shouldUseRealtimeQuotes && !isUnlistedDetail && window.DB && typeof window.DB.getMarketPrice === 'function')
+                        ? await window.DB.getMarketPrice(lookupSymbol, name)
+                        : null));
                 const livePriceValue = toFiniteNumber(liveQuote?.price);
                 const hasLivePrice = liveQuote && liveQuote.status !== 'error' && livePriceValue !== null && livePriceValue > 0;
                 const cacheData = shouldUseRealtimeQuotes && hasLivePrice
@@ -6654,9 +6661,11 @@
                 return null;
             };
 
-            const buildSyntheticKline = (seedPrice, sym) => {
+            const buildSyntheticKline = (seedPrice, sym, options = {}) => {
                 const price = Number(seedPrice);
                 if (!Number.isFinite(price) || price <= 0) return null;
+                const flat = options?.flat === true;
+                const source = flat ? 'manual_price_lock' : 'quote_synthetic';
                 const intervalMap = { '1m': 60, '2m': 120, '5m': 300, '15m': 900, '30m': 1800, '60m': 3600, '90m': 5400, '1d': 86400 };
                 const step = intervalMap[desiredInterval] || 300;
                 const points = desiredPeriod === '1d' ? 96 : 120;
@@ -6666,11 +6675,11 @@
                 const rows = [];
                 for (let i = 0; i < points; i++) {
                     const ts = start + (i * step);
-                    const drift = (Math.random() - 0.5) * 0.0035;
+                    const drift = flat ? 0 : ((Math.random() - 0.5) * 0.0035);
                     const o = lastClose;
                     const c = Math.max(0.01, o * (1 + drift));
-                    const h = Math.max(o, c) * (1 + Math.random() * 0.0012);
-                    const l = Math.min(o, c) * (1 - Math.random() * 0.0012);
+                    const h = flat ? c : (Math.max(o, c) * (1 + Math.random() * 0.0012));
+                    const l = flat ? c : (Math.min(o, c) * (1 - Math.random() * 0.0012));
                     rows.push({
                         t: new Date(ts * 1000).toISOString(),
                         o,
@@ -6684,8 +6693,11 @@
                 return {
                     success: true,
                     symbol: sym,
-                    source: 'quote_synthetic',
+                    source,
                     delayed: true,
+                    locked: flat,
+                    priceLocked: flat,
+                    locked_price: flat ? price : null,
                     data: rows
                 };
             };
@@ -6706,7 +6718,15 @@
 
                 let klinePayload = null;
                 let usedSymbol = uniqCandidates[0] || normalizeApiSymbol(routeSymbol, options.exchangeHint || '') || baseSymbol || symbol;
-                if (!isInsStockChart && isUnlistedChart) {
+                const lockedChartPrice = toFiniteNumber(
+                    (baseProduct?.priceLocked || baseProduct?.locked)
+                        ? (baseProduct?.locked_price ?? baseProduct?.subscription_price ?? baseProduct?.price)
+                        : null
+                );
+                if (lockedChartPrice !== null && lockedChartPrice > 0) {
+                    klinePayload = buildSyntheticKline(lockedChartPrice, usedSymbol, { flat: true });
+                }
+                if (!klinePayload && !isInsStockChart && isUnlistedChart) {
                     const unlistedSeed = toFiniteNumber(baseProduct?.price)
                         ?? toFiniteNumber(baseProduct?.configured_price)
                         ?? toFiniteNumber(baseProduct?.subscription_price);

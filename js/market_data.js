@@ -544,6 +544,7 @@
                         });
 
                         // Fetch Institutional Stocks
+                        const priceLockMap = await this.loadProductPriceLocks(true);
                         const insData = await loadProductRows('Ins.stocks');
                         this.dbInsStocks = insData.map(p => ({
                             id: p.id,
@@ -575,8 +576,10 @@
                             change: 0,
                             changePercent: null
                         }));
-                        this.dbInsStocks.forEach(stock => this.applyInsStockFallbackQuote(stock));
-                        const priceLockMap = await this.loadProductPriceLocks(true);
+                        this.dbInsStocks.forEach(stock => {
+                            if (this.applyLockedPrice(stock, priceLockMap)) return;
+                            this.applyInsStockFallbackQuote(stock);
+                        });
                         this.applyPriceLocksToCollections(priceLockMap);
 
                         console.log(`Synced ${this.dbProducts.length} IPOs, ${this.dbOtcProducts.length} OTCs, and ${this.dbInsStocks.length} Ins.stocks`);
@@ -688,6 +691,20 @@
 
         applyInsStockFallbackQuote(item, options = {}) {
             if (!this.isInsStockProduct(item)) return null;
+            if (this.applyLockedPrice(item)) {
+                return {
+                    price: item.price,
+                    previousClose: item.prevClose,
+                    prevClose: item.prevClose,
+                    changePercent: null,
+                    change: null,
+                    source: 'manual_price_lock',
+                    delayed: true,
+                    locked: true,
+                    priceLocked: true,
+                    locked_price: item.locked_price ?? item.price
+                };
+            }
 
             const seedPrice = this.getInsStockSeedPrice(item);
             if (seedPrice === null || seedPrice <= 0) return null;

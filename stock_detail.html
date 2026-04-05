@@ -1005,9 +1005,11 @@
                 return null;
             };
 
-            const buildSyntheticKline = (seedPrice, sym) => {
+            const buildSyntheticKline = (seedPrice, sym, options = {}) => {
                 const price = Number(seedPrice);
                 if (!Number.isFinite(price) || price <= 0) return null;
+                const flat = options?.flat === true;
+                const source = flat ? 'manual_price_lock' : 'quote_synthetic';
                 const intervalMap = { '1m': 60, '2m': 120, '5m': 300, '15m': 900, '30m': 1800, '60m': 3600, '90m': 5400, '1d': 86400 };
                 const step = intervalMap[desiredInterval] || 300;
                 const points = desiredPeriod === '1d' ? 96 : 120;
@@ -1017,11 +1019,11 @@
                 const rows = [];
                 for (let i = 0; i < points; i++) {
                     const ts = start + (i * step);
-                    const drift = (Math.random() - 0.5) * 0.0035;
+                    const drift = flat ? 0 : ((Math.random() - 0.5) * 0.0035);
                     const o = lastClose;
                     const c = Math.max(0.01, o * (1 + drift));
-                    const h = Math.max(o, c) * (1 + Math.random() * 0.0012);
-                    const l = Math.min(o, c) * (1 - Math.random() * 0.0012);
+                    const h = flat ? c : (Math.max(o, c) * (1 + Math.random() * 0.0012));
+                    const l = flat ? c : (Math.min(o, c) * (1 - Math.random() * 0.0012));
                     rows.push({
                         t: new Date(ts * 1000).toISOString(),
                         o,
@@ -1035,8 +1037,11 @@
                 return {
                     success: true,
                     symbol: sym,
-                    source: 'quote_synthetic',
+                    source,
                     delayed: true,
+                    locked: flat,
+                    priceLocked: flat,
+                    locked_price: flat ? price : null,
                     data: rows
                 };
             };
@@ -1052,7 +1057,19 @@
 
                 let klinePayload = null;
                 let usedSymbol = uniqCandidates[0] || normalizeApiSymbol(routeSymbol, options.exchangeHint || '') || baseSymbol || symbol;
+                const chartProduct = window.MarketEngine?.getProduct?.(currentProductId)
+                    || window.MarketEngine?.getProduct?.(usedSymbol)
+                    || window.MarketEngine?.getProduct?.(baseSymbol);
+                const lockedChartPrice = Number(
+                    (chartProduct?.priceLocked || chartProduct?.locked)
+                        ? (chartProduct?.locked_price ?? chartProduct?.subscription_price ?? chartProduct?.price)
+                        : NaN
+                );
+                if (Number.isFinite(lockedChartPrice) && lockedChartPrice > 0) {
+                    klinePayload = buildSyntheticKline(lockedChartPrice, usedSymbol, { flat: true });
+                }
                 for (const candidate of uniqCandidates) {
+                    if (klinePayload) break;
                     const result = await fetchKlineFromLocalApi(candidate, window.MarketEngine?.getProduct?.(candidate)?.name || window.MarketEngine?.getProduct?.(baseSymbol)?.name || '');
                     if (result?.payload) {
                         klinePayload = result.payload;
