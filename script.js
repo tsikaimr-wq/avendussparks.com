@@ -1116,8 +1116,10 @@ window.submitKYC = async function () {
         submitBtn.textContent = 'Submitting...';
         submitBtn.disabled = true;
 
-        const frontImg = frontInput.files[0] || (frontPreview && !frontPreview.includes('placeholder') ? frontPreview : null);
-        const backImg = backInput.files[0] || (backPreview && !backPreview.includes('placeholder') ? backPreview : null);
+        // For rejected resubmissions, existing previews are only used as validation/display state.
+        // Re-sending previously stored data URLs / signed URLs can produce oversized or stale requests.
+        const frontImg = frontInput.files[0] || null;
+        const backImg = backInput.files[0] || null;
 
         const result = await window.DB.submitKYC(
             user.id,

@@ -2400,7 +2400,9 @@ window.DB = {
             user_id: resolvedUserId,
             id_type: extra.id_type || 'Aadhar',
             status: 'Pending',
-            submitted_at: new Date().toISOString()
+            submitted_at: new Date().toISOString(),
+            admin_note: null,
+            reviewed_at: null
         };
 
         if (urls.id_front_url) kycPayload.id_front_url = urls.id_front_url;
@@ -2414,6 +2416,7 @@ window.DB = {
             .from('kyc_submissions')
             .select('id')
             .eq('user_id', resolvedUserId)
+            .order('submitted_at', { ascending: false })
             .limit(1);
 
         let res;
@@ -2421,7 +2424,7 @@ window.DB = {
             res = await client
                 .from('kyc_submissions')
                 .update(kycPayload)
-                .eq('user_id', resolvedUserId);
+                .eq('id', existing[0].id);
         } else {
             res = await client
                 .from('kyc_submissions')
