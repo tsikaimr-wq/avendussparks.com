@@ -3664,7 +3664,7 @@
                     return;
                 }
 
-                const kycSelectFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,admin_note,reviewed_at';
+                const kycSelectFields = 'id,user_id,status,id_type,submitted_at,admin_note,reviewed_at';
 
                 // 2. Fetch other modules (Filtered to the current user scope)
                 const [w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
@@ -3723,7 +3723,7 @@
                             }
                         }
 
-                        allSubmissions = await hydrateAdminKycSubmissionMedia(kycRows);
+                        allSubmissions = Array.isArray(kycRows) ? kycRows : [];
                         renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], dashboardKpis || {});
                     } catch (e) {
                         console.error("Background KYC fetch failed:", e);
@@ -6297,6 +6297,76 @@
         }
 
         let targetKycUser = null;
+        let targetKycSubmissionId = null;
+        let targetKycOriginalMedia = { front: '', back: '', selfie: '' };
+
+        function sanitizeKycUserUpdateData(updateData = {}) {
+            const next = { ...updateData };
+
+            if (String(next.id_number || '').trim() === 'No ID set') {
+                next.id_number = '';
+            }
+
+            ['username', 'full_name', 'id_number', 'mobile', 'email', 'gender', 'address', 'kyc', 'withdrawal_pin'].forEach((key) => {
+                if (!Object.prototype.hasOwnProperty.call(next, key)) return;
+                next[key] = String(next[key] ?? '').trim();
+            });
+
+            if (Object.prototype.hasOwnProperty.call(next, 'dob')) {
+                next.dob = String(next.dob || '').trim() || null;
+            }
+
+            return next;
+        }
+
+        function buildKycMediaUpdates() {
+            const mappings = [
+                { side: 'front', field: 'id_front_url' },
+                { side: 'back', field: 'id_back_url' },
+                { side: 'selfie', field: 'selfie_url' }
+            ];
+
+            return mappings.reduce((acc, item) => {
+                const current = String(document.getElementById(`ek_${item.side}_img`)?.getAttribute('src') || '').trim();
+                const original = String(targetKycOriginalMedia?.[item.side] || '').trim();
+                const isPlaceholder = current.includes('placeholder');
+
+                if (current === original) return acc;
+                if (!current || isPlaceholder) {
+                    acc[item.field] = null;
+                    return acc;
+                }
+
+                acc[item.field] = current;
+                return acc;
+            }, {});
+        }
+
+        async function getLatestKycSubmissionRecord(client, userId) {
+            const cached = getLatestUserKycSubmission(userId);
+            const cachedId = cached?.id;
+            const fullFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,admin_note,reviewed_at';
+
+            if (cachedId) {
+                const { data, error } = await client
+                    .from('kyc_submissions')
+                    .select(fullFields)
+                    .eq('id', cachedId)
+                    .maybeSingle();
+
+                if (data && !error) return data;
+            }
+
+            const { data } = await client
+                .from('kyc_submissions')
+                .select(fullFields)
+                .eq('user_id', userId)
+                .order('submitted_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+            return data || null;
+        }
 
         function setKycImagePreview(side, url) {
             const img = document.getElementById(`ek_${side}_img`);
@@ -6313,10 +6383,11 @@
             const client = DB.getClient();
             showLoader(true);
             const { data: user } = await client.from('users').select('*').eq('id', uid).single();
-            const kycFields = 'id,user_id,status,id_type,id_front_url,id_back_url,selfie_url,submitted_at,admin_note,reviewed_at';
-            const { data: kyc } = await client.from('kyc_submissions').select(kycFields).eq('user_id', uid).order('submitted_at', { ascending: false }).limit(1).single();
+            const kyc = await getLatestKycSubmissionRecord(client, uid);
 
             targetKycUser = uid;
+            targetKycSubmissionId = kyc?.id || null;
+            targetKycOriginalMedia = { front: '', back: '', selfie: '' };
 
             if (user) {
                 const effectiveStatus = deriveKycStatus(user, kyc);
@@ -6337,6 +6408,11 @@
             const frontUrl = await window.DB.resolveKycImageUrl?.(kyc?.id_front_url || '') || (kyc?.id_front_url || '');
             const backUrl = await window.DB.resolveKycImageUrl?.(kyc?.id_back_url || '') || (kyc?.id_back_url || '');
             const selfieUrl = await window.DB.resolveKycImageUrl?.(kyc?.selfie_url || '') || (kyc?.selfie_url || '');
+            targetKycOriginalMedia = {
+                front: frontUrl,
+                back: backUrl,
+                selfie: selfieUrl
+            };
 
             setKycImagePreview('front', frontUrl);
             setKycImagePreview('back', backUrl);
@@ -6353,6 +6429,8 @@
 
         function closeEditKyc() {
             document.getElementById('editKycModal').style.display = 'none';
+            targetKycSubmissionId = null;
+            targetKycOriginalMedia = { front: '', back: '', selfie: '' };
         }
 
         async function saveEditKyc() {
@@ -6379,7 +6457,7 @@
                 }
 
                 try {
-                    const updates = {
+                    const updates = sanitizeKycUserUpdateData({
                         username: document.getElementById('ek_name').value,
                         full_name: document.getElementById('ek_fullname').value,
                         id_number: document.getElementById('ek_idnum').value,
@@ -6390,34 +6468,64 @@
                         address: document.getElementById('ek_address').value,
                         kyc: document.getElementById('ek_status').value,
                         withdrawal_pin: document.getElementById('ek_pin').value
-                    };
+                    });
 
-                    const kycUpdates = {
-                        status: updates.kyc,
-                        id_type: document.getElementById('ek_idtype').value,
-                        id_front_url: document.getElementById('ek_front_img').getAttribute('src') || '',
-                        id_back_url: document.getElementById('ek_back_img').getAttribute('src') || '',
-                        selfie_url: document.getElementById('ek_selfie_img').getAttribute('src') || '',
-                        admin_note: document.getElementById('ek_notes').value || null
-                    };
-
-                    if (!kycUpdates.id_front_url || kycUpdates.id_front_url.includes('placeholder')) delete kycUpdates.id_front_url;
-                    if (!kycUpdates.id_back_url || kycUpdates.id_back_url.includes('placeholder')) delete kycUpdates.id_back_url;
-                    if (!kycUpdates.selfie_url || kycUpdates.selfie_url.includes('placeholder')) delete kycUpdates.selfie_url;
-
-                    const { error: uErr } = await client.from('users').update(updates).eq('id', targetKycUser);
-                    if (uErr) throw uErr;
-
-                    // Check if kyc_submissions exists
-                    const { data: existing } = await client.from('kyc_submissions').select('id').eq('user_id', targetKycUser).limit(1);
-                    if (existing && existing.length > 0) {
-                        const { error: kErr } = await client.from('kyc_submissions').update(kycUpdates).eq('user_id', targetKycUser);
-                        if (kErr) throw kErr;
-                    } else {
-                        const { error: iErr } = await client.from('kyc_submissions').insert({ user_id: targetKycUser, ...kycUpdates });
-                        if (iErr) throw iErr;
+                    const userUpdateResult = await window.DB.updateUser(targetKycUser, updates);
+                    if (!userUpdateResult?.success) {
+                        throw userUpdateResult?.error || new Error('Failed to update user KYC status.');
                     }
 
+                    const reviewedAt = updates.kyc === 'Pending' ? null : new Date().toISOString();
+                    const kycUpdates = {
+                        status: updates.kyc,
+                        id_type: String(document.getElementById('ek_idtype').value || 'Aadhar').trim() || 'Aadhar',
+                        admin_note: String(document.getElementById('ek_notes').value || '').trim() || null,
+                        reviewed_at: reviewedAt,
+                        ...buildKycMediaUpdates()
+                    };
+
+                    let effectiveSubmissionId = targetKycSubmissionId;
+                    if (!effectiveSubmissionId) {
+                        const { data: existingSubmission } = await client
+                            .from('kyc_submissions')
+                            .select('id')
+                            .eq('user_id', targetKycUser)
+                            .order('submitted_at', { ascending: false })
+                            .limit(1)
+                            .maybeSingle();
+                        effectiveSubmissionId = existingSubmission?.id || null;
+                    }
+
+                    if (effectiveSubmissionId) {
+                        const updateResponse = await client
+                            .from('kyc_submissions')
+                            .update(kycUpdates)
+                            .eq('id', effectiveSubmissionId)
+                            .select('id,user_id,status,id_type,submitted_at,admin_note,reviewed_at', { count: 'exact' });
+
+                        if (updateResponse.error) throw updateResponse.error;
+                        if (!Array.isArray(updateResponse.data) || updateResponse.data.length === 0) {
+                            throw new Error('No KYC submission row was updated.');
+                        }
+
+                        targetKycSubmissionId = effectiveSubmissionId;
+                    } else {
+                        const insertPayload = {
+                            user_id: targetKycUser,
+                            submitted_at: new Date().toISOString(),
+                            ...kycUpdates
+                        };
+                        const insertResponse = await client
+                            .from('kyc_submissions')
+                            .insert([insertPayload])
+                            .select('id,user_id,status,id_type,submitted_at,admin_note,reviewed_at')
+                            .single();
+
+                        if (insertResponse.error) throw insertResponse.error;
+                        targetKycSubmissionId = insertResponse.data?.id || null;
+                    }
+
+                    showLoader(false);
                     showSuccess("Investor KYC details updated successfully!");
                     closeEditKyc();
                     init();

@@ -2949,8 +2949,33 @@ window.DB = {
                 return { success: false, error: { message: "Unauthorized Scope Violation" } };
             }
         }
-        const { error } = await client.from('kyc_submissions').update({ status, reviewed_at: new Date().toISOString() }).eq('id', id);
-        return { success: !error, error };
+        const { data: submission, error: submissionFetchError } = await client
+            .from('kyc_submissions')
+            .select('id,user_id,status')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (submissionFetchError || !submission) {
+            return { success: false, error: submissionFetchError || { message: 'KYC submission not found.' } };
+        }
+
+        const reviewedAt = String(status || '').trim() === 'Pending' ? null : new Date().toISOString();
+        const { error, data } = await client
+            .from('kyc_submissions')
+            .update({ status, reviewed_at: reviewedAt })
+            .eq('id', id)
+            .select('id,user_id,status,reviewed_at');
+
+        if (error || !Array.isArray(data) || data.length === 0) {
+            return { success: false, error: error || { message: 'No KYC submission row was updated.' } };
+        }
+
+        const userUpdate = await this.updateUser(submission.user_id, { kyc: status });
+        if (!userUpdate?.success) {
+            return { success: false, error: userUpdate?.error || { message: 'Failed to sync user KYC status.' }, data };
+        }
+
+        return { success: true, error: null, data, user: userUpdate.data };
     },
 
     async updateDepositStatus(id, status) {
