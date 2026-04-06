@@ -245,7 +245,23 @@
             if (!target || String(target.type || '').trim().toLowerCase() === 'index') return false;
             const lockedPrice = this.getLockedPriceValue(target, lockMap);
             if (lockedPrice === null) {
-                if (target) target.priceLocked = false;
+                const candidates = this.getSymbolCandidates(target.market_symbol || target.symbol || target.id);
+                if (target) {
+                    target.priceLocked = false;
+                    target.locked = false;
+                    target.locked_price = null;
+                    if (String(target.quoteSource || '').trim().toLowerCase() === 'manual_price_lock') {
+                        target.quoteSource = '';
+                    }
+                }
+                candidates.forEach((candidate) => {
+                    if (this.livePrices && Object.prototype.hasOwnProperty.call(this.livePrices, candidate)) {
+                        delete this.livePrices[candidate];
+                    }
+                    if (this.cachedPrices && Object.prototype.hasOwnProperty.call(this.cachedPrices, candidate)) {
+                        delete this.cachedPrices[candidate];
+                    }
+                });
                 return false;
             }
 
