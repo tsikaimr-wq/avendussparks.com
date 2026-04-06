@@ -224,7 +224,7 @@ window.DB = {
         const upstreamBase = (typeof window.STOCKTV_UPSTREAM_BASE === 'string' && window.STOCKTV_UPSTREAM_BASE.trim())
             ? window.STOCKTV_UPSTREAM_BASE.trim()
             : 'https://api.avendussparks.com';
-        const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
+        const allowLocal = window.ALLOW_LOCAL_MARKET_API !== false;
         const configuredLocalBase = (typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
             ? window.INDIA_MARKET_API_BASE.trim()
             : '';
@@ -3704,23 +3704,31 @@ window.DB = {
                         throw new Error(`Price field missing for ${symbol}`);
                     }
 
-                    // 6. Update market_cache and products table
-                    const { error: upsertErr } = await client
-                        .from('market_cache')
-                        .upsert({
-                            symbol: symbol,
-                            price: price,
-                            source: 'yahoo',
-                            updated_at: new Date().toISOString()
-                        }, { onConflict: 'symbol' });
-
-                    if (upsertErr) throw upsertErr;
-
-                    // Also update the products table directly for this specific record
-                    await client.from('products').update({
+                    // 6. Update the products table directly for this specific record.
+                    // market_cache is optional in production and should not block real price refresh.
+                    const { error: productUpdateErr } = await client.from('products').update({
                         price: price,
                         updated_at: new Date().toISOString()
                     }).eq('id', product.id);
+
+                    if (productUpdateErr) throw productUpdateErr;
+
+                    if (window.DISABLE_MARKET_DB !== true) {
+                        const { error: upsertErr } = await client
+                            .from('market_cache')
+                            .upsert({
+                                symbol: symbol,
+                                price: price,
+                                source: 'yahoo',
+                                updated_at: new Date().toISOString()
+                            }, { onConflict: 'symbol' });
+
+                        if (upsertErr && this.isMarketCacheSchemaMissing(upsertErr)) {
+                            this.disableMarketCache(upsertErr.message);
+                        } else if (upsertErr) {
+                            console.warn(`market_cache upsert skipped for ${symbol}:`, upsertErr);
+                        }
+                    }
 
                     summary.updated++;
 

@@ -214,7 +214,7 @@ window.DB = {
         const upstreamBase = (typeof window.STOCKTV_UPSTREAM_BASE === 'string' && window.STOCKTV_UPSTREAM_BASE.trim())
             ? window.STOCKTV_UPSTREAM_BASE.trim()
             : 'https://api.avendussparks.com';
-        const allowLocal = window.ALLOW_LOCAL_MARKET_API === true;
+        const allowLocal = window.ALLOW_LOCAL_MARKET_API !== false;
         const configuredLocalBase = (typeof window.INDIA_MARKET_API_BASE === 'string' && window.INDIA_MARKET_API_BASE.trim())
             ? window.INDIA_MARKET_API_BASE.trim()
             : '';
