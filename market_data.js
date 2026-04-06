@@ -262,12 +262,39 @@
             return aliases;
         }
 
+        getPriceLockExchangeHint(target) {
+            if (!target) return '';
+            const values = [];
+            if (typeof target === 'string' || typeof target === 'number') {
+                values.push(target);
+            } else if (typeof target === 'object') {
+                values.push(target.exchange, target.exch, target.market, target.symbol, target.market_symbol);
+            }
+
+            for (const value of values) {
+                const upper = String(value || '').trim().toUpperCase();
+                if (!upper) continue;
+                if (upper === 'NSE' || upper.includes(' N S E') || upper.includes('NSE') || upper.startsWith('NSE:') || upper.endsWith('.NS') || upper.endsWith('.NSE')) {
+                    return 'NSE';
+                }
+                if (upper === 'BSE' || upper.includes(' B S E') || upper.includes('BSE') || upper.startsWith('BSE:') || upper.endsWith('.BO') || upper.endsWith('.BSE') || upper.endsWith('.BOM')) {
+                    return 'BSE';
+                }
+            }
+            return '';
+        }
+
         getProductPriceLockEntry(target, lockMap = this.productPriceLocks || {}) {
             const aliases = this.buildPriceLockAliases(target);
             if (!aliases.size) return null;
+            const targetExchange = this.getPriceLockExchangeHint(target);
 
             for (const [key, entry] of Object.entries(lockMap || {})) {
                 if (!entry?.locked) continue;
+                const entryExchange = this.getPriceLockExchangeHint({ ...entry, id: entry.id || key });
+                if (targetExchange && entryExchange && targetExchange !== entryExchange) {
+                    continue;
+                }
                 const entryAliases = this.buildPriceLockAliases({ ...entry, id: entry.id || key });
                 if ([...entryAliases].some(alias => aliases.has(alias))) {
                     return entry;
