@@ -289,12 +289,45 @@
             if (lockedPrice === null) {
                 const candidates = this.getSymbolCandidates(target.market_symbol || target.symbol || target.id);
                 if (target) {
+                    const unlockedPrice = this.toFiniteValue(
+                        target.__preLockPrice ??
+                        target.configured_price ??
+                        target.subscription_price ??
+                        target.price
+                    );
+                    const unlockedSubscriptionPrice = this.toFiniteValue(
+                        target.__preLockSubscriptionPrice ??
+                        target.configured_price ??
+                        target.subscription_price ??
+                        target.price
+                    );
+                    const unlockedPrevClose = this.toFiniteValue(
+                        target.__preLockPrevClose ??
+                        target.prevClose ??
+                        unlockedPrice
+                    );
+
+                    if (unlockedPrice !== null && unlockedPrice > 0) {
+                        target.price = unlockedPrice;
+                    }
+                    if (('subscription_price' in target || target.type !== 'stock')
+                        && unlockedSubscriptionPrice !== null
+                        && unlockedSubscriptionPrice > 0) {
+                        target.subscription_price = unlockedSubscriptionPrice;
+                    }
+                    if (unlockedPrevClose !== null && unlockedPrevClose > 0) {
+                        target.prevClose = unlockedPrevClose;
+                    }
                     target.priceLocked = false;
                     target.locked = false;
                     target.locked_price = null;
                     if (String(target.quoteSource || '').trim().toLowerCase() === 'manual_price_lock') {
-                        target.quoteSource = '';
+                        target.quoteSource = String(target.__preLockQuoteSource || '').trim();
                     }
+                    delete target.__preLockPrice;
+                    delete target.__preLockSubscriptionPrice;
+                    delete target.__preLockPrevClose;
+                    delete target.__preLockQuoteSource;
                 }
                 candidates.forEach((candidate) => {
                     if (this.livePrices && Object.prototype.hasOwnProperty.call(this.livePrices, candidate)) {
@@ -305,6 +338,13 @@
                     }
                 });
                 return false;
+            }
+
+            if (!target.priceLocked && !target.locked) {
+                target.__preLockPrice = this.toFiniteValue(target.price);
+                target.__preLockSubscriptionPrice = this.toFiniteValue(target.subscription_price);
+                target.__preLockPrevClose = this.toFiniteValue(target.prevClose);
+                target.__preLockQuoteSource = String(target.quoteSource || '').trim();
             }
 
             target.price = lockedPrice;
