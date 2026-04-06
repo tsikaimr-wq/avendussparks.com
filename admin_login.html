@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="db.js"></script>
+    <script src="db.js?v=20260406a"></script>
     <script src="js/admin_i18n.js"></script>
     <style>
         body {
@@ -216,6 +216,60 @@
     <script>
         lucide.createIcons();
 
+        function normalizeAdminStatus(value) {
+            return String(value || '').trim().toLowerCase();
+        }
+
+        function isAdminActiveStatus(value) {
+            const normalized = normalizeAdminStatus(value);
+            return !normalized || normalized === 'active' || normalized === 'enabled';
+        }
+
+        function matchesAdminPassword(record, password) {
+            const expected = String(password || '');
+            return String(record?.password || '') === expected
+                || String(record?.password_plain || '') === expected;
+        }
+
+        function pickMatchingAdmin(records, username, password, selectedRole) {
+            const normalizedUsername = String(username || '').trim().toLowerCase();
+            const normalizedRole = String(selectedRole || '').trim().toLowerCase();
+            const allRows = Array.isArray(records) ? records.filter(Boolean) : [];
+
+            const visibleRows = allRows.filter(row => !row?.is_deleted);
+            const sameUsername = visibleRows.filter(row => String(row?.username || '').trim().toLowerCase() === normalizedUsername);
+            const sameRole = sameUsername.filter(row => String(row?.role || '').trim().toLowerCase() === normalizedRole);
+            const matchingPassword = sameRole.filter(row => matchesAdminPassword(row, password));
+            const activeMatches = matchingPassword.filter(row => isAdminActiveStatus(row?.status));
+
+            if (activeMatches.length > 0) return { admin: activeMatches[0] };
+            if (matchingPassword.length > 0) {
+                return { error: new Error(window.i18n('err_account_inactive', "This account is currently INACTIVE. Please contact the administrator.")) };
+            }
+            if (sameRole.length > 0) {
+                return { error: new Error(window.i18n('err_incorrect_password', "Incorrect password. Please try again.")) };
+            }
+            if (sameUsername.length > 0) {
+                const actualRole = String(sameUsername[0]?.role || '').trim().toUpperCase() || 'UNKNOWN';
+                return { error: new Error(window.i18n('err_role_mismatch', "Role mismatch. This account is registered as {role}.").replace('{role}', actualRole)) };
+            }
+            return { admin: null };
+        }
+
+        async function withLoginTimeout(promise, label, timeoutMs = 12000) {
+            let timer = null;
+            try {
+                return await Promise.race([
+                    promise,
+                    new Promise((_, reject) => {
+                        timer = setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs);
+                    })
+                ]);
+            } finally {
+                if (timer) clearTimeout(timer);
+            }
+        }
+
         async function handleLogin(e) {
             e.preventDefault();
             const user = document.getElementById('username').value.trim();
@@ -235,34 +289,30 @@
 
                 if (client) {
                     try {
-                        // 1. First, find if the user exists by username
-                        const { data: userRecord, error: fetchErr } = await client
-                            .from('admins')
-                            .select('*')
-                            .eq('username', user)
-                            .maybeSingle();
+                        const { data: matchingRows, error: fetchErr } = await withLoginTimeout(
+                            client
+                                .from('admins')
+                                .select('*')
+                                .eq('username', user)
+                                .order('created_at', { ascending: false })
+                                .limit(20),
+                            'admin lookup'
+                        );
 
                         if (fetchErr) throw fetchErr;
 
-                        if (userRecord) {
-                            // Check Password
-                            if (userRecord.password !== pass) {
-                                throw new Error(window.i18n('err_incorrect_password', "Incorrect password. Please try again."));
-                            }
-                            // Check Role
-                            if (userRecord.role !== selectedRole) {
-                                throw new Error(window.i18n('err_role_mismatch', "Role mismatch. This account is registered as {role}.").replace('{role}', userRecord.role.toUpperCase()));
-                            }
-                            // Check Status
-                            if (userRecord.status !== 'active') {
-                                throw new Error(window.i18n('err_account_inactive', "This account is currently INACTIVE. Please contact the administrator."));
-                            }
-                            admin = userRecord;
-                        } else {
+                        const matchResult = pickMatchingAdmin(matchingRows, user, pass, selectedRole);
+                        if (matchResult.error) throw matchResult.error;
+                        admin = matchResult.admin;
+
+                        if (!admin) {
                             // 2. Fallback for primary admin ONLY if table is empty
-                            const { count, error: countErr } = await client
-                                .from('admins')
-                                .select('*', { count: 'exact', head: true });
+                            const { count, error: countErr } = await withLoginTimeout(
+                                client
+                                    .from('admins')
+                                    .select('*', { count: 'exact', head: true }),
+                                'admin count'
+                            );
 
                             const hasAdmins = !countErr && count > 0;
 
