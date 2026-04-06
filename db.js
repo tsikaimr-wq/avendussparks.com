@@ -271,6 +271,13 @@ window.DB = {
         };
     },
 
+    doesQuoteExchangeMatchRequest(requestedSymbol, exchangeHint = '', resolvedSymbol = '') {
+        const requestedExchange = this.inferMarketExchange(requestedSymbol, exchangeHint);
+        const resolvedExchange = this.inferMarketExchange(resolvedSymbol || requestedSymbol, exchangeHint);
+        if (!requestedExchange || !resolvedExchange) return true;
+        return requestedExchange === resolvedExchange;
+    },
+
     normalizeMarketSymbolKey(symbol) {
         const raw = String(symbol || '').trim().toUpperCase();
         if (!raw) return '';
@@ -287,6 +294,17 @@ window.DB = {
             .replace(/[^A-Z0-9]/g, '');
 
         return normalized;
+    },
+
+    buildMarketQuoteCacheKey(symbol, exchangeHint = '') {
+        const raw = String(symbol || '').trim().toUpperCase();
+        if (!raw) return '';
+        if (raw.startsWith('^')) return raw;
+
+        const preferred = this.getPreferredMarketApiSymbol(raw, exchangeHint) || raw;
+        const inferred = this.inferMarketExchange(preferred, exchangeHint);
+        const compact = this.normalizeMarketSymbolKey(preferred) || this.normalizeMarketSymbolKey(raw) || raw;
+        return inferred ? `${inferred}:${compact}` : compact;
     },
 
     normalizeMarketExchangeLabel(exchangeHint = '') {
@@ -679,7 +697,9 @@ window.DB = {
                         if (!response.ok) continue;
                         const payload = await response.json();
                         const normalized = this.normalizeMarketQuote(payload, candidate);
-                        if (normalized) return normalized;
+                        if (normalized && this.doesQuoteExchangeMatchRequest(sym, nm, normalized.symbol || candidate)) {
+                            return normalized;
+                        }
                         continue;
                     }
 
@@ -688,7 +708,9 @@ window.DB = {
                     if (!response.ok) continue;
                     const payload = await response.json();
                     const normalized = this.normalizeMarketQuote(payload, candidate);
-                    if (normalized) return normalized;
+                    if (normalized && this.doesQuoteExchangeMatchRequest(sym, nm, normalized.symbol || candidate)) {
+                        return normalized;
+                    }
                 } catch (_) { }
             }
         }
@@ -836,14 +858,14 @@ window.DB = {
             const priceLockMap = await this.getProductPriceLockMap();
             const lockedQuote = this.buildLockedMarketQuote(sym, priceLockMap);
             if (lockedQuote) {
-                const lockedCacheKey = this.normalizeMarketSymbolKey(this.getMarketApiSymbolCandidates(sym, name)[0] || sym) || sym.toUpperCase();
+                const lockedCacheKey = this.buildMarketQuoteCacheKey(sym, name) || sym.toUpperCase();
                 this.marketPriceCache[lockedCacheKey] = { ts: Date.now(), data: lockedQuote };
                 return lockedQuote;
             }
         }
 
         const now = Date.now();
-        const cacheKey = this.normalizeMarketSymbolKey(this.getMarketApiSymbolCandidates(sym, name)[0] || sym) || sym.toUpperCase();
+        const cacheKey = this.buildMarketQuoteCacheKey(sym, name) || sym.toUpperCase();
         const cached = this.marketPriceCache[cacheKey];
         if (cached && (now - cached.ts) < this.MARKET_PRICE_CACHE_TTL_MS) {
             const isLockedCachedQuote = !!(cached.data?.priceLocked || cached.data?.locked || String(cached.data?.source || '').trim().toLowerCase() === 'manual_price_lock');
