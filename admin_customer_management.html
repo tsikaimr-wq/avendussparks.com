@@ -15,7 +15,7 @@
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>const supabasejs = window.supabase;</script>
-    <script src="db.js?v=20260405c"></script>
+    <script src="db.js?v=20260406a"></script>
     <script src="db_patch.js"></script>
     <script src="js/admin_auth_guard.js"></script>
     <script src="js/admin_i18n.js"></script>
@@ -8915,21 +8915,9 @@
                     : { success: true };
                 const priceLockSyncError = priceLockRes.success ? null : (priceLockRes.error?.message || 'Failed to update board price lock.');
 
-                // --- Sync to market_cache ---
-                try {
-                    let rawSymbolStore = p.market_symbol.trim().toUpperCase();
-
-                    const dbClient = window.DB.getClient();
-                    await dbClient.from('market_cache').upsert({
-                        symbol: rawSymbolStore,
-                        price: p.subscription_price || p.price || 0,
-                        source: productSource,
-                        updated_at: new Date().toISOString()
-                    }, { onConflict: 'symbol' });
-                } catch (syncErr) {
-                    console.error("Market cache sync failed:", syncErr);
+                if (typeof window.DB.clearMarketPriceCaches === 'function') {
+                    window.DB.clearMarketPriceCaches(savedProduct.market_symbol || savedProduct.symbol || savedProduct.id);
                 }
-                // ----------------------------
 
                 const syncErrors = [sellLockSyncError, priceLockSyncError].filter(Boolean);
                 showAlert(syncErrors.length ? 'warning' : 'success', syncErrors.length ? `Product saved, but sync failed: ${syncErrors.join(' | ')}` : "Product saved successfully!");

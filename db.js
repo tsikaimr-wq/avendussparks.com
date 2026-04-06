@@ -174,6 +174,29 @@ window.DB = {
         console.warn(`Market cache disabled${reason ? `: ${reason}` : ''}`);
     },
 
+    clearMarketPriceCaches(target = null) {
+        const clearAll = !target;
+        const aliases = clearAll ? null : this.buildPriceLockAliases(target);
+
+        Object.keys(this.marketPriceCache || {}).forEach((key) => {
+            if (clearAll || aliases?.has(String(key || '').trim().toUpperCase())) {
+                delete this.marketPriceCache[key];
+            }
+        });
+
+        Object.keys(this.marketPriceFailUntil || {}).forEach((key) => {
+            if (clearAll || aliases?.has(String(key || '').trim().toUpperCase())) {
+                delete this.marketPriceFailUntil[key];
+            }
+        });
+
+        Object.keys(this.marketPricePending || {}).forEach((key) => {
+            if (clearAll || aliases?.has(String(key || '').trim().toUpperCase())) {
+                delete this.marketPricePending[key];
+            }
+        });
+    },
+
     getClient() {
         if (this.client) return this.client;
         if (typeof supabase === 'undefined') {
@@ -3791,6 +3814,7 @@ window.DB = {
         if (!error && key === this.PRODUCT_PRICE_LOCKS_KEY) {
             this.productPriceLockCache = this.parsePlatformSettingObject(value);
             this.productPriceLockCacheTs = Date.now();
+            this.clearMarketPriceCaches();
         }
 
         return { success: !error, error };
