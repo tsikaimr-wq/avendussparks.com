@@ -8208,6 +8208,33 @@
             return null;
         }
 
+        function removeMatchingProductPriceLockEntries(lockMap = {}, product) {
+            const nextMap = { ...(lockMap || {}) };
+            if (!product) return nextMap;
+
+            const aliases = new Set();
+            [product.id, product.product_id, product.symbol, product.market_symbol].forEach((value) => {
+                const normalized = String(value || '').trim().toUpperCase();
+                if (normalized) aliases.add(normalized);
+            });
+
+            Object.entries(nextMap).forEach(([key, entry]) => {
+                const entryAliases = [
+                    key,
+                    entry?.id,
+                    entry?.product_id,
+                    entry?.symbol,
+                    entry?.market_symbol
+                ].map(v => String(v || '').trim().toUpperCase()).filter(Boolean);
+
+                if (entryAliases.some(alias => aliases.has(alias))) {
+                    delete nextMap[key];
+                }
+            });
+
+            return nextMap;
+        }
+
         async function persistProductSellLockState(product, locked) {
             const productId = String(product?.id || '').trim();
             if (!productId) return { success: false, error: { message: 'Product ID is required to sync sell lock state.' } };
@@ -8240,7 +8267,7 @@
             if (!productId) return { success: false, error: { message: 'Product ID is required to sync price lock state.' } };
 
             const currentMap = await loadProductPriceLockMap(true);
-            const nextMap = { ...currentMap };
+            const nextMap = removeMatchingProductPriceLockEntries(currentMap, product);
             if (locked) {
                 const normalizedPrice = Number(lockedPrice);
                 if (!Number.isFinite(normalizedPrice) || normalizedPrice <= 0) {
