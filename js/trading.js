@@ -145,6 +145,51 @@ const getTradeProduct = (trade) => {
         || null;
 };
 
+const parseTradePriceText = (value) => {
+    const cleaned = String(value || '').replace(/[^\d.-]/g, '');
+    const numeric = tradeToFiniteNumber(cleaned);
+    return (numeric !== null && numeric > 0) ? numeric : null;
+};
+
+const normalizeTradeSymbolKey = (value) => String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/^NSE:|^BSE:/, '')
+    .replace(/\.(NS|BO|NSE|BSE|BOM)$/i, '');
+
+const isTradeProductPriceLocked = (trade) => {
+    const product = getTradeProduct(trade);
+    return !!(
+        product?.priceLocked
+        || product?.locked
+        || trade?.priceLocked
+        || trade?.locked
+    );
+};
+
+const getVisibleTradeMarketPrice = (trade) => {
+    if (!trade || isTradeProductPriceLocked(trade)) return null;
+
+    const tradeKey = normalizeTradeSymbolKey(getTradeMarketSymbol(trade) || trade?.symbol);
+    const detailKey = normalizeTradeSymbolKey(document.getElementById('detSymbol')?.innerText);
+    const modalSymbolKey = normalizeTradeSymbolKey(document.getElementById('coSymbol')?.innerText);
+    const matchesDetail = !!tradeKey && (!detailKey || detailKey === tradeKey || modalSymbolKey === tradeKey);
+    if (!matchesDetail) return null;
+
+    const candidates = [
+        document.getElementById('coCurrPrice')?.innerText,
+        document.getElementById('detBuyPrice')?.innerText,
+        document.getElementById('detPrice')?.innerText
+    ];
+
+    for (const candidate of candidates) {
+        const price = parseTradePriceText(candidate);
+        if (price !== null && price > 0) return price;
+    }
+
+    return null;
+};
+
 const getCachedTradeMarketPrice = (trade) => {
     const me = window.MarketEngine || {};
     const marketSymbol = getTradeMarketSymbol(trade);
@@ -336,6 +381,13 @@ const refreshTradeMarketPrice = async (trade, options = {}) => {
     if (!trade || !isMarketTrackedTrade(trade)) return getCachedTradeMarketPrice(trade);
 
     const force = options.force === true;
+    const preferVisibleQuote = options.preferVisibleQuote === true;
+    const visibleQuote = getVisibleTradeMarketPrice(trade);
+    if (preferVisibleQuote && visibleQuote !== null && visibleQuote > 0) {
+        cacheTradeMarketPrice(trade, visibleQuote);
+        return visibleQuote;
+    }
+
     const marketSymbol = getTradeMarketSymbol(trade);
     if (!marketSymbol) return getCachedTradeMarketPrice(trade);
 
@@ -666,7 +718,7 @@ window.openCloseOrderModal = async function (tradeOrId) {
         try {
             let currentPrice = getCachedTradeMarketPrice(trade);
             if (isMarketTrackedTrade(trade)) {
-                const refreshedPrice = await refreshTradeMarketPrice(trade, { force });
+                const refreshedPrice = await refreshTradeMarketPrice(trade, { force, preferVisibleQuote: true });
                 const numericPrice = tradeToFiniteNumber(refreshedPrice);
                 if (numericPrice !== null && numericPrice > 0) {
                     currentPrice = numericPrice;
@@ -827,7 +879,7 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
             throw new Error(sellRestrictionMessage);
         }
 
-        const finalSellPrice = await refreshTradeMarketPrice(trade, { force: true }) || getCachedTradeMarketPrice(trade) || sellPrice;
+        const finalSellPrice = await refreshTradeMarketPrice(trade, { force: true, preferVisibleQuote: true }) || getCachedTradeMarketPrice(trade) || sellPrice;
         const sellMetrics = computeUnrealizedTradeMetrics(trade, finalSellPrice);
         const qty = sellMetrics.qty;
         const buyAmount = sellMetrics.costBasis;
