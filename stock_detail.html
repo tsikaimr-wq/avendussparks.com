@@ -19,7 +19,7 @@
     <script src="js/db.js?v=1.0.23"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.17"></script>
-    <script src="js/trading.js?v=1.0.10"></script>
+    <script src="js/trading.js?v=1.0.11"></script>
     <script src="script.js?v=20260405b"></script>
     <script src="js/credit_notifier.js?v=1.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
@@ -1455,7 +1455,7 @@
             let liveSellPrice = currentMarketPrice || currentPrice;
             if (typeof pricing.refreshTradeMarketPrice === 'function') {
                 try {
-                    liveSellPrice = await pricing.refreshTradeMarketPrice(trade, { force: true }) || liveSellPrice;
+                    liveSellPrice = await pricing.refreshTradeMarketPrice(trade, { force: true, preferVisibleQuote: true }) || liveSellPrice;
                 } catch (_) { }
             }
 
@@ -1603,7 +1603,7 @@
                     if (!originalTrade) throw new Error("Trade not found.");
 
                     const liveSellPrice = (typeof pricing.refreshTradeMarketPrice === 'function')
-                        ? (await pricing.refreshTradeMarketPrice(originalTrade, { force: true }) || calc.price)
+                        ? (await pricing.refreshTradeMarketPrice(originalTrade, { force: true, preferVisibleQuote: true }) || calc.price)
                         : calc.price;
                     const sellMetrics = (typeof pricing.computeUnrealizedTradeMetrics === 'function')
                         ? pricing.computeUnrealizedTradeMetrics(originalTrade, liveSellPrice)
@@ -1631,16 +1631,28 @@
                     if (tradeErr) throw tradeErr;
 
                     const freshUser = await window.DB.refreshCurrentUser();
+                    const tradeOwnerId = originalTrade.user_id || freshUser.id || user.id;
                     const costBasis = (typeof pricing.getTradeCostBasis === 'function')
                         ? pricing.getTradeCostBasis(originalTrade)
                         : (parseFloat(originalTrade.total_amount) || 0);
-                    const newBalance = (parseFloat(freshUser.balance) || 0) + sellMetrics.netSaleValue;
-                    const newInvested = (parseFloat(freshUser.invested) || 0) - costBasis;
+                    const { data: ownerFunds, error: ownerFundsErr } = await client
+                        .from('users')
+                        .select('balance, invested')
+                        .eq('id', tradeOwnerId)
+                        .single();
+                    if (ownerFundsErr) throw ownerFundsErr;
 
-                    await client.from('users').update({
+                    const roundMoney = (value) => Math.round(((parseFloat(value) || 0) + Number.EPSILON) * 100) / 100;
+                    const newBalance = roundMoney((parseFloat(ownerFunds.balance) || 0) + sellMetrics.netSaleValue);
+                    const newInvested = roundMoney(Math.max(0, (parseFloat(ownerFunds.invested) || 0) - costBasis));
+
+                    const { data: updatedFunds, error: finErr } = await client.from('users').update({
                         balance: newBalance,
-                        invested: Math.max(0, newInvested)
-                    }).eq('id', user.id);
+                        invested: newInvested,
+                        negative_balance: newBalance < 0
+                    }).eq('id', tradeOwnerId).select('id, balance, invested').maybeSingle();
+                    if (finErr) throw finErr;
+                    if (!updatedFunds) throw new Error('Wallet update failed: user record was not updated.');
 
                     showModal('success', 'Order Closed', `Order closed successfully! ₹${sellMetrics.netSaleValue.toLocaleString('en-IN')} added to your balance.`, () => {
                         closeOrderConfirm();

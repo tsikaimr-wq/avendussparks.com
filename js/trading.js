@@ -307,13 +307,13 @@ const getTradeCostBasis = (trade) => {
 
 const computeExitFees = (grossSaleValue) => {
     const gross = tradeToFiniteNumber(grossSaleValue) || 0;
-    const sellTax = gross * SELL_TAX_RATE;
-    const sellFees = gross * SELL_TXN_RATE;
+    const sellTax = roundTradeMoney(gross * SELL_TAX_RATE);
+    const sellFees = roundTradeMoney(gross * SELL_TXN_RATE);
     return {
-        grossSaleValue: gross,
+        grossSaleValue: roundTradeMoney(gross),
         sellTax,
         sellFees,
-        netSaleValue: gross - sellTax - sellFees
+        netSaleValue: roundTradeMoney(gross - sellTax - sellFees)
     };
 };
 
@@ -887,6 +887,7 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
         const realisedProfit = sellMetrics.profit;
         const sellTimeIso = new Date().toISOString();
         const finalisedNote = `Sold at Market ₹${Number(finalSellPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @ ${new Date().toLocaleTimeString('en-IN')}`;
+        const tradeOwnerId = trade.user_id || user.id;
 
         const { error: tradeUpdateErr } = await client.from('trades').update({
             status: 'Sold',
@@ -906,25 +907,26 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
         const { data: userFunds, error: userFundsErr } = await client
             .from('users')
             .select('balance, invested')
-            .eq('id', user.id)
+            .eq('id', tradeOwnerId)
             .single();
         if (userFundsErr) throw userFundsErr;
 
         const currentBalance = parseFloat(userFunds.balance) || 0;
         const currentInvested = parseFloat(userFunds.invested) || 0;
-        const newBalance = currentBalance + finalNetReturn;
-        const newInvested = Math.max(0, currentInvested - buyAmount);
+        const newBalance = roundTradeMoney(currentBalance + finalNetReturn);
+        const newInvested = roundTradeMoney(Math.max(0, currentInvested - buyAmount));
 
-        const { error: finErr } = await client.from('users').update({
+        const { data: updatedFunds, error: finErr } = await client.from('users').update({
             balance: newBalance,
             invested: newInvested,
             negative_balance: newBalance < 0
-        }).eq('id', user.id);
+        }).eq('id', tradeOwnerId).select('id, balance, invested').maybeSingle();
         if (finErr) throw finErr;
+        if (!updatedFunds) throw new Error('Wallet update failed: user record was not updated.');
 
         // 5. Record proceeds history asynchronously (should not block sell completion)
         client.from('trades').insert([{
-            user_id: user.id,
+            user_id: tradeOwnerId,
             symbol: trade.symbol,
             name: trade.name,
             type: trade.type, // Keep original type to satisfy type constraints.
