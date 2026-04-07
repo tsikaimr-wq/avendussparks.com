@@ -7926,7 +7926,7 @@
                 };
             };
 
-            if (isSubscriptionExecutionType(normalizedType)) {
+            if (requiresApproval) {
                 const backendPrice = toFiniteNumber(product?.subscription_price)
                     ?? toFiniteNumber(product?.price)
                     ?? toFiniteNumber(calc?.price);
@@ -7956,8 +7956,8 @@
             }
 
             if (!Number.isFinite(livePrice) || livePrice <= 0) {
-                livePrice = toFiniteNumber(product?.price)
-                    ?? toFiniteNumber(calc?.price)
+                livePrice = toFiniteNumber(calc?.price)
+                    ?? toFiniteNumber(product?.price)
                     ?? 0;
             }
 
