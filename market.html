@@ -8236,15 +8236,17 @@
                 return buildCalc(backendPrice, BUY_TAX_RATE, BUY_TXN_RATE);
             }
 
-            let livePrice = null;
-            try {
-                const liveQuote = await window.DB?.getMarketPrice?.(symbol, stockName);
-                const numericLivePrice = toFiniteNumber(liveQuote?.price);
-                if (numericLivePrice !== null && numericLivePrice > 0) {
-                    livePrice = numericLivePrice;
+            let livePrice = toFiniteNumber(calc?.price);
+            if (!Number.isFinite(livePrice) || livePrice <= 0) {
+                try {
+                    const liveQuote = await window.DB?.getMarketPrice?.(symbol, stockName);
+                    const numericLivePrice = toFiniteNumber(liveQuote?.price);
+                    if (numericLivePrice !== null && numericLivePrice > 0) {
+                        livePrice = numericLivePrice;
+                    }
+                } catch (error) {
+                    console.warn("Live market buy price refresh failed:", error);
                 }
-            } catch (error) {
-                console.warn("Live market buy price refresh failed:", error);
             }
 
             if ((!Number.isFinite(livePrice) || livePrice <= 0) && window.DB?.getCachedMarketPrice) {
