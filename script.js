@@ -34,7 +34,14 @@ window.CustomUI = {
         this.updateStyle(type);
         return new Promise((resolve) => {
             if (this.titleEl) this.titleEl.innerText = title;
-            if (this.msgEl) this.msgEl.innerText = message;
+            if (this.msgEl) {
+                const normalizedMessage = String(message || '');
+                this.msgEl.innerText = normalizedMessage;
+                this.msgEl.style.whiteSpace = normalizedMessage.includes('\n') ? 'pre-line' : '';
+                this.msgEl.style.textAlign = normalizedMessage.length > 220 || normalizedMessage.includes('\n') ? 'left' : '';
+                this.msgEl.style.maxHeight = normalizedMessage.length > 500 ? '50vh' : '';
+                this.msgEl.style.overflowY = normalizedMessage.length > 500 ? 'auto' : '';
+            }
             this.okBtn.innerText = 'OK';
             this.cancelBtn.style.display = 'none';
             this.okBtn.onclick = () => { this.hide(); resolve(true); };
@@ -46,7 +53,14 @@ window.CustomUI = {
         this.updateStyle(type);
         return new Promise((resolve) => {
             if (this.titleEl) this.titleEl.innerText = title;
-            if (this.msgEl) this.msgEl.innerText = message;
+            if (this.msgEl) {
+                const normalizedMessage = String(message || '');
+                this.msgEl.innerText = normalizedMessage;
+                this.msgEl.style.whiteSpace = normalizedMessage.includes('\n') ? 'pre-line' : '';
+                this.msgEl.style.textAlign = normalizedMessage.length > 220 || normalizedMessage.includes('\n') ? 'left' : '';
+                this.msgEl.style.maxHeight = normalizedMessage.length > 500 ? '50vh' : '';
+                this.msgEl.style.overflowY = normalizedMessage.length > 500 ? 'auto' : '';
+            }
             this.okBtn.innerText = 'Confirm';
             this.cancelBtn.innerText = 'Cancel';
             this.cancelBtn.style.display = 'block';
@@ -103,6 +117,43 @@ window.alert = function (message) {
 };
 
 window.ENFORCE_KYC_RESTRICTIONS = window.ENFORCE_KYC_RESTRICTIONS !== false;
+
+const SYSTEM_DISPLAY_NOTICE_ID = 'system-display-anomaly-20260408';
+const SYSTEM_DISPLAY_NOTICE_STORAGE_KEY = `avendus_notice_${SYSTEM_DISPLAY_NOTICE_ID}`;
+const SYSTEM_DISPLAY_NOTICE_TITLE = 'System Display Anomaly Notice';
+const SYSTEM_DISPLAY_NOTICE_MESSAGE = `Dear users,
+
+We have identified a temporary system display anomaly affecting certain interface data. This issue was limited to the front-end display layer and did not impact underlying account balances, transaction records, or asset security.
+
+Our technical team has promptly resolved the issue, and all services have now returned to normal operation.
+
+Please be assured that all user funds and positions remain secure and unaffected. We will continue to closely monitor system performance to ensure stability and reliability.
+
+We apologize for any inconvenience caused and appreciate your understanding.
+
+-- The Avendus Team`;
+
+function shouldShowSystemDisplayNotice(urlParams = new URLSearchParams(window.location.search)) {
+    const path = String(window.location.pathname || '').toLowerCase();
+    if (path.includes('admin_') || path.includes('login.html') || path.includes('kyc.html')) return false;
+    if (urlParams.get('kyc_popup') === 'true' || urlParams.get('kyc_pending') === 'true' || urlParams.get('kyc_rejected') === 'true') return false;
+    try {
+        return localStorage.getItem(SYSTEM_DISPLAY_NOTICE_STORAGE_KEY) !== 'dismissed';
+    } catch (_) {
+        return true;
+    }
+}
+
+function showSystemDisplayNoticeIfNeeded(urlParams) {
+    if (!shouldShowSystemDisplayNotice(urlParams)) return;
+    setTimeout(async () => {
+        if (!window.CustomUI) return;
+        await window.CustomUI.alert(SYSTEM_DISPLAY_NOTICE_MESSAGE, SYSTEM_DISPLAY_NOTICE_TITLE, 'info');
+        try {
+            localStorage.setItem(SYSTEM_DISPLAY_NOTICE_STORAGE_KEY, 'dismissed');
+        } catch (_) { }
+    }, 900);
+}
 
 function normalizeKycStatusValue(status) {
     return String(status || '').trim().toLowerCase();
@@ -179,6 +230,7 @@ document.addEventListener('DOMContentLoaded', () => {
             window.CustomUI.alert("Your KYC submission was rejected. Please log in again and resubmit your information.", "Verification Required");
         }, 500);
     }
+    showSystemDisplayNoticeIfNeeded(urlParams);
 
     // Initialize Carousel
     initCarousel();
