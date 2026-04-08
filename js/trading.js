@@ -1023,27 +1023,6 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
             await window.DB.refreshCurrentUser();
         }
 
-        // 5. Record proceeds history asynchronously (should not block sell completion)
-        client.from('trades').insert([{
-            user_id: tradeOwnerId,
-            symbol: trade.symbol,
-            name: trade.name,
-            type: trade.type, // Keep original type to satisfy type constraints.
-            quantity: qty,
-            price: finalSellPrice,
-            total_amount: finalNetReturn,
-            tax_amount: sellMetrics.sellTax,
-            txn_charge: sellMetrics.sellFees,
-            status: 'Sold',
-            order_status: 'CLOSED',
-            processed_at: sellTimeIso,
-            admin_note: `Proceeds from selling ${qty} shares of ${trade.symbol}`
-        }]).then(({ error: sellRecordErr }) => {
-            if (sellRecordErr) console.warn("Sell ledger insert warning:", sellRecordErr);
-        }).catch((ledgerErr) => {
-            console.warn("Sell ledger insert exception:", ledgerErr);
-        });
-
         if (window.showModal) {
             window.showModal('success', 'Trade Executed', `Sold ${qty} shares of ${trade.name} at ₹${Number(finalSellPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. ₹${finalNetReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 })} has been credited to your wallet.`, () => {
                 window.closeSellingModal();

@@ -3100,7 +3100,7 @@ window.DB = {
             return [];
         }
 
-        return (data || []).map(trade => ({
+        return (data || []).filter(trade => !String(trade?.admin_note || '').startsWith('Proceeds from selling')).map(trade => ({
             ...trade,
             est_profit_percent: trade.products ? (trade.products.est_profit_percent ?? trade.products.profit) : null,
             exchange: trade.products ? trade.products.exchange : null
