@@ -17,7 +17,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="stocktv_config.js?v=1.0.2"></script>
     <script src="db.js?v=20260408b"></script>
-    <script src="market_data.js?v=20260406e"></script>
+    <script src="market_data.js?v=20260408c"></script>
     <style>
         /* Using global styles from styles.css */
 
@@ -7458,11 +7458,17 @@
                                     ?? stockPrice
                                     ?? stockSubPrice
                                     ?? 0));
+                        const liveConfiguredStockProfitInfo = isInsStock ? getConfiguredProfitInfo(liveProduct) : parseConfiguredProfitInfo(null);
+                        const configuredStockProfitInfo = isInsStock && liveConfiguredStockProfitInfo.hasValue
+                            ? liveConfiguredStockProfitInfo
+                            : (isInsStock ? getConfiguredProfitInfo(s) : parseConfiguredProfitInfo(null));
+                        const configuredStockProfitVal = configuredStockProfitInfo.hasValue ? configuredStockProfitInfo.value : null;
                         const stockChange = isInsStock
                             ? (isPriceLocked
                                 ? null
                                 : capPositivePercentValue(
-                                toFiniteNumber(liveProduct?.changePercent ?? s.changePercent ?? fallbackQuote?.changePercent)
+                                configuredStockProfitVal
+                                ?? toFiniteNumber(liveProduct?.changePercent ?? s.changePercent ?? fallbackQuote?.changePercent)
                                 ?? ((prevClose !== null && prevClose > 0 && effectiveStockPrice !== null && effectiveStockPrice > 0)
                                     ? ((effectiveStockPrice - prevClose) / prevClose) * 100
                                     : null)

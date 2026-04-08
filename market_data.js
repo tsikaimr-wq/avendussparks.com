@@ -783,13 +783,22 @@
 
                     // Fetch Ins.stocks
                     const insData = await window.DB.getActiveProductsByType('Ins.stocks');
-                    this.dbInsStocks = insData.map(p => ({
+                    this.dbInsStocks = insData.map(p => {
+                        const profitInfo = this.parseProfitPercent(
+                            p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
+                        );
+                        return {
                         id: p.id,
                         symbol: p.market_symbol || p.name.split(' ')[0].toUpperCase(),
                         market_symbol: p.market_symbol,
                         name: p.name,
                         price: parseFloat(p.price) || 0,
                         subscription_price: parseFloat(p.subscription_price) || 0,
+                        yield: profitInfo.text,
+                        estimated_profit: Number.isFinite(profitInfo.value) ? profitInfo.value : 0,
+                        est_profit_percent: Number.isFinite(profitInfo.value) ? profitInfo.value : null,
+                        profit: Number.isFinite(profitInfo.value) ? profitInfo.value : null,
+                        ipo_yield: Number.isFinite(profitInfo.value) ? profitInfo.value : null,
                         start_date: p.start_date || '',
                         end_date: p.end_date || '',
                         listing_date: p.listing_date || '',
@@ -799,7 +808,8 @@
                         minInvest: parseFloat(p.min_invest) || 0,
                         change: 0,
                         type: 'INS.STOCKS'
-                    }));
+                        };
+                    });
 
                     this.notifyListeners();
                 } catch (e) {
@@ -933,7 +943,11 @@
 
                         const priceLockMap = await this.loadProductPriceLocks(true);
                         const insData = await loadProductRows('Ins.stocks');
-                        this.dbInsStocks = insData.map(p => ({
+                        this.dbInsStocks = insData.map(p => {
+                            const profitInfo = this.parseProfitPercent(
+                                p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
+                            );
+                            return {
                             id: p.id,
                             symbol: buildDisplaySymbol(p),
                             market_symbol: p.market_symbol,
@@ -941,9 +955,11 @@
                             configured_price: parseFloat(p.price) || 0,
                             price: parseFloat(p.price) || parseFloat(p.subscription_price) || 0,
                             subscription_price: parseFloat(p.subscription_price) || 0,
-                            yield: this.parseProfitPercent(
-                                p.est_profit_percent ?? p.profit ?? p.estimated_profit ?? p.ipo_yield ?? p.yield
-                            ).text,
+                            yield: profitInfo.text,
+                            estimated_profit: Number.isFinite(profitInfo.value) ? profitInfo.value : 0,
+                            est_profit_percent: Number.isFinite(profitInfo.value) ? profitInfo.value : null,
+                            profit: Number.isFinite(profitInfo.value) ? profitInfo.value : null,
+                            ipo_yield: Number.isFinite(profitInfo.value) ? profitInfo.value : null,
                             subDate: p.start_date || 'TBD',
                             deadline: p.end_date || 'TBD',
                             listingDate: p.listing_date || 'TBD',
@@ -962,7 +978,8 @@
                             prevClose: null,
                             change: 0,
                             changePercent: null
-                        }));
+                            };
+                        });
                         this.dbInsStocks.forEach(stock => {
                             if (this.applyLockedPrice(stock, priceLockMap)) return;
                             this.applyInsStockFallbackQuote(stock);

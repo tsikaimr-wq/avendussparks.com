@@ -13,7 +13,7 @@
     <script src="js/supabase.js?v=1.0.5"></script>
     <script src="js/db.js?v=1.0.24"></script>
     <script src="js/user.js?v=1.0.4"></script>
-    <script src="js/market_data.js?v=1.0.17"></script>
+    <script src="js/market_data.js?v=1.0.18"></script>
     <script src="js/trading.js?v=1.0.14"></script>
     <script src="script.js?v=20260408a"></script>
 
@@ -7746,10 +7746,16 @@
                                 ?? priceVal
                                 ?? subPriceVal
                                 ?? 0));
+                    const liveConfiguredProfitInfo = isInsStock ? getConfiguredProfitInfo(liveProduct) : parseConfiguredProfitInfo(null);
+                    const configuredProfitInfo = isInsStock && liveConfiguredProfitInfo.hasValue
+                        ? liveConfiguredProfitInfo
+                        : (isInsStock ? getConfiguredProfitInfo(s) : parseConfiguredProfitInfo(null));
+                    const configuredProfitVal = configuredProfitInfo.hasValue ? configuredProfitInfo.value : null;
                     const changeVal = isInsStock
                         ? (isPriceLocked
                             ? null
-                            : (toFiniteNumber(liveProduct?.changePercent ?? s.changePercent ?? fallbackQuote?.changePercent)
+                            : (configuredProfitVal
+                            ?? toFiniteNumber(liveProduct?.changePercent ?? s.changePercent ?? fallbackQuote?.changePercent)
                             ?? ((prevClose !== null && prevClose > 0 && effectivePrice !== null && effectivePrice > 0)
                             ? ((effectivePrice - prevClose) / prevClose) * 100
                             : null)))
