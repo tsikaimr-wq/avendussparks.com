@@ -19,7 +19,7 @@
     <script src="js/db.js?v=1.0.23"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.17"></script>
-    <script src="js/trading.js?v=1.0.11"></script>
+    <script src="js/trading.js?v=1.0.12"></script>
     <script src="script.js?v=20260405b"></script>
     <script src="js/credit_notifier.js?v=1.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
@@ -1278,7 +1278,13 @@
 
             let qty = parseInt(qtyInput.value) || 0;
             let baseTotal, tax, txnCharge, finalTotal;
-            const effectiveBuyPrice = (currentProductType === 'OTC' || currentProductType === 'IPO')
+            const detailProduct = window.MarketEngine?.getProduct?.(currentProductId) || window.MarketEngine?.getProduct?.(currentActiveSymbol);
+            const lockedBuyPrice = (detailProduct?.priceLocked || detailProduct?.locked)
+                ? (parseFloat(detailProduct?.locked_price ?? detailProduct?.subscription_price ?? detailProduct?.price) || 0)
+                : 0;
+            const effectiveBuyPrice = lockedBuyPrice > 0
+                ? lockedBuyPrice
+                : (currentProductType === 'OTC' || currentProductType === 'IPO')
                 ? (currentBuyPrice || currentPrice)
                 : currentPrice;
 
@@ -1568,6 +1574,19 @@
                     }
 
                     if (result.success) {
+                        const tradeId = result.trade_id || result.id || result.data?.id;
+                        if (!isSubscription && tradeId && window.DB?.syncTradePricingFields) {
+                            await window.DB.syncTradePricingFields(tradeId, {
+                                price: calc.price,
+                                quantity: calc.qty,
+                                requested_quantity: calc.qty,
+                                total_amount: calc.total,
+                                base_total_amount: calc.baseTotal,
+                                tax_amount: calc.tax,
+                                txn_charge: calc.txnCharge
+                            });
+                        }
+
                         // --- WALLET STATE TRANSITION (NON-SUBSCRIPTION) ---
                         if (!isSubscription && tradeStatus === 'Holding') {
                             const newBalance = currentBalance - calc.total;
@@ -1692,8 +1711,13 @@
                         });
                         const totalBuyIn = parseFloat(trade.total_amount);
                         const qty = parseFloat(trade.quantity);
-                        const buyPrice = parseFloat(trade.price);
                         const pricing = window.TradePricing || {};
+                        const resolvedBuyPrice = typeof pricing.getTradeEntryPrice === 'function'
+                            ? Number(pricing.getTradeEntryPrice(trade))
+                            : NaN;
+                        const buyPrice = Number.isFinite(resolvedBuyPrice) && resolvedBuyPrice > 0
+                            ? resolvedBuyPrice
+                            : (parseFloat(trade.price) || 0);
                         const livePrice = (typeof pricing.getCachedTradeMarketPrice === 'function')
                             ? pricing.getCachedTradeMarketPrice(trade)
                             : currentPrice;

@@ -7933,6 +7933,17 @@
                 return buildCalc(backendPrice, BUY_TAX_RATE, BUY_TXN_RATE);
             }
 
+            const lockedExecutionPrice = (product?.priceLocked || product?.locked || calc?.priceLocked || calc?.locked)
+                ? (toFiniteNumber(product?.locked_price)
+                    ?? toFiniteNumber(calc?.locked_price)
+                    ?? toFiniteNumber(product?.subscription_price)
+                    ?? toFiniteNumber(product?.price)
+                    ?? toFiniteNumber(calc?.price))
+                : null;
+            if (lockedExecutionPrice !== null && lockedExecutionPrice > 0) {
+                return buildCalc(lockedExecutionPrice, BUY_TAX_RATE, BUY_TXN_RATE);
+            }
+
             let livePrice = toFiniteNumber(calc?.price);
             if (!Number.isFinite(livePrice) || livePrice <= 0) {
                 try {
@@ -8056,6 +8067,19 @@
                 console.log("DEBUG: Trade Inserted Successfully! Trade ID:", result.trade_id);
 
                 if (result.success) {
+                    const tradeId = result.trade_id || result.id || result.data?.id;
+                    if (!requiresApproval && tradeId && window.DB?.syncTradePricingFields) {
+                        await window.DB.syncTradePricingFields(tradeId, {
+                            price: executionCalc.price,
+                            quantity: executionCalc.qty,
+                            requested_quantity: executionCalc.qty,
+                            total_amount: executionCalc.total,
+                            base_total_amount: executionCalc.baseTotal,
+                            tax_amount: executionCalc.tax,
+                            txn_charge: executionCalc.txnCharge
+                        });
+                    }
+
                     // OTC must debit immediately on subscription click.
                     if (normalizedType === 'otc' && requiresApproval) {
                         const expectedDebit = parseFloat(executionCalc.baseTotal || 0);
@@ -8539,6 +8563,16 @@
             return (Number.isFinite(fallback) && fallback > 0) ? fallback : 0;
         }
 
+        function getTradeEntryDisplayPrice(trade) {
+            const pricing = getTradePricingUtils();
+            if (pricing && typeof pricing.getTradeEntryPrice === 'function') {
+                const price = Number(pricing.getTradeEntryPrice(trade));
+                if (Number.isFinite(price) && price > 0) return price;
+            }
+            const fallback = Number(trade?.price);
+            return (Number.isFinite(fallback) && fallback > 0) ? fallback : 0;
+        }
+
         function refreshTradeDisplayPrice(trade, force = false) {
             const pricing = getTradePricingUtils();
             if (!pricing || typeof pricing.refreshTradeMarketPrice !== 'function' || typeof pricing.isMarketTrackedTrade !== 'function') return;
@@ -8553,7 +8587,7 @@
             }
 
             const qty = parseFloat(trade?.quantity || 0) || 0;
-            const buyPrice = parseFloat(trade?.price || 0) || 0;
+            const buyPrice = getTradeEntryDisplayPrice(trade);
             const price = Number.isFinite(Number(currentPrice)) ? Number(currentPrice) : getTradeDisplayPrice(trade);
             const gross = price * qty;
             const sellTax = gross * 0.0012;
@@ -8574,7 +8608,7 @@
             }
 
             const qty = parseFloat(trade?.quantity || 0) || 0;
-            const buyPrice = parseFloat(trade?.price || 0) || 0;
+            const buyPrice = getTradeEntryDisplayPrice(trade);
             const sellPrice = parseFloat(trade?.sell_price || trade?.price || 0) || 0;
             const storedNet = parseFloat(trade?.total_sale_value || 0) || (sellPrice * qty);
             const grossSaleValue = (parseFloat(trade?.sell_tax || 0) + parseFloat(trade?.sell_fees || 0)) > 0
@@ -8628,7 +8662,7 @@
                                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 1rem; border-bottom: 1px solid #f1f5f9;">
                                     <div style="text-align: left;">
                                         <div style="font-weight: 700; font-size: 0.9rem; color: #f8fafc;">${t.symbol}</div>
-                                        <div style="font-size: 0.75rem; color: #94a3b8;">${date}  - Buy Price ₹${parseFloat(t.price).toLocaleString('en-IN')}</div>
+                                        <div style="font-size: 0.75rem; color: #94a3b8;">${date}  - Buy Price ₹${getTradeEntryDisplayPrice(t).toLocaleString('en-IN')}</div>
                                         ${(() => {
                                     const pListingDate = t.products ? t.products.listing_date : null;
                                     const isPreListing = pListingDate && !hasDiscoverListingStarted(pListingDate);
@@ -9654,7 +9688,8 @@
             document.getElementById('hdAssetType').innerText = trade.type === 'stock' ? 'Standard Stock' : trade.type.toUpperCase();
             document.getElementById('hdSymbol').innerText = trade.symbol;
             document.getElementById('hdQty').innerText = trade.quantity;
-            document.getElementById('hdBuyPrice').innerText = '₹' + parseFloat(trade.price).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+            const entryPrice = getTradeEntryDisplayPrice(trade);
+            document.getElementById('hdBuyPrice').innerText = '₹' + entryPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
             const isClosed = trade.order_status === 'CLOSED' || trade.status === 'Sold';
             const tradeMetrics = isClosed
@@ -9664,7 +9699,7 @@
             const mockSaleVal = tradeMetrics.grossSaleValue;
             const profitValue = tradeMetrics.profit;
             const profitPct = tradeMetrics.profitPct;
-            const orderValue = tradeMetrics.baseOrderValue ?? ((parseFloat(trade.price) || 0) * (parseFloat(trade.quantity) || 0));
+            const orderValue = tradeMetrics.baseOrderValue ?? (entryPrice * (parseFloat(trade.quantity) || 0));
             document.getElementById('hdOrderVal').innerText = '₹' + orderValue.toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
             const dateStr = new Date(trade.created_at).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -9724,7 +9759,7 @@
 
                 document.getElementById('hdBuyTimeline').innerHTML = `
                     <div style="margin-bottom: 0.5rem;">
-                        <span style="color: #10b981; font-weight: 700;">BUY:</span> ${dateStr.replace(/\//g, '-')} @ ₹${parseFloat(trade.price).toLocaleString('en-IN')}
+                        <span style="color: #10b981; font-weight: 700;">BUY:</span> ${dateStr.replace(/\//g, '-')} @ ₹${entryPrice.toLocaleString('en-IN')}
                     </div>
                     <div>
                         <span style="color: #ef4444; font-weight: 700;">SELL:</span> ${sellDateStr.replace(/\//g, '-')} @ ₹${sp.toLocaleString('en-IN')}
@@ -9814,7 +9849,7 @@
                     document.getElementById('hdBuyTimeline').innerText = `Listed @ ${dateStr.replace(/\//g, '-')}  - Price ₹${mockCurrPrice.toLocaleString('en-IN')}`;
                 } else {
                     if (timelineTitle) timelineTitle.innerText = 'Buy Time';
-                    document.getElementById('hdBuyTimeline').innerText = `${dateStr.replace(/\//g, '-')}  - Buy @ ₹${parseFloat(trade.price).toLocaleString('en-IN', { minimumFractionDigits: 2 })}  - Total ₹${parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
+                    document.getElementById('hdBuyTimeline').innerText = `${dateStr.replace(/\//g, '-')}  - Buy @ ₹${entryPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 })}  - Total ₹${parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 })}`;
                 }
             }
 
@@ -9852,7 +9887,7 @@
                 document.getElementById('hdPremiumYield').style.color = String(premiumMainText).includes('-') ? '#ef4444' : '#10b981';
                 document.getElementById('hdEstProfit').innerText = premiumPctText;
 
-                document.getElementById('hdAssetName').innerText = '₹' + parseFloat(trade.price).toLocaleString('en-IN');
+                document.getElementById('hdAssetName').innerText = '₹' + entryPrice.toLocaleString('en-IN');
 
                 const formattedAllocDate = trade.allotment_date ? new Date(trade.allotment_date).toLocaleDateString('en-IN') : 'TBD';
 
@@ -9916,7 +9951,7 @@
                 if (hdLockupRow) hdLockupRow.style.display = 'none';
                 if (hdLockupRemainingRow) hdLockupRemainingRow.style.display = 'none';
             }
-            document.getElementById('hdAssetName').innerText = '₹' + parseFloat(trade.price).toLocaleString('en-IN');
+            document.getElementById('hdAssetName').innerText = '₹' + entryPrice.toLocaleString('en-IN');
 
             // Set Market based on symbol if possible, else default BSE
             document.getElementById('hdMarket').innerText = trade.symbol.includes('NSE') ? 'NSE' : 'BSE';
@@ -11247,7 +11282,7 @@
             color: #fff;
         }
     </style>
-    <script src="js/trading.js?v=1.0.11"></script>
+    <script src="js/trading.js?v=1.0.12"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             if (typeof openStockDetailFromRoute === 'function' && await openStockDetailFromRoute(false, { requireReady: true })) {

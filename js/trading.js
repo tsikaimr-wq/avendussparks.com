@@ -220,9 +220,87 @@ const getTradeQuantity = (trade) => {
     return 0;
 };
 
+const getStoredTradeBaseOrderValue = (trade) => {
+    const explicitBaseCandidates = [
+        trade?.base_total_amount,
+        trade?.base_total,
+        trade?.base_amount,
+        trade?.order_value,
+        trade?.order_amount,
+        trade?.requested_amount
+    ];
+
+    for (const candidate of explicitBaseCandidates) {
+        const value = tradeToFiniteNumber(candidate);
+        if (value !== null && value > 0) return value;
+    }
+
+    const storedTotal = tradeToFiniteNumber(trade?.total_amount);
+    if (storedTotal === null || storedTotal <= 0) return null;
+
+    const storedTax = tradeToFiniteNumber(trade?.tax_amount) || 0;
+    const storedTxnCharge = tradeToFiniteNumber(trade?.txn_charge) || 0;
+    const storedFees = storedTax + storedTxnCharge;
+    if (storedFees > 0 && storedTotal > storedFees) {
+        return roundTradeMoney(storedTotal - storedFees);
+    }
+
+    return storedTotal;
+};
+
+const getTradeProductEntryPriceCandidate = (trade) => {
+    const product = getTradeProduct(trade);
+    const candidates = [
+        trade?.entry_price,
+        trade?.buy_price,
+        trade?.purchase_price,
+        trade?.allocation_price,
+        trade?.locked_price,
+        product?.entry_price,
+        product?.buy_price,
+        product?.purchase_price,
+        product?.allocation_price,
+        product?.locked_price,
+        product?.subscription_price,
+        product?.price
+    ];
+
+    for (const candidate of candidates) {
+        const price = tradeToFiniteNumber(candidate);
+        if (price !== null && price > 0) return price;
+    }
+
+    return null;
+};
+
 const getTradeEntryPrice = (trade) => {
-    const price = tradeToFiniteNumber(trade?.price);
-    return (price !== null && price > 0) ? price : 0;
+    const directPrice = tradeToFiniteNumber(trade?.price);
+    const quantity = getTradeQuantity(trade);
+    const storedBase = getStoredTradeBaseOrderValue(trade);
+    const derivedPrice = (quantity > 0 && storedBase !== null && storedBase > 0)
+        ? roundTradeMoney(storedBase / quantity)
+        : null;
+    const productPrice = getTradeProductEntryPriceCandidate(trade);
+
+    if (directPrice !== null && directPrice > 0) {
+        const derivedLooksLikeCorrectedEntry = derivedPrice !== null
+            && derivedPrice > 1
+            && directPrice < 1
+            && derivedPrice / directPrice >= 3;
+        if (derivedLooksLikeCorrectedEntry) return derivedPrice;
+
+        const productLooksLikeCorrectedEntry = productPrice !== null
+            && productPrice > 1
+            && directPrice < 1
+            && productPrice / directPrice >= 3;
+        if (productLooksLikeCorrectedEntry) return productPrice;
+
+        return directPrice;
+    }
+
+    if (derivedPrice !== null && derivedPrice > 0) return derivedPrice;
+    if (productPrice !== null && productPrice > 0) return productPrice;
+    return 0;
 };
 
 const computeTradeFeeAmounts = (baseAmount) => {
@@ -245,8 +323,14 @@ const getTradeBuyFeeMetrics = (trade) => {
 
     const storedBuyTax = tradeToFiniteNumber(trade?.tax_amount);
     const storedBuyTxnCharge = tradeToFiniteNumber(trade?.txn_charge);
-    const buyTax = (storedBuyTax !== null && storedBuyTax > 0) ? storedBuyTax : computed.buyTax;
-    const buyTxnCharge = (storedBuyTxnCharge !== null && storedBuyTxnCharge > 0) ? storedBuyTxnCharge : computed.buyTxnCharge;
+    const storedTaxLooksCompatible = storedBuyTax !== null
+        && storedBuyTax > 0
+        && (computed.buyTax <= 0 || storedBuyTax >= computed.buyTax * 0.5);
+    const storedTxnLooksCompatible = storedBuyTxnCharge !== null
+        && storedBuyTxnCharge > 0
+        && (computed.buyTxnCharge <= 0 || storedBuyTxnCharge >= computed.buyTxnCharge * 0.5);
+    const buyTax = storedTaxLooksCompatible ? storedBuyTax : computed.buyTax;
+    const buyTxnCharge = storedTxnLooksCompatible ? storedBuyTxnCharge : computed.buyTxnCharge;
     const totalBuyFees = roundTradeMoney(buyTax + buyTxnCharge);
 
     return {
@@ -265,6 +349,7 @@ const getTradeActualDebitValue = (trade) => {
     const totalWithFees = roundTradeMoney(baseOrderValue + totalBuyFees);
 
     if (storedTotal !== null && storedTotal > 0) {
+        if (baseOrderValue > 0 && storedTotal < baseOrderValue * 0.5) return totalWithFees;
         if (Math.abs(storedTotal - baseOrderValue) <= 0.05) return totalWithFees;
         return storedTotal;
     }
@@ -660,6 +745,7 @@ window.TradePricing = {
     getTradeProduct,
     getCachedTradeMarketPrice,
     refreshTradeMarketPrice,
+    getTradeEntryPrice,
     computeTradeFeeAmounts,
     getTradeBuyFeeMetrics,
     getTradeActualDebitValue,
@@ -760,7 +846,8 @@ window.openCloseOrderModal = async function (tradeOrId) {
 
     if (stockTitleEl) stockTitleEl.innerText = trade.name;
     if (symbolEl) symbolEl.innerText = trade.symbol;
-    if (buyPriceEl) buyPriceEl.innerText = '₹' + parseFloat(trade.price).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+    const entryPrice = getTradeEntryPrice(trade);
+    if (buyPriceEl) buyPriceEl.innerText = '₹' + entryPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
     if (qtyEl) qtyEl.innerText = trade.quantity;
     if (orderValEl) orderValEl.innerText = '₹' + parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
