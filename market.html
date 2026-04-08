@@ -12152,6 +12152,13 @@
                 return { text: idx.quoteStatus || '', color: idx.quoteStatusColor || '#94a3b8' };
             }
 
+            function getIndexDisplayPrice(idx) {
+                const livePrice = idx?.hasMarketQuote ? Number(idx.price) : NaN;
+                if (Number.isFinite(livePrice) && livePrice > 0) return livePrice;
+                const seedPrice = Number(idx?.price);
+                return Number.isFinite(seedPrice) && seedPrice > 0 ? seedPrice : null;
+            }
+
             // Dynamic Rendering Loop
             function renderMajorIndices() {
                 if (!window.MarketEngine || !document.getElementById('majorIndicesList')) return;
@@ -12194,7 +12201,7 @@
                                     <span class="index-name" style="font-size: 1.02rem; font-weight: 700; text-align:center;">${idx.displayName || idx.name || idx.symbol}</span>
                                 </div>
                                 <div class="index-body" style="text-align: center;">
-                                    <div class="index-val" id="idx-val-${i}" style="font-size: 1.4rem; font-weight: 700; color: #fff;">${formatIndexDisplayValue(idx.hasMarketQuote ? idx.price : null)}</div>
+                                    <div class="index-val" id="idx-val-${i}" style="font-size: 1.4rem; font-weight: 700; color: #fff;">${formatIndexDisplayValue(getIndexDisplayPrice(idx))}</div>
                                     <div class="index-change" id="idx-change-${i}" style="font-size: 0.9rem; font-weight: 600;">${idx.hasMarketQuote ? `${idx.change >= 0 ? '+' : ''}${idx.change.toFixed(2)} (${idx.changePercent.toFixed(2)}%)` : noQuote.changeText}</div>
                                     <div id="idx-status-${i}" style="display:${describeIndexCardStatus(idx).text ? 'block' : 'none'}; font-size: 0.72rem; margin-top: 0.3rem; color: ${describeIndexCardStatus(idx).color};">${describeIndexCardStatus(idx).text}</div>
                                 </div>
@@ -12215,7 +12222,7 @@
                     const statusEl = document.getElementById(`idx-status-${i}`);
                     const status = describeIndexCardStatus(idx);
                     if (priceEl) {
-                        priceEl.innerText = formatIndexDisplayValue(idx.hasMarketQuote ? idx.price : null);
+                        priceEl.innerText = formatIndexDisplayValue(getIndexDisplayPrice(idx));
                     }
                     if (changeEl) {
                         if (idx.hasMarketQuote) {
@@ -12245,12 +12252,29 @@
 
             // Periodic live indices update (display only)
             if (window.MarketEngine && typeof window.MarketEngine.syncIndicesWithYahoo === 'function') {
-                if (!shouldPauseBackgroundMarketApi()) {
-                    window.MarketEngine.syncIndicesWithYahoo();
+                let indexSyncInFlight = false;
+                const requestLiveIndexSync = () => {
+                    if (shouldPauseBackgroundMarketApi() || indexSyncInFlight) return;
+                    indexSyncInFlight = true;
+                    Promise.resolve(window.MarketEngine.syncIndicesWithYahoo())
+                        .catch((error) => console.warn('Live index sync failed:', error))
+                        .finally(() => { indexSyncInFlight = false; });
+                };
+
+                requestLiveIndexSync();
+                if (window.MarketEngine.ready && typeof window.MarketEngine.ready.then === 'function') {
+                    window.MarketEngine.ready.then(requestLiveIndexSync).catch(() => { });
                 }
+
+                let startupIndexSyncCount = 0;
+                const startupIndexSyncTimer = setInterval(() => {
+                    startupIndexSyncCount += 1;
+                    requestLiveIndexSync();
+                    if (startupIndexSyncCount >= 6) clearInterval(startupIndexSyncTimer);
+                }, 5000);
+
                 setInterval(() => {
-                    if (shouldPauseBackgroundMarketApi()) return;
-                    window.MarketEngine.syncIndicesWithYahoo();
+                    requestLiveIndexSync();
                 }, 10000);
             }
 
@@ -13088,6 +13112,7 @@
     <script type="text/javascript">
         let currentWidget = null;
         let currentActiveSymbol = 'NSE:NIFTY';
+        window.currentActiveSymbol = window.currentActiveSymbol || currentActiveSymbol;
         let currentInterval = 'H';
 
         function updateChartInterval(interval, btn) {
@@ -13101,10 +13126,12 @@
         window.loadWidget = function (symbol) {
             const container = document.getElementById('tradingview_widget');
             if (!container) return;
+            currentActiveSymbol = symbol || currentActiveSymbol;
+            window.currentActiveSymbol = currentActiveSymbol;
 
             // Clear container
             container.innerHTML = '';
-            const raw = String(symbol || '').toUpperCase();
+            const raw = String(currentActiveSymbol || '').toUpperCase();
             const majorChartIntervalMap = {
                 H: { period: '5d', interval: '60m' },
                 D: { period: '1mo', interval: '1d' },
@@ -13131,13 +13158,13 @@
                 'NSE:NIFSMCP100': '^NSESMCP100'
             };
             const intervalOptions = majorChartIntervalMap[currentInterval] || majorChartIntervalMap.H;
-            const yahooSymbol = indexYahooMap[raw] || symbol;
+            const yahooSymbol = indexYahooMap[raw] || currentActiveSymbol;
             const isIndexLike = !!indexYahooMap[raw];
             const exchangeHint = inferExchangeFromStockParam(raw);
 
             if (typeof window.loadYahooChart === 'function') {
                 window.loadYahooChart(yahooSymbol, 'tradingview_widget', {
-                    originalSymbol: symbol,
+                    originalSymbol: currentActiveSymbol,
                     exchangeHint,
                     seriesType: isIndexLike ? 'line' : 'candlestick',
                     period: intervalOptions.period,
