@@ -1010,6 +1010,18 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
         }).eq('id', tradeOwnerId).select('id, balance, invested').maybeSingle();
         if (finErr) throw finErr;
         if (!updatedFunds) throw new Error('Wallet update failed: user record was not updated.');
+        if (window.DB?.refreshCurrentUser && String(tradeOwnerId) === String(user.id)) {
+            const currentLocalUser = window.DB.getCurrentUser?.() || {};
+            if (window.DB.CURRENT_USER_KEY) {
+                localStorage.setItem(window.DB.CURRENT_USER_KEY, JSON.stringify({
+                    ...currentLocalUser,
+                    balance: updatedFunds.balance,
+                    invested: updatedFunds.invested,
+                    negative_balance: Number(updatedFunds.balance || 0) < 0
+                }));
+            }
+            await window.DB.refreshCurrentUser();
+        }
 
         // 5. Record proceeds history asynchronously (should not block sell completion)
         client.from('trades').insert([{

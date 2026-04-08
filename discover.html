@@ -8954,7 +8954,7 @@
                                 </div>
                                 <div class="premium-detail-item">
                                     <span class="label" style="color: #888 !important;">Price</span>
-                                    <span class="value" style="color: #ffffff !important;">₹${parseFloat(item.price).toLocaleString('en-IN')}</span>
+                                    <span class="value" style="color: #ffffff !important;">₹${getTradeEntryDisplayPrice(item).toLocaleString('en-IN')}</span>
                                 </div>
                                 <div class="premium-detail-item">
                                     <span class="label" style="color: #888 !important;">Total</span>
@@ -9003,7 +9003,7 @@
                                 </div>
                                 <div class="premium-detail-item">
                                     <span class="label" style="color: #888 !important;">Price</span>
-                                    <span class="value" style="color: #ffffff !important;">₹${parseFloat(item.price).toLocaleString('en-IN')}</span>
+                                    <span class="value" style="color: #ffffff !important;">₹${getTradeEntryDisplayPrice(item).toLocaleString('en-IN')}</span>
                                 </div>
                                 <div class="premium-detail-item">
                                     <span class="label" style="color: #888 !important;">Total</span>
@@ -11282,7 +11282,7 @@
             color: #fff;
         }
     </style>
-    <script src="js/trading.js?v=1.0.12"></script>
+    <script src="js/trading.js?v=1.0.13"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             if (typeof openStockDetailFromRoute === 'function' && await openStockDetailFromRoute(false, { requireReady: true })) {

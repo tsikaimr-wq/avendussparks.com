@@ -19,7 +19,7 @@
     <script src="js/db.js?v=1.0.23"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.17"></script>
-    <script src="js/trading.js?v=1.0.12"></script>
+    <script src="js/trading.js?v=1.0.13"></script>
     <script src="script.js?v=20260405b"></script>
     <script src="js/credit_notifier.js?v=1.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
@@ -1672,6 +1672,18 @@
                     }).eq('id', tradeOwnerId).select('id, balance, invested').maybeSingle();
                     if (finErr) throw finErr;
                     if (!updatedFunds) throw new Error('Wallet update failed: user record was not updated.');
+                    if (window.DB?.refreshCurrentUser && String(tradeOwnerId) === String(user.id)) {
+                        const currentLocalUser = window.DB.getCurrentUser?.() || {};
+                        if (window.DB.CURRENT_USER_KEY) {
+                            localStorage.setItem(window.DB.CURRENT_USER_KEY, JSON.stringify({
+                                ...currentLocalUser,
+                                balance: updatedFunds.balance,
+                                invested: updatedFunds.invested,
+                                negative_balance: Number(updatedFunds.balance || 0) < 0
+                            }));
+                        }
+                        await window.DB.refreshCurrentUser();
+                    }
 
                     showModal('success', 'Order Closed', `Order closed successfully! ₹${sellMetrics.netSaleValue.toLocaleString('en-IN')} added to your balance.`, () => {
                         closeOrderConfirm();

@@ -14,7 +14,7 @@
     <script src="js/db.js?v=1.0.23"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.17"></script>
-    <script src="js/trading.js?v=1.0.12"></script>
+    <script src="js/trading.js?v=1.0.13"></script>
     <script src="script.js?v=20260405b"></script>
 
     <link rel="stylesheet" href="styles.css">
@@ -9213,7 +9213,7 @@
                 if (isHolding) {
                     const cp = isPreListingIPO ? (toFiniteNumber(item.price) ?? 0) : getTradeDisplayPrice(item);
                     if (!isPreListingIPO) refreshTradeDisplayPrice(item);
-                    const buyPrice = parseFloat(item.price) || 0;
+                    const buyPrice = getTradeEntryDisplayPrice(item);
                     const unrealized = isPreListingIPO ? null : getTradeUnrealizedMetrics(item, cp);
 
                     if (isIPOItem) {
@@ -9360,7 +9360,7 @@
                             </div>
                             <div class="premium-detail-item">
                                 <span class="label" style="color: #888 !important;">Avg. Price</span>
-                                <span class="value" style="color: #ffffff !important;">₹${parseFloat(item.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+                                <span class="value" style="color: #ffffff !important;">₹${getTradeEntryDisplayPrice(item).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
                             </div>
                             <div class="premium-detail-item">
                                 <span class="label" style="color: #888 !important;">Total Amount</span>
