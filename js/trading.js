@@ -130,6 +130,61 @@ const getTradeMarketSymbol = (trade) => String(
     || ''
 ).trim();
 
+const normalizeTradeExchangeLabel = (value = '') => {
+    if (window.DB?.normalizeMarketExchangeLabel) {
+        const normalized = window.DB.normalizeMarketExchangeLabel(value);
+        if (normalized) return normalized;
+    }
+    const upper = String(value || '').trim().toUpperCase();
+    if (!upper) return '';
+    if (upper === 'NSE' || upper.includes('NATIONAL STOCK EXCHANGE')) return 'NSE';
+    if (upper === 'BSE' || upper === 'BOM' || upper.includes('BOMBAY')) return 'BSE';
+    return upper;
+};
+
+const inferTradeExchangeFromSymbol = (value = '', exchangeHint = '') => {
+    if (window.DB?.inferMarketExchange) {
+        return window.DB.inferMarketExchange(value, exchangeHint) || '';
+    }
+    const symbol = String(value || '').trim().toUpperCase();
+    const hint = normalizeTradeExchangeLabel(exchangeHint);
+    if (symbol.startsWith('NSE:') || symbol.endsWith('.NS') || symbol.includes('.NSE')) return 'NSE';
+    if (symbol.startsWith('BSE:') || symbol.endsWith('.BO') || symbol.includes('.BSE') || symbol.includes('.BOM')) return 'BSE';
+    return hint;
+};
+
+const getTradeExchangeLabel = (trade, fallback = '') => {
+    const product = getTradeProduct(trade);
+    const directCandidates = [
+        trade?.exchange,
+        product?.exchange,
+        trade?.products?.exchange
+    ];
+
+    for (const candidate of directCandidates) {
+        const normalized = normalizeTradeExchangeLabel(candidate);
+        if (normalized) return normalized;
+    }
+
+    const symbolCandidates = [
+        trade?.market_symbol,
+        trade?.products?.market_symbol,
+        trade?.symbol,
+        trade?.products?.symbol,
+        product?.market_symbol,
+        product?.symbol
+    ];
+
+    for (const candidate of symbolCandidates) {
+        const inferred = inferTradeExchangeFromSymbol(candidate, fallback);
+        if (inferred) return inferred;
+    }
+
+    return normalizeTradeExchangeLabel(fallback);
+};
+
+window.getTradeExchangeLabel = getTradeExchangeLabel;
+
 const getTradeCacheKey = (trade) => {
     const symbol = getTradeMarketSymbol(trade) || String(trade?.symbol || '').trim();
     return symbol.toUpperCase();

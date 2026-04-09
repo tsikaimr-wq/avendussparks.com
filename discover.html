@@ -9959,8 +9959,9 @@
             }
             document.getElementById('hdAssetName').innerText = '₹' + entryPrice.toLocaleString('en-IN');
 
-            // Set Market based on symbol if possible, else default BSE
-            document.getElementById('hdMarket').innerText = trade.symbol.includes('NSE') ? 'NSE' : 'BSE';
+            document.getElementById('hdMarket').innerText = window.getTradeExchangeLabel
+                ? (window.getTradeExchangeLabel(trade, '') || '--')
+                : '--';
 
             document.getElementById('holdingDetailModal').style.display = 'flex';
             lucide.createIcons();
@@ -10454,7 +10455,7 @@
                     </tr>
                     <tr>
                         <td>Market</td>
-                        <td id="hdMarket">BSE</td>
+                        <td id="hdMarket">--</td>
                     </tr>
                     <tr>
                         <td>Symbol</td>
@@ -11288,7 +11289,7 @@
             color: #fff;
         }
     </style>
-    <script src="js/trading.js?v=1.0.15"></script>
+    <script src="js/trading.js?v=1.0.16"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             if (typeof openStockDetailFromRoute === 'function' && await openStockDetailFromRoute(false, { requireReady: true })) {

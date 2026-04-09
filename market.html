@@ -14,7 +14,7 @@
     <script src="js/db.js?v=1.0.24"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.18"></script>
-    <script src="js/trading.js?v=1.0.15"></script>
+    <script src="js/trading.js?v=1.0.16"></script>
     <script src="script.js?v=20260408a"></script>
 
     <link rel="stylesheet" href="styles.css">
@@ -9154,7 +9154,7 @@
             let html = `<div class="premium-trade-grid">`;
             data.forEach(item => {
                 const dateStr = new Date(item.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-                const exchange = item.exchange || 'BSE';
+                const exchange = (window.getTradeExchangeLabel ? window.getTradeExchangeLabel(item, 'NSE') : (item.exchange || 'NSE'));
                 const country = 'IN';
 
                 // 1. Status & Badge Logic
@@ -10666,8 +10666,9 @@
                 }
             }
 
-            // Set Market based on symbol if possible, else default BSE
-            document.getElementById('hdMarket').innerText = trade.exchange || 'BSE';
+            document.getElementById('hdMarket').innerText = window.getTradeExchangeLabel
+                ? (window.getTradeExchangeLabel(trade, '') || '--')
+                : (trade.exchange || '--');
 
             document.getElementById('holdingDetailModal').style.display = 'flex';
             lucide.createIcons();
@@ -11378,7 +11379,7 @@
                     </tr>
                     <tr>
                         <td>Market</td>
-                        <td id="hdMarket">BSE</td>
+                        <td id="hdMarket">--</td>
                     </tr>
                     <tr>
                         <td>Symbol</td>
