@@ -4594,14 +4594,12 @@
         }
 
         function buildMoverRow(type, item, payload = null) {
-            const fallbackPrice = parseMoverSeedPrice(item.p);
-            const fallbackChangePercent = parseMoverSeedChange(item.c);
             const price = Number(payload?.price);
             const changePercent = Number(payload?.changePercent);
-            const effectivePrice = Number.isFinite(price) && price > 0 ? price : fallbackPrice;
-            const effectiveChangePercent = Number.isFinite(changePercent) ? changePercent : fallbackChangePercent;
+            const effectivePrice = Number.isFinite(price) && price > 0 ? price : null;
+            const effectiveChangePercent = Number.isFinite(changePercent) ? changePercent : null;
             const hasChange = Number.isFinite(effectiveChangePercent);
-            const isPositive = hasChange ? effectiveChangePercent >= 0 : !String(item.c || '').trim().startsWith('-');
+            const isPositive = hasChange ? effectiveChangePercent >= 0 : false;
             const noQuote = getMoverNoQuoteState();
             const quoteMeta = describeMarketPayload(payload);
             const usingSnapshot = !(Number.isFinite(price) && price > 0);
@@ -4610,11 +4608,11 @@
                 t: item.t,
                 n: item.n,
                 p: formatMoverPrice(effectivePrice),
-                c: hasChange ? `${isPositive ? '+' : ''}${effectiveChangePercent.toFixed(2)}%` : (item.c || noQuote.text),
+                c: hasChange ? `${isPositive ? '+' : ''}${effectiveChangePercent.toFixed(2)}%` : noQuote.text,
                 sortValue: hasChange ? effectiveChangePercent : (type === 'gainers' ? -9999 : 9999),
                 changeClass: hasChange ? (isPositive ? 'green' : 'red') : '',
                 changeColor: hasChange ? (isPositive ? '#10b981' : '#ef4444') : '#94a3b8',
-                metaText: usingSnapshot ? (quoteMeta.text ? `Snapshot | ${quoteMeta.text}` : 'Snapshot') : quoteMeta.text,
+                metaText: usingSnapshot ? quoteMeta.text : quoteMeta.text,
                 metaColor: '#94a3b8',
                 detailColor: isPositive ? '#10b981' : '#ef4444'
             };
@@ -4631,13 +4629,13 @@
             const seedRows = items.map(item => ({
                 t: item.t,
                 n: item.n,
-                p: item.p || '--',
-                c: item.c || (marketClosed ? noQuote.text : '--'),
-                changeClass: String(item.c || '').trim().startsWith('-') ? 'red' : 'green',
-                changeColor: String(item.c || '').trim() ? (String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981') : '#94a3b8',
+                p: '--',
+                c: marketClosed ? noQuote.text : '--',
+                changeClass: '',
+                changeColor: '#94a3b8',
                 metaText: marketClosed ? noQuote.text : 'Refreshing live quote...',
                 metaColor: '#94a3b8',
-                detailColor: String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981'
+                detailColor: '#94a3b8'
             }));
             renderMoverRows(type, exchange, seedRows);
             if (shouldPauseBackgroundMarketApi()) return;
@@ -4672,13 +4670,13 @@
                 const snapshotRows = (stockData[type]?.[exchange] || []).map(item => ({
                     t: item.t,
                     n: item.n,
-                    p: item.p,
-                    c: item.c,
-                    changeClass: String(item.c || '').trim().startsWith('-') ? 'red' : 'green',
-                    changeColor: String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981',
+                    p: '--',
+                    c: '--',
+                    changeClass: '',
+                    changeColor: '#94a3b8',
                     metaText: 'Paused in detail view',
                     metaColor: '#94a3b8',
-                    detailColor: String(item.c || '').trim().startsWith('-') ? '#ef4444' : '#10b981'
+                    detailColor: '#94a3b8'
                 }));
                 renderMoverRows(type, exchange, snapshotRows);
                 return;

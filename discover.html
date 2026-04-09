@@ -4640,70 +4640,237 @@
         const stockData = {
             gainers: {
                 NSE: [
-                    { t: 'NIRAJISPAT', n: 'Niraj Ispat Industries Limited', p: '₹7.41', c: '+20.00%', color: '#10b981' },
-                    { t: 'PRESSTONIC', n: 'Presstonic Engineering Limited', p: '₹0.20', c: '+19.82%', color: '#3b82f6' },
-                    { t: 'IZMO', n: 'IZMO Limited', p: '₹1.45', c: '+18.48%', color: '#06b6d4' },
-                    { t: 'APOLLOPIPE', n: 'Apollo Pipes Limited', p: '₹3.40', c: '+18.06%', color: '#10b981' },
-                    { t: 'LOYALTEX', n: 'Loyal Textile Mills Limited', p: '₹4.79', c: '+17.41%', color: '#6366f1' },
-                    { t: 'KCEIL', n: 'Kay Cee Energy & Infra Limited', p: '₹5.80', c: '+16.87%', color: '#f59e0b' }
+                    { t: 'NIRAJISPAT', q: 'NIRAJISPAT.NS', n: 'Niraj Ispat Industries Limited' },
+                    { t: 'PRESSTONIC', q: 'PRESSTONIC.NS', n: 'Presstonic Engineering Limited' },
+                    { t: 'IZMO', q: 'IZMO.NS', n: 'IZMO Limited' },
+                    { t: 'APOLLOPIPE', q: 'APOLLOPIPE.NS', n: 'Apollo Pipes Limited' },
+                    { t: 'LOYALTEX', q: 'LOYALTEX.NS', n: 'Loyal Textile Mills Limited' },
+                    { t: 'KCEIL', q: 'KCEIL-SM.NS', n: 'Kay Cee Energy & Infra Limited' }
                 ],
                 BSE: [
-                    { t: 'HDFCBANK', n: 'HDFC Bank Ltd', p: '₹540.20', c: '+2.45%', color: '#3b82f6' },
-                    { t: 'RELIANCE', n: 'Reliance Industries Ltd', p: '₹985.40', c: '+1.80%', color: '#6366f1' },
-                    { t: 'TCS', n: 'Tata Consultancy Services', p: '₹120.15', c: '+1.20%', color: '#ec4899' }
+                    { t: 'HDFCBANK', q: 'HDFCBANK.BO', n: 'HDFC Bank Ltd' },
+                    { t: 'RELIANCE', q: 'RELIANCE.BO', n: 'Reliance Industries Ltd' },
+                    { t: 'TCS', q: 'TCS.BO', n: 'Tata Consultancy Services' }
                 ]
             },
             losers: {
                 NSE: [
-                    { t: 'DHARIWAL', n: 'Dhariwalcorp Limited', p: '₹0.70', c: '-79.61%', color: '#ef4444' },
-                    { t: 'CLEDUCATE', n: 'CL Educate Limited', p: '₹0.08', c: '-20.00%', color: '#f43f5e' },
-                    { t: 'KRISHFL_RE', n: 'KRISHIVAL FOODS LIMITED', p: '₹0.20', c: '-19.86%', color: '#ef4444' },
-                    { t: 'UCL', n: 'Ushanti Colour Chem Limited', p: '₹0.55', c: '-12.42%', color: '#ec4899' },
-                    { t: 'MAHESHWARI', n: 'Maheshwari Logistics Limited', p: '₹0.27', c: '-12.37%', color: '#f43f5e' },
-                    { t: 'VISHWAS', n: 'Vishwas Agri Seeds Limited', p: '₹0.10', c: '-10.88%', color: '#8b5cf6' }
+                    { t: 'DHARIWAL', q: 'DHARIWAL.NS', n: 'Dhariwalcorp Limited' },
+                    { t: 'CLEDUCATE', q: 'CLEDUCATE.NS', n: 'CL Educate Limited' },
+                    { t: 'KRISHFL_RE', q: 'KRISHIVAL.NS', n: 'KRISHIVAL FOODS LIMITED' },
+                    { t: 'UCL', q: 'UCL.NS', n: 'Ushanti Colour Chem Limited' },
+                    { t: 'MAHESHWARI', q: 'MAHESHWARI.NS', n: 'Maheshwari Logistics Limited' },
+                    { t: 'VISHWAS', q: 'VISHWAS.NS', n: 'Vishwas Agri Seeds Limited' }
                 ],
                 BSE: [
-                    { t: 'ZOMATO', n: 'Zomato Limited', p: '₹5.40', c: '-4.20%', color: '#f43f5e' },
-                    { t: 'PAYTM', n: 'One 97 Communications', p: '₹2.10', c: '-3.15%', color: '#0ea5e9' }
+                    { t: 'ZOMATO', q: 'ZOMATO.BO', n: 'Zomato Limited' },
+                    { t: 'PAYTM', q: 'PAYTM.BO', n: 'One 97 Communications' }
                 ]
             }
         };
 
-        function switchExchange(type, exchange) {
+        const moverListState = {
+            gainers: { exchange: 'NSE', requestId: 0 },
+            losers: { exchange: 'NSE', requestId: 0 }
+        };
+
+        function shouldPauseBackgroundMarketApi() {
+            try {
+                const detailView = document.getElementById('stockDetailView');
+                if (detailView && getComputedStyle(detailView).display !== 'none') return true;
+                const params = new URLSearchParams(window.location.search || '');
+                return !!String(params.get('stock') || '').trim();
+            } catch (_) {
+                return true;
+            }
+        }
+
+        function escapeInlineString(value) {
+            return String(value ?? '')
+                .replace(/\\/g, '\\\\')
+                .replace(/'/g, "\\'");
+        }
+
+        function formatMoverPrice(value) {
+            const numeric = Number(value);
+            if (!Number.isFinite(numeric) || numeric <= 0) return '--';
+            return `₹${numeric.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+
+        function isIndiaRegularMarketOpenNow() {
+            try {
+                const parts = new Intl.DateTimeFormat('en-GB', {
+                    timeZone: 'Asia/Kolkata',
+                    weekday: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hourCycle: 'h23'
+                }).formatToParts(new Date()).reduce((acc, part) => {
+                    if (part.type !== 'literal') acc[part.type] = part.value;
+                    return acc;
+                }, {});
+
+                const weekday = String(parts.weekday || '');
+                const hour = Number(parts.hour);
+                const minute = Number(parts.minute);
+                if (!Number.isFinite(hour) || !Number.isFinite(minute)) return true;
+                if (weekday === 'Sat' || weekday === 'Sun') return false;
+
+                const totalMinutes = (hour * 60) + minute;
+                return totalMinutes >= ((9 * 60) + 15) && totalMinutes < ((15 * 60) + 30);
+            } catch (_) {
+                return true;
+            }
+        }
+
+        function getMoverNoQuoteState() {
+            const marketOpen = isIndiaRegularMarketOpenNow();
+            return {
+                text: marketOpen ? 'Quote unavailable' : 'Closed',
+                color: '#94a3b8'
+            };
+        }
+
+        function describeMarketPayload(payload) {
+            if (!payload || payload.status === 'error') {
+                return getMoverNoQuoteState();
+            }
+            return { text: '', color: '#94a3b8' };
+        }
+
+        function setMoverTabState(listContainer, exchange) {
+            const section = listContainer?.closest('.m-card');
+            if (!section) return;
+            section.querySelectorAll('.exchange-tab').forEach(tab => {
+                tab.classList.toggle('active', tab.innerText === exchange);
+            });
+        }
+
+        function renderMoverRows(type, exchange, rows) {
             const listId = type === 'gainers' ? 'gainersList' : 'losersList';
             const listContainer = document.querySelector(`#${listId} .auth-locked-content`);
-            const data = stockData[type][exchange];
+            if (!listContainer) return;
+            setMoverTabState(listContainer, exchange);
 
-            // Update Tab UI
-            const section = listContainer.closest('.m-card');
-            if (section) {
-                section.querySelectorAll('.exchange-tab').forEach(tab => {
-                    tab.classList.toggle('active', tab.innerText === exchange);
-                });
-            }
-
-            listContainer.innerHTML = data.map(s => `
-                <div class="stock-row" style="cursor: pointer" onclick="openStockDetail('${s.t}', '${s.n}', '${exchange}', '${s.p}', '${s.c}', '${type === 'gainers' ? '#10b981' : '#ef4444'}')">
+            listContainer.innerHTML = rows.map(row => `
+                <div class="stock-row" style="cursor: pointer" onclick="openStockDetail('${escapeInlineString(row.t)}', '${escapeInlineString(row.n)}', '${exchange}', '${escapeInlineString(row.p)}', '${escapeInlineString(row.c)}', '${row.detailColor}')">
                     <div class="stock-ident">
                         <div>
-                            <div class="stock-ticker">${s.t}</div>
-                            <div class="stock-full-name">${s.n}  - ${exchange}</div>
+                            <div class="stock-ticker">${row.t}</div>
+                            <div class="stock-full-name">${row.n} - ${exchange}</div>
+                            ${row.metaText ? `<div style="font-size: 0.65rem; color: ${row.metaColor}; margin-top: 0.15rem;">${row.metaText}</div>` : ''}
                         </div>
                     </div>
                     <div class="stock-price-col">
-                        <div class="stock-ticker">${s.p}</div>
-                        <div class="index-chg ${type === 'gainers' ? 'green' : 'red'}" style="font-size: 0.75rem">${s.c}</div>
+                        <div class="stock-ticker">${row.p}</div>
+                        <div class="index-chg ${row.changeClass}" style="font-size: 0.75rem; color: ${row.changeColor};">${row.c}</div>
                     </div>
                 </div>
             `).join('');
             lucide.createIcons();
         }
 
-        // Initialize lists
+        function buildMoverRow(type, item, payload = null) {
+            const price = Number(payload?.price);
+            const changePercent = Number(payload?.changePercent);
+            const effectivePrice = Number.isFinite(price) && price > 0 ? price : null;
+            const effectiveChangePercent = Number.isFinite(changePercent) ? changePercent : null;
+            const hasChange = Number.isFinite(effectiveChangePercent);
+            const isPositive = hasChange ? effectiveChangePercent >= 0 : false;
+            const noQuote = getMoverNoQuoteState();
+            const quoteMeta = describeMarketPayload(payload);
+            const usingSnapshot = !(Number.isFinite(price) && price > 0);
+
+            return {
+                t: item.t,
+                n: item.n,
+                p: formatMoverPrice(effectivePrice),
+                c: hasChange ? `${isPositive ? '+' : ''}${effectiveChangePercent.toFixed(2)}%` : noQuote.text,
+                sortValue: hasChange ? effectiveChangePercent : (type === 'gainers' ? -9999 : 9999),
+                changeClass: hasChange ? (isPositive ? 'green' : 'red') : '',
+                changeColor: hasChange ? (isPositive ? '#10b981' : '#ef4444') : '#94a3b8',
+                metaText: usingSnapshot ? quoteMeta.text : quoteMeta.text,
+                metaColor: '#94a3b8',
+                detailColor: isPositive ? '#10b981' : '#ef4444'
+            };
+        }
+
+        async function refreshTrackedMovers(type, exchange) {
+            const state = moverListState[type];
+            if (!state) return;
+            state.exchange = exchange;
+            const requestId = ++state.requestId;
+            const items = stockData[type]?.[exchange] || [];
+            const noQuote = getMoverNoQuoteState();
+            const marketClosed = noQuote.text === 'Closed';
+            const seedRows = items.map(item => ({
+                t: item.t,
+                n: item.n,
+                p: '--',
+                c: marketClosed ? noQuote.text : '--',
+                changeClass: '',
+                changeColor: '#94a3b8',
+                metaText: marketClosed ? noQuote.text : 'Refreshing live quote...',
+                metaColor: '#94a3b8',
+                detailColor: '#94a3b8'
+            }));
+            renderMoverRows(type, exchange, seedRows);
+            if (shouldPauseBackgroundMarketApi()) return;
+
+            const liveRows = await Promise.all(items.map(async (item) => {
+                let payload = null;
+                const requestSymbol = String(item.q || item.t || '').trim();
+                if (window.DB && typeof window.DB.getMarketPrice === 'function') {
+                    try {
+                        payload = await window.DB.getMarketPrice(requestSymbol, item.n);
+                    } catch (_) { }
+                }
+                return buildMoverRow(type, item, payload);
+            }));
+
+            if (state.requestId !== requestId || state.exchange !== exchange || shouldPauseBackgroundMarketApi()) return;
+
+            liveRows.sort((a, b) => type === 'gainers'
+                ? (b.sortValue - a.sortValue)
+                : (a.sortValue - b.sortValue));
+
+            renderMoverRows(type, exchange, liveRows);
+        }
+
+        function switchExchange(type, exchange) {
+            const listId = type === 'gainers' ? 'gainersList' : 'losersList';
+            const listContainer = document.querySelector(`#${listId} .auth-locked-content`);
+            if (!listContainer) return;
+            moverListState[type].exchange = exchange;
+            setMoverTabState(listContainer, exchange);
+            if (shouldPauseBackgroundMarketApi()) {
+                const snapshotRows = (stockData[type]?.[exchange] || []).map(item => ({
+                    t: item.t,
+                    n: item.n,
+                    p: '--',
+                    c: '--',
+                    changeClass: '',
+                    changeColor: '#94a3b8',
+                    metaText: 'Paused in detail view',
+                    metaColor: '#94a3b8',
+                    detailColor: '#94a3b8'
+                }));
+                renderMoverRows(type, exchange, snapshotRows);
+                return;
+            }
+            refreshTrackedMovers(type, exchange);
+        }
+
         if (typeof switchExchange === 'function') {
             switchExchange('gainers', 'NSE');
             switchExchange('losers', 'NSE');
         }
+
+        setInterval(() => {
+            if (shouldPauseBackgroundMarketApi()) return;
+            refreshTrackedMovers('gainers', moverListState.gainers.exchange);
+            refreshTrackedMovers('losers', moverListState.losers.exchange);
+        }, 30000);
 
         // Customer Service Toggle
 

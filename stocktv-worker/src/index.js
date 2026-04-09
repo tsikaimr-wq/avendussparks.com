@@ -20,9 +20,11 @@ const STOCK_SYMBOL_ALIAS = {
   KCEIL: 'KAYR',
   KCEILNS: 'KAYR',
   KCEILBO: 'KAYR',
+  ALPABO: '532878',
 };
 
 const YAHOO_SYMBOL_ALIAS = {
+  ALPABO: ['532878.BO', 'ALPA.BO', 'ALPA'],
   KCEIL: ['KCEIL-SM.NS', 'KCEIL-SM'],
   KCEILNS: ['KCEIL-SM.NS', 'KCEIL-SM'],
   KCEILBO: ['KCEIL-SM.NS', 'KCEIL-SM'],
@@ -687,6 +689,35 @@ const normalizeYahooExchange = (quote) => {
   if (upper.includes('AMEX')) return 'AMEX';
   if (upper.includes('CBOE') || upper.includes('BATS')) return 'CBOE';
   return raw;
+};
+
+const resolveRequestedExchange = ({ symbol, name } = {}) => {
+  const probes = [symbol, name];
+  for (const probe of probes) {
+    const upper = String(probe || '').trim().toUpperCase();
+    if (!upper) continue;
+    if (upper.startsWith('BSE:') || upper.endsWith('.BO') || upper.endsWith('.BSE') || upper.endsWith('.BOM')) return 'BSE';
+    if (upper.startsWith('NSE:') || upper.endsWith('.NS') || upper.endsWith('.NSE')) return 'NSE';
+  }
+  return null;
+};
+
+const resolveQuoteExchange = (quote = {}) => {
+  const explicit = normalizeYahooExchange(quote);
+  if (explicit === 'BSE' || explicit === 'NSE') return explicit;
+
+  const symbolUpper = String(quote?.symbol || '').trim().toUpperCase();
+  if (symbolUpper.startsWith('BSE:') || symbolUpper.endsWith('.BO') || symbolUpper.endsWith('.BSE') || symbolUpper.endsWith('.BOM')) return 'BSE';
+  if (symbolUpper.startsWith('NSE:') || symbolUpper.endsWith('.NS') || symbolUpper.endsWith('.NSE')) return 'NSE';
+
+  return null;
+};
+
+const quoteMatchesRequestedExchange = (requestedExchange, quote) => {
+  if (!requestedExchange || !quote) return true;
+  const resolvedExchange = resolveQuoteExchange(quote);
+  if (!resolvedExchange) return true;
+  return resolvedExchange === requestedExchange;
 };
 
 const looksLikeExplicitTicker = (value) => /^[A-Z0-9^.-]{1,24}$/.test(String(value || '').trim().toUpperCase());
@@ -1370,6 +1401,7 @@ const buildQuoteFromYahooResult = ({ symbol, result }) => {
     previousClose,
     change,
     changePercent,
+    exchange: normalizeYahooExchange({ exchDisp: meta.exchangeName || meta.fullExchangeName || meta.exchange || symbol }),
     source: 'yahoo_worker',
   };
 };
@@ -1737,6 +1769,7 @@ const fetchStocktvQuote = async (env, { symbol, pid, name }) => {
           previousClose: prev,
           change,
           changePercent,
+          exchange: normalizeYahooExchange({ exchDisp: item?.exchDisp || item?.exchange || item?.market || item?.symbol }),
           source: 'stocktv',
         },
         stocktvError,
@@ -1880,10 +1913,12 @@ export default {
       const symbol = url.searchParams.get('symbol');
       const pid = url.searchParams.get('pid');
       const name = url.searchParams.get('name');
+      const requestedExchange = resolveRequestedExchange({ symbol, name });
       const preferredYahooSymbol = resolvePreferredYahooSymbol({ symbol, name });
       const canUseSearchDiscovery = !looksLikeExplicitTicker(preferredYahooSymbol || symbol) || !!name;
       const preferIndiaFastPath = isExplicitIndiaMarketSymbol(preferredYahooSymbol || symbol);
       const preferInfowayFastPath = !preferIndiaFastPath && looksLikeExplicitTicker(preferredYahooSymbol || symbol);
+      const acceptQuote = (quote) => quote && quoteMatchesRequestedExchange(requestedExchange, quote);
 
       if (path === '/quote') {
         const indexSymbol = resolveIndexYahooSymbol({ symbol, name });
@@ -1893,40 +1928,40 @@ export default {
           return jsonResponse({ success: false, message: 'index quote unavailable' }, 404);
         }
 
-        if (preferIndiaFastPath) {
-          const fastNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-          if (fastNseQuote) return jsonResponse(fastNseQuote);
-        }
-
-        if (preferInfowayFastPath) {
+        if (requestedExchange === 'BSE' || preferInfowayFastPath) {
           const infowayQuoteFast = await fetchInfowayQuote(env, { symbol: preferredYahooSymbol || symbol, name });
-          if (infowayQuoteFast) return jsonResponse(infowayQuoteFast);
+          if (acceptQuote(infowayQuoteFast)) return jsonResponse(infowayQuoteFast);
         }
 
         const yahooQuote = await fetchYahooQuote({ symbol: preferredYahooSymbol || symbol, name });
-        if (yahooQuote) return jsonResponse(yahooQuote);
+        if (acceptQuote(yahooQuote)) return jsonResponse(yahooQuote);
 
         const jinaQuote = await fetchYahooQuoteViaJina({ symbol: preferredYahooSymbol || symbol, name });
-        if (jinaQuote) return jsonResponse(jinaQuote);
+        if (acceptQuote(jinaQuote)) return jsonResponse(jinaQuote);
 
-        const directNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-        if (directNseQuote) return jsonResponse(directNseQuote);
+        if (requestedExchange !== 'BSE') {
+          const directNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+          if (acceptQuote(directNseQuote)) return jsonResponse(directNseQuote);
+        }
 
         const infowayQuote = await fetchInfowayQuote(env, { symbol: preferredYahooSymbol || symbol, name });
-        if (infowayQuote) return jsonResponse(infowayQuote);
+        if (acceptQuote(infowayQuote)) return jsonResponse(infowayQuote);
+
+        const { quote: stocktvQuote, stocktvError } = await fetchStocktvQuote(env, { symbol, pid, name });
+        if (acceptQuote(stocktvQuote)) return jsonResponse(stocktvQuote);
 
         if (canUseSearchDiscovery) {
           const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
           for (const discoveredSymbol of discoveredSymbols) {
             const discoveredYahooQuote = await fetchYahooQuote({ symbol: discoveredSymbol });
-            if (discoveredYahooQuote) {
+            if (acceptQuote(discoveredYahooQuote)) {
               return jsonResponse({
                 ...discoveredYahooQuote,
                 source: `${discoveredYahooQuote.source}_search`,
               });
             }
             const discoveredJinaQuote = await fetchYahooQuoteViaJina({ symbol: discoveredSymbol });
-            if (discoveredJinaQuote) {
+            if (acceptQuote(discoveredJinaQuote)) {
               return jsonResponse({
                 ...discoveredJinaQuote,
                 source: `${discoveredJinaQuote.source}_search`,
@@ -1935,11 +1970,10 @@ export default {
           }
         }
 
-        const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-        if (nseQuote) return jsonResponse(nseQuote);
-
-        const { quote: stocktvQuote, stocktvError } = await fetchStocktvQuote(env, { symbol, pid, name });
-        if (stocktvQuote) return jsonResponse(stocktvQuote);
+        if (requestedExchange !== 'BSE') {
+          const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+          if (acceptQuote(nseQuote)) return jsonResponse(nseQuote);
+        }
 
         return jsonResponse(
           { success: false, message: stocktvError || 'symbol/pid not found' },
@@ -2069,9 +2103,27 @@ export default {
         }
 
         if (looksLikeExplicitTicker(query)) {
-          const exactNseQuote = await fetchNseEquityQuote({ symbol: query });
-          if (exactNseQuote) {
-            resultSets.push([buildSearchRowFromQuote(exactNseQuote, 1200000)]);
+          const exactRequestedExchange = resolveRequestedExchange({ symbol: query, name: query });
+          if (exactRequestedExchange === 'BSE') {
+            const exactInfowayQuote = await fetchInfowayQuote(env, { symbol: query, name: query });
+            if (exactInfowayQuote && quoteMatchesRequestedExchange(exactRequestedExchange, exactInfowayQuote)) {
+              resultSets.push([buildSearchRowFromQuote(exactInfowayQuote, 1200000)]);
+            }
+          } else {
+            const exactYahooQuote = await fetchYahooQuote({ symbol: query, name: query });
+            if (exactYahooQuote && quoteMatchesRequestedExchange(exactRequestedExchange, exactYahooQuote)) {
+              resultSets.push([buildSearchRowFromQuote(exactYahooQuote, 1200000)]);
+            } else {
+              const exactJinaQuote = await fetchYahooQuoteViaJina({ symbol: query, name: query });
+              if (exactJinaQuote && quoteMatchesRequestedExchange(exactRequestedExchange, exactJinaQuote)) {
+                resultSets.push([buildSearchRowFromQuote(exactJinaQuote, 1200000)]);
+              } else {
+                const exactNseQuote = await fetchNseEquityQuote({ symbol: query, name: query });
+                if (exactNseQuote && quoteMatchesRequestedExchange(exactRequestedExchange, exactNseQuote)) {
+                  resultSets.push([buildSearchRowFromQuote(exactNseQuote, 1200000)]);
+                }
+              }
+            }
           }
         }
 
@@ -2116,16 +2168,6 @@ export default {
         }
 
         let fastNseKline = null;
-        if (preferIndiaFastPath) {
-          const fastNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-          fastNseKline = buildSingleCandleKline({
-            symbol: fastNseQuote?.symbol || (preferredYahooSymbol || symbol),
-            open: fastNseQuote?.open,
-            high: fastNseQuote?.high,
-            low: fastNseQuote?.low,
-            close: fastNseQuote?.price,
-          });
-        }
 
         if (preferInfowayFastPath) {
           const infowaySnapshotFast = await fetchInfowayKline(env, {
@@ -2208,17 +2250,18 @@ export default {
           if (infowayKline) return jsonResponse(infowayKline);
         }
 
-        if (fastNseKline) return jsonResponse(fastNseKline);
+        if (preferIndiaFastPath) {
+          const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+          fastNseKline = buildSingleCandleKline({
+            symbol: nseQuote?.symbol || (preferredYahooSymbol || symbol),
+            open: nseQuote?.open,
+            high: nseQuote?.high,
+            low: nseQuote?.low,
+            close: nseQuote?.price,
+          });
+        }
 
-        const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
-        const nseKline = buildSingleCandleKline({
-          symbol: nseQuote?.symbol || (preferredYahooSymbol || symbol),
-          open: nseQuote?.open,
-          high: nseQuote?.high,
-          low: nseQuote?.low,
-          close: nseQuote?.price,
-        });
-        if (nseKline) return jsonResponse(nseKline);
+        if (fastNseKline) return jsonResponse(fastNseKline);
 
         const stocktvKline = await fetchStocktvKline(env, { symbol, pid, name, intervalRaw });
         if (stocktvKline) return jsonResponse(stocktvKline);
