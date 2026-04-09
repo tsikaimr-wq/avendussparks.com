@@ -607,6 +607,34 @@ const resolveExecutableSellPrice = async (trade, options = {}) => {
     return getCachedTradeMarketPrice(trade);
 };
 
+const safeguardExecutableSellPrice = (trade, resolvedPrice, options = {}) => {
+    const resolved = tradeToFiniteNumber(resolvedPrice);
+    const requested = tradeToFiniteNumber(options.requestedPrice);
+    const visible = getVisibleTradeMarketPrice(trade);
+    const trustedReference = [visible, requested]
+        .map(tradeToFiniteNumber)
+        .find((value) => value !== null && value > 0) || null;
+
+    if (trustedReference !== null && trustedReference > 1) {
+        if (resolved === null || resolved <= 0) return trustedReference;
+        if (resolved < 1) return trustedReference;
+
+        const driftRatio = Math.abs(trustedReference - resolved) / trustedReference;
+        if (driftRatio > 0.2) {
+            console.warn('Sell execution safeguard kept trusted quote.', {
+                symbol: getTradeMarketSymbol(trade) || trade?.symbol || '',
+                trustedReference,
+                resolved
+            });
+            return trustedReference;
+        }
+    }
+
+    if (resolved !== null && resolved > 0) return resolved;
+    if (trustedReference !== null && trustedReference > 0) return trustedReference;
+    return getCachedTradeMarketPrice(trade);
+};
+
 const parsePlatformSettingObject = (value) => {
     if (!value) return {};
     if (typeof value === 'string') {
@@ -838,6 +866,7 @@ window.TradePricing = {
     getCachedTradeMarketPrice,
     refreshTradeMarketPrice,
     resolveExecutableSellPrice,
+    safeguardExecutableSellPrice,
     getTradeEntryPrice,
     computeTradeFeeAmounts,
     getTradeBuyFeeMetrics,
@@ -1059,8 +1088,11 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
             throw new Error(sellRestrictionMessage);
         }
 
-        const finalSellPrice = await resolveExecutableSellPrice(trade, {
+        const resolvedSellPrice = await resolveExecutableSellPrice(trade, {
             force: true,
+            requestedPrice: sellPrice
+        });
+        const finalSellPrice = safeguardExecutableSellPrice(trade, resolvedSellPrice, {
             requestedPrice: sellPrice
         });
         const sellMetrics = computeUnrealizedTradeMetrics(trade, finalSellPrice);

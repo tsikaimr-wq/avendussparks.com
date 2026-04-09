@@ -19,7 +19,7 @@
     <script src="js/db.js?v=1.0.24"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.18"></script>
-    <script src="js/trading.js?v=1.0.16"></script>
+    <script src="js/trading.js?v=1.0.17"></script>
     <script src="script.js?v=20260408a"></script>
     <script src="js/credit_notifier.js?v=1.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
@@ -1639,11 +1639,14 @@
                     const originalTrade = (await window.DB.getTradesByUserId(user.id)).find(t => t.id == tradeId);
                     if (!originalTrade) throw new Error("Trade not found.");
 
-                    const liveSellPrice = (typeof pricing.resolveExecutableSellPrice === 'function')
+                    const resolvedSellPrice = (typeof pricing.resolveExecutableSellPrice === 'function')
                         ? (await pricing.resolveExecutableSellPrice(originalTrade, { force: true, requestedPrice: calc.price }) || calc.price)
                         : ((typeof pricing.refreshTradeMarketPrice === 'function')
                             ? (await pricing.refreshTradeMarketPrice(originalTrade, { force: true, preferVisibleQuote: true }) || calc.price)
                             : calc.price);
+                    const liveSellPrice = (typeof pricing.safeguardExecutableSellPrice === 'function')
+                        ? pricing.safeguardExecutableSellPrice(originalTrade, resolvedSellPrice, { requestedPrice: calc.price })
+                        : resolvedSellPrice;
                     const sellMetrics = (typeof pricing.computeUnrealizedTradeMetrics === 'function')
                         ? pricing.computeUnrealizedTradeMetrics(originalTrade, liveSellPrice)
                         : {
