@@ -515,6 +515,43 @@ const refreshTradeMarketPrice = async (trade, options = {}) => {
     return getCachedTradeMarketPrice(trade);
 };
 
+const resolveExecutableSellPrice = async (trade, options = {}) => {
+    const requestedPrice = tradeToFiniteNumber(options.requestedPrice);
+    const visiblePrice = getVisibleTradeMarketPrice(trade);
+    const preferredPrice = (visiblePrice !== null && visiblePrice > 0)
+        ? visiblePrice
+        : ((requestedPrice !== null && requestedPrice > 0) ? requestedPrice : null);
+
+    if (preferredPrice !== null && preferredPrice > 0) {
+        cacheTradeMarketPrice(trade, preferredPrice);
+    }
+
+    let refreshedPrice = null;
+    try {
+        refreshedPrice = tradeToFiniteNumber(await refreshTradeMarketPrice(trade, {
+            force: options.force === true,
+            preferVisibleQuote: true
+        }));
+    } catch (_) { }
+
+    if (preferredPrice !== null && preferredPrice > 0) {
+        if (refreshedPrice === null || refreshedPrice <= 0) return preferredPrice;
+        const driftRatio = Math.abs(refreshedPrice - preferredPrice) / preferredPrice;
+        if (driftRatio > 0.2) {
+            console.warn('Sell execution price drift detected, keeping visible quote.', {
+                symbol: getTradeMarketSymbol(trade) || trade?.symbol || '',
+                preferredPrice,
+                refreshedPrice
+            });
+            return preferredPrice;
+        }
+        return refreshedPrice;
+    }
+
+    if (refreshedPrice !== null && refreshedPrice > 0) return refreshedPrice;
+    return getCachedTradeMarketPrice(trade);
+};
+
 const parsePlatformSettingObject = (value) => {
     if (!value) return {};
     if (typeof value === 'string') {
@@ -745,6 +782,7 @@ window.TradePricing = {
     getTradeProduct,
     getCachedTradeMarketPrice,
     refreshTradeMarketPrice,
+    resolveExecutableSellPrice,
     getTradeEntryPrice,
     computeTradeFeeAmounts,
     getTradeBuyFeeMetrics,
@@ -966,7 +1004,10 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
             throw new Error(sellRestrictionMessage);
         }
 
-        const finalSellPrice = await refreshTradeMarketPrice(trade, { force: true, preferVisibleQuote: true }) || getCachedTradeMarketPrice(trade) || sellPrice;
+        const finalSellPrice = await resolveExecutableSellPrice(trade, {
+            force: true,
+            requestedPrice: sellPrice
+        });
         const sellMetrics = computeUnrealizedTradeMetrics(trade, finalSellPrice);
         const qty = sellMetrics.qty;
         const buyAmount = sellMetrics.costBasis;
