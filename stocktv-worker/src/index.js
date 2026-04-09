@@ -1915,9 +1915,13 @@ export default {
       const name = url.searchParams.get('name');
       const requestedExchange = resolveRequestedExchange({ symbol, name });
       const preferredYahooSymbol = resolvePreferredYahooSymbol({ symbol, name });
-      const canUseSearchDiscovery = !looksLikeExplicitTicker(preferredYahooSymbol || symbol) || !!name;
-      const preferIndiaFastPath = isExplicitIndiaMarketSymbol(preferredYahooSymbol || symbol);
-      const preferInfowayFastPath = !preferIndiaFastPath && looksLikeExplicitTicker(preferredYahooSymbol || symbol);
+      const explicitLookupSymbol = String(symbol || '').trim();
+      const isExplicitLookup = looksLikeExplicitTicker(explicitLookupSymbol);
+      const lookupSymbol = isExplicitLookup ? explicitLookupSymbol : (preferredYahooSymbol || symbol);
+      const lookupName = isExplicitLookup ? null : name;
+      const canUseSearchDiscovery = !looksLikeExplicitTicker(lookupSymbol) || !!lookupName;
+      const preferIndiaFastPath = isExplicitIndiaMarketSymbol(lookupSymbol);
+      const preferInfowayFastPath = !preferIndiaFastPath && looksLikeExplicitTicker(lookupSymbol);
       const acceptQuote = (quote) => quote && quoteMatchesRequestedExchange(requestedExchange, quote);
 
       if (path === '/quote') {
@@ -1929,29 +1933,29 @@ export default {
         }
 
         if (requestedExchange === 'BSE' || preferInfowayFastPath) {
-          const infowayQuoteFast = await fetchInfowayQuote(env, { symbol: preferredYahooSymbol || symbol, name });
+          const infowayQuoteFast = await fetchInfowayQuote(env, { symbol: lookupSymbol, name: lookupName });
           if (acceptQuote(infowayQuoteFast)) return jsonResponse(infowayQuoteFast);
         }
 
-        const yahooQuote = await fetchYahooQuote({ symbol: preferredYahooSymbol || symbol, name });
+        const yahooQuote = await fetchYahooQuote({ symbol: lookupSymbol, name: lookupName });
         if (acceptQuote(yahooQuote)) return jsonResponse(yahooQuote);
 
-        const jinaQuote = await fetchYahooQuoteViaJina({ symbol: preferredYahooSymbol || symbol, name });
+        const jinaQuote = await fetchYahooQuoteViaJina({ symbol: lookupSymbol, name: lookupName });
         if (acceptQuote(jinaQuote)) return jsonResponse(jinaQuote);
 
         if (requestedExchange !== 'BSE') {
-          const directNseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+          const directNseQuote = await fetchNseEquityQuote({ symbol: lookupSymbol, name: lookupName });
           if (acceptQuote(directNseQuote)) return jsonResponse(directNseQuote);
         }
 
-        const infowayQuote = await fetchInfowayQuote(env, { symbol: preferredYahooSymbol || symbol, name });
+        const infowayQuote = await fetchInfowayQuote(env, { symbol: lookupSymbol, name: lookupName });
         if (acceptQuote(infowayQuote)) return jsonResponse(infowayQuote);
 
         const { quote: stocktvQuote, stocktvError } = await fetchStocktvQuote(env, { symbol, pid, name });
         if (acceptQuote(stocktvQuote)) return jsonResponse(stocktvQuote);
 
         if (canUseSearchDiscovery) {
-          const discoveredSymbols = await searchYahooSymbols({ symbol: preferredYahooSymbol || symbol, name });
+          const discoveredSymbols = await searchYahooSymbols({ symbol: lookupSymbol, name: lookupName });
           for (const discoveredSymbol of discoveredSymbols) {
             const discoveredYahooQuote = await fetchYahooQuote({ symbol: discoveredSymbol });
             if (acceptQuote(discoveredYahooQuote)) {
@@ -1971,7 +1975,7 @@ export default {
         }
 
         if (requestedExchange !== 'BSE') {
-          const nseQuote = await fetchNseEquityQuote({ symbol: preferredYahooSymbol || symbol, name });
+          const nseQuote = await fetchNseEquityQuote({ symbol: lookupSymbol, name: lookupName });
           if (acceptQuote(nseQuote)) return jsonResponse(nseQuote);
         }
 
