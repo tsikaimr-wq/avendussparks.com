@@ -19,7 +19,7 @@
     <script src="js/db.js?v=1.0.24"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.18"></script>
-    <script src="js/trading.js?v=1.0.17"></script>
+    <script src="js/trading.js?v=1.0.18"></script>
     <script src="script.js?v=20260408a"></script>
     <script src="js/credit_notifier.js?v=1.0.4"></script>
     <script src="https://unpkg.com/lightweight-charts@4/dist/lightweight-charts.standalone.production.js"></script>
@@ -1504,42 +1504,16 @@
                 total: sellMetrics.netSaleValue
             };
 
-            // Populate Premium Confirmation Modal for SELL
-            const ocName = document.getElementById('ocAssetName');
-            const ocSym = document.getElementById('ocAssetSymbol');
-            const ocQty = document.getElementById('ocQuantity');
-            const ocPr = document.getElementById('ocPrice');
-            const ocBase = document.getElementById('ocBaseAmount');
-            const ocTx = document.getElementById('ocTax');
-            const ocTn = document.getElementById('ocTxn');
-            const ocTot = document.getElementById('ocTotal');
-            const ocBtn = document.getElementById('ocConfirmBtn');
-
-            if (ocName) ocName.innerText = currentStockName;
-            if (ocSym) ocSym.innerText = `${currentActiveSymbol} - EXIT LOT`;
-            if (ocQty) ocQty.innerText = calc.qty.toLocaleString();
-            if (ocPr) ocPr.innerText = '₹' + calc.price.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (ocBase) ocBase.innerText = '₹' + calc.baseTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (ocTx) ocTx.innerText = '-₹' + calc.tax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (ocTn) ocTn.innerText = '-₹' + calc.txnCharge.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (ocTot) ocTot.innerText = '₹' + calc.total.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-
-            if (ocBtn) {
-                ocBtn.innerText = `CONFIRM SELL ORDER`;
-                ocBtn.style.background = '#ef4444';
-                ocBtn.onclick = () => executeConfirmedTrade('sell', 'stock', currentActiveSymbol, currentStockName, calc);
-            }
-
-            const modal = document.getElementById('orderConfirmModal');
-            if (modal) modal.style.display = 'flex';
-            if (window.lucide) window.lucide.createIcons();
+            await executeConfirmedTrade('sell', 'stock', currentActiveSymbol, currentStockName, calc);
         }
 
         async function executeConfirmedTrade(action, type, symbol, stockName, calc) {
             const btn = document.getElementById('ocConfirmBtn');
-            const originalText = btn.innerText;
-            btn.innerText = "EXECUTING...";
-            btn.disabled = true;
+            const originalText = btn ? btn.innerText : '';
+            if (btn) {
+                btn.innerText = "EXECUTING...";
+                btn.disabled = true;
+            }
 
             const user = window.DB.getCurrentUser();
             const client = window.DB.getClient();
@@ -1708,7 +1682,7 @@
                         await window.DB.refreshCurrentUser();
                     }
 
-                    showModal('success', 'Order Closed', `Order closed successfully! ₹${sellMetrics.netSaleValue.toLocaleString('en-IN')} added to your balance.`, () => {
+                    showModal('success', 'Order Closed', `Your sell order for ${stockName} has been completed successfully. Funds have been credited to your wallet.`, () => {
                         closeOrderConfirm();
                         syncBalance();
                         loadHoldings();
@@ -1718,9 +1692,11 @@
                 console.error("Trade error:", e);
                 alert("Transaction failed: " + e.message);
             } finally {
-                btn.innerText = originalText;
-                btn.disabled = false;
-                btn.style.background = ''; // reset color
+                if (btn) {
+                    btn.innerText = originalText;
+                    btn.disabled = false;
+                    btn.style.background = ''; // reset color
+                }
             }
         }
 

@@ -878,6 +878,31 @@ window.TradePricing = {
     getTradeSellRestrictionMessage
 };
 
+const buildSellExecutionDraft = async (trade, options = {}) => {
+    let currentPrice = getCachedTradeMarketPrice(trade);
+    if (isMarketTrackedTrade(trade)) {
+        const refreshedPrice = await refreshTradeMarketPrice(trade, {
+            force: options.force === true,
+            preferVisibleQuote: true
+        });
+        const numericPrice = tradeToFiniteNumber(refreshedPrice);
+        if (numericPrice !== null && numericPrice > 0) {
+            currentPrice = numericPrice;
+        }
+    }
+
+    const sellMetrics = computeUnrealizedTradeMetrics(trade, currentPrice);
+    return {
+        tradeId: trade.id,
+        qty: sellMetrics.qty,
+        price: sellMetrics.currentPrice,
+        baseTotal: sellMetrics.grossSaleValue,
+        tax: sellMetrics.sellTax,
+        txnCharge: sellMetrics.sellFees,
+        total: sellMetrics.netSaleValue
+    };
+};
+
 // Attach to window for global access
 window.openCloseOrderModal = async function (tradeOrId) {
     const user = window.DB ? window.DB.getCurrentUser() : null;
@@ -917,103 +942,8 @@ window.openCloseOrderModal = async function (tradeOrId) {
         return;
     }
 
-    const tradeId = trade.id;
-    let sellQuoteBusy = false;
-
-    const updateSellingData = async (force = false) => {
-        if (sellQuoteBusy) return;
-        sellQuoteBusy = true;
-        try {
-            let currentPrice = getCachedTradeMarketPrice(trade);
-            if (isMarketTrackedTrade(trade)) {
-                const refreshedPrice = await refreshTradeMarketPrice(trade, { force, preferVisibleQuote: true });
-                const numericPrice = tradeToFiniteNumber(refreshedPrice);
-                if (numericPrice !== null && numericPrice > 0) {
-                    currentPrice = numericPrice;
-                }
-            }
-
-            const exitMetrics = computeUnrealizedTradeMetrics(trade, currentPrice);
-
-            const priceEl = document.getElementById('coCurrPrice');
-            const qtyEl = document.getElementById('coQty');
-            const valEl = document.getElementById('coOrderVal');
-            const taxEl = document.getElementById('coTaxAmt');
-            const txnEl = document.getElementById('coTxnCharge');
-            const netEl = document.getElementById('coNetReturn');
-
-            if (priceEl) priceEl.innerText = '₹' + exitMetrics.currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (qtyEl) qtyEl.innerText = trade.quantity;
-            if (valEl) valEl.innerText = '₹' + exitMetrics.grossSaleValue.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (taxEl) taxEl.innerText = '-₹' + exitMetrics.sellTax.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (txnEl) txnEl.innerText = '-₹' + exitMetrics.sellFees.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-            if (netEl) netEl.innerText = '₹' + exitMetrics.netSaleValue.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-
-            const confirmBtn = document.getElementById('coConfirmBtn');
-            if (confirmBtn) {
-                confirmBtn.dataset.tradeId = tradeId;
-                confirmBtn.dataset.sellPrice = exitMetrics.currentPrice;
-                confirmBtn.dataset.netReturn = exitMetrics.netSaleValue;
-            }
-        } finally {
-            sellQuoteBusy = false;
-        }
-    };
-
-    const stockTitleEl = document.getElementById('coStockTitle');
-    const symbolEl = document.getElementById('coSymbol');
-    const buyPriceEl = document.getElementById('coBuyPrice');
-    const qtyEl = document.getElementById('coQty');
-    const orderValEl = document.getElementById('coOrderVal');
-
-    if (stockTitleEl) stockTitleEl.innerText = trade.name;
-    if (symbolEl) symbolEl.innerText = trade.symbol;
-    const entryPrice = getTradeEntryPrice(trade);
-    if (buyPriceEl) buyPriceEl.innerText = '₹' + entryPrice.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-    if (qtyEl) qtyEl.innerText = trade.quantity;
-    if (orderValEl) orderValEl.innerText = '₹' + parseFloat(trade.total_amount).toLocaleString('en-IN', { minimumFractionDigits: 2 });
-
-    void updateSellingData(true);
-
-    const modal = document.getElementById('closeOrderModal');
-    if (modal) modal.style.display = 'flex';
-
-    // Timer logic
-    let totalSeconds = 20;
-    let currentSeconds = totalSeconds;
-    const bar = document.getElementById('coProgressBar');
-    const txt = document.getElementById('coTimerText');
-
-    if (bar && txt) {
-        // Initial bar state
-        bar.style.width = '100%';
-        bar.style.transition = 'none'; // reset transition
-        void bar.offsetWidth; // trigger reflow
-        bar.style.transition = 'width 1s linear';
-        txt.innerText = `Quotation expires in ${currentSeconds}s`;
-
-        if (sellingTimer) clearInterval(sellingTimer);
-        sellingTimer = setInterval(() => {
-            currentSeconds--;
-            txt.innerText = `Quotation expires in ${currentSeconds}s`;
-            bar.style.width = (currentSeconds / totalSeconds * 100) + '%';
-
-            // Real-time price update during quotation
-            void updateSellingData();
-
-            if (currentSeconds <= 0) {
-                clearInterval(sellingTimer);
-                window.closeSellingModal();
-            }
-        }, 1000);
-    }
-
-    // Refresh button
-    const refreshBtn = document.getElementById('coRefreshBtn');
-    if (refreshBtn) refreshBtn.onclick = () => void updateSellingData(true);
-
-    // Redundant onclick binding removed to avoid double execution with HTML onclick="executeCloseOrder()"
-    if (window.lucide) window.lucide.createIcons();
+    const sellDraft = await buildSellExecutionDraft(trade, { force: true });
+    await window.handleSellTrade(sellDraft.tradeId, sellDraft.price, sellDraft.total);
 };
 
 window.closeSellingModal = function () {
@@ -1027,12 +957,12 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
     if (!tradeId || isExecutingSell) return;
 
     const btn = document.getElementById('coConfirmBtn');
-    if (!btn) return;
-
     isExecutingSell = true;
-    const originalText = btn.innerText;
-    btn.innerText = "EXECUTING...";
-    btn.disabled = true;
+    const originalText = btn ? btn.innerText : '';
+    if (btn) {
+        btn.innerText = "EXECUTING...";
+        btn.disabled = true;
+    }
 
     const client = window.DB ? window.DB.getClient() : null;
     const user = window.DB ? window.DB.getCurrentUser() : null;
@@ -1152,7 +1082,7 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
         }
 
         if (window.showModal) {
-            window.showModal('success', 'Trade Executed', `Sold ${qty} shares of ${trade.name} at ₹${Number(finalSellPrice).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}. ₹${finalNetReturn.toLocaleString('en-IN', { minimumFractionDigits: 2 })} has been credited to your wallet.`, () => {
+            window.showModal('success', 'Trade Executed', `Your sell order for ${trade.name} has been completed successfully. Funds have been credited to your wallet.`, () => {
                 window.closeSellingModal();
                 if (window.fetchUserTransactions) {
                     window.fetchUserTransactions().then(() => {
@@ -1173,6 +1103,14 @@ window.handleSellTrade = async function (tradeId, sellPrice, netReturn) {
         console.error("Sell Error:", e);
         alert("Execution failed: " + e.message);
         isExecutingSell = false;
+        if (btn) {
+            btn.innerText = originalText;
+            btn.disabled = false;
+        }
+        return;
+    }
+
+    if (btn) {
         btn.innerText = originalText;
         btn.disabled = false;
     }

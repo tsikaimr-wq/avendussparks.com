@@ -10906,98 +10906,6 @@
             </div>
         </div>
     </div>
-
-    <!-- Close Order Modal -->
-    <div id="closeOrderModal" class="center-popup-modal" onclick="if(event.target == this) closeSellingModal()">
-        <div class="center-popup-content"
-            style="max-width: 480px; padding: 0; overflow: hidden; border: none; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); border-radius: 20px;">
-            <div style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); padding: 1.5rem; color: #000;">
-                <div style="display: flex; justify-content: space-between; align-items: start;">
-                    <div>
-                        <div
-                            style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1.5px; opacity: 0.8; font-weight: 700; margin-bottom: 0.25rem; color: #000;">
-                            PRO SELL ORDER</div>
-                        <h2 id="coStockTitle"
-                            style="font-weight: 800; font-size: 1.5rem; margin: 0; line-height: 1.2; color: #000;">
-                            Stock Name</h2>
-                        <div id="coSymbolLabel"
-                            style="font-size: 0.9rem; opacity: 0.9; margin-top: 0.25rem; font-weight: 500; color: #000;">
-                            SYMBOL  - 
-                            SELL QUOTATION</div>
-                    </div>
-                    <button class="popup-close" onclick="closeSellingModal()"
-                        style="background: rgba(0,0,0,0.1); border: none; color: #000; width: 32px; height: 32px; border-radius: 50%; cursor: pointer; display: grid; place-items: center;"><i
-                            data-lucide="x" size="20"></i></button>
-                </div>
-            </div>
-
-            <div class="popup-body" style="padding: 1.5rem; background: #111;">
-                <div
-                    style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 1.25rem; display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem;">
-                    <div>
-                        <span
-                            style="display: block; font-size: 0.75rem; color: #ef4444; font-weight: 700; text-transform: uppercase; margin-bottom: 0.25rem;">Live
-                            Market Exit</span>
-                        <span id="coCurrPrice" style="font-weight: 800; color: #ef4444; font-size: 1.5rem;">₹0.00</span>
-                    </div>
-                    <button id="coRefreshBtn"
-                        style="background: #1a1a1a; border: 1px solid #d4af37; padding: 8px 16px; border-radius: 8px; color: #d4af37; font-weight: 700; font-size: 0.85rem; cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 0.5rem;"
-                        onmouseover="this.style.background='rgba(212, 175, 55, 0.1)'"
-                        onmouseout="this.style.background='#1a1a1a'"><i data-lucide="refresh-cw" size="14"></i>
-                        Refresh</button>
-                </div>
-
-                <div
-                    style="background: #1a1a1a; border-radius: 16px; padding: 1.25rem; margin-bottom: 1.5rem; border: 1px solid #333;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.85rem; font-weight: 500;">Exit Quantity</span>
-                        <span id="coQty" style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">0</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.75rem;">
-                        <span style="color: #94a3b8; font-size: 0.85rem; font-weight: 500;">Market Value</span>
-                        <span id="coOrderVal" style="font-weight: 700; color: #f8fafc; font-size: 0.9rem;">₹0.00</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
-                        <span style="color: #94a3b8; font-size: 0.8rem;">Selling Tax (0.12%)</span>
-                        <span id="coTaxAmt" style="font-weight: 600; color: #ef4444; font-size: 0.8rem;">-₹0.00</span>
-                    </div>
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
-                        <span style="color: #94a3b8; font-size: 0.8rem;">Exit Charge (0.03%)</span>
-                        <span id="coTxnCharge"
-                            style="font-weight: 600; color: #ef4444; font-size: 0.8rem;">-₹0.00</span>
-                    </div>
-                    <div
-                        style="display: flex; justify-content: space-between; padding-top: 1rem; border-top: 1px dashed #333;">
-                        <span style="color: #d4af37; font-weight: 800; font-size: 1rem;">NET PROCEEDS</span>
-                        <span id="coNetReturn" style="font-weight: 900; color: #d4af37; font-size: 1.4rem;">₹0.00</span>
-                    </div>
-                </div>
-
-                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
-                    <span id="coTimerText" style="font-size: 0.8rem; color: #94a3b8; font-weight: 600;">Quotation
-                        expires in 20s</span>
-                    <span id="coSymbol" style="font-size: 0.8rem; color: #94a3b8; font-weight: 700;">-</span>
-                </div>
-
-                <div class="quotation-timer"
-                    style="height: 6px; background: #262626; border-radius: 3px; overflow: hidden; margin-bottom: 2rem;">
-                    <div class="quotation-progress" id="coProgressBar"
-                        style="height: 100%; background: #d4af37; width: 100%; transition: width 1s linear;"></div>
-                </div>
-
-                <button class="logout-btn"
-                    style="background: linear-gradient(135deg, #d4af37 0%, #aa8c2c 100%); width: 100%; border-radius: 12px; height: 56px; font-weight: 800; font-size: 1.1rem; border: none; color: black; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 12px rgba(212, 175, 55, 0.3);"
-                    onmouseover="this.style.background='#aa8c2c'; this.style.transform='translateY(-2px)';"
-                    onmouseout="this.style.background='#d4af37'; this.style.transform='translateY(0)';"
-                    id="coConfirmBtn" onclick="executeCloseOrder()">CLOSE POSITION</button>
-
-                <p style="text-align: center; margin-top: 1rem; font-size: 0.7rem; color: #94a3b8; line-height: 1.4;">
-                    Settlement will be immediate. Proceeds will be credited to your wallet after statutory deductions.
-                </p>
-            </div>
-        </div>
-    </div>
-
     <!-- Customer Service Modal -->
 
     <div id="csModal_duplicate_removed" style="display: none;"></div>
@@ -11456,7 +11364,7 @@
             color: #fff;
         }
     </style>
-    <script src="js/trading.js?v=1.0.17"></script>
+    <script src="js/trading.js?v=1.0.18"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             if (typeof openStockDetailFromRoute === 'function' && await openStockDetailFromRoute(false, { requireReady: true })) {
@@ -12262,7 +12170,6 @@
     /* Universal Modal Background */
     #orderConfirmModal .center-popup-content,
     #purchaseConfirmModal .center-popup-content,
-    #closeOrderModal .center-popup-content,
     #globalModal .center-popup-content {
         background-color: #111111 !important;
         border: 1px solid #333 !important;
@@ -12273,7 +12180,6 @@
     /* Modal Body Overrides */
     #orderConfirmModal .popup-body,
     #purchaseConfirmModal .popup-body,
-    #closeOrderModal .popup-body,
     #globalModal .popup-body {
         background-color: #111111 !important;
         color: #e2e8f0 !important;
