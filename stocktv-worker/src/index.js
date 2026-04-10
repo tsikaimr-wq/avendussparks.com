@@ -1611,6 +1611,14 @@ const fetchIndexQuote = async ({ symbol, name }) => {
     return jinaQuote;
   }
 
+  if (indexSymbol === '^BSESN') {
+    const bseQuote = await fetchBseSensexQuote();
+    if (bseQuote) {
+      rememberLiveIndexQuote(indexSymbol, bseQuote);
+      return bseQuote;
+    }
+  }
+
   const rememberedQuote = getRememberedIndexQuote(indexSymbol);
   if (rememberedQuote) return rememberedQuote;
 
@@ -1886,6 +1894,42 @@ const getIndexFallbackQuote = (indexSymbol) => {
     changePercent,
     source: 'index_fallback',
     delayed: true,
+  };
+};
+
+const fetchBseSensexQuote = async () => {
+  const html = await textResponse('https://m.bseindia.com/Sensex.aspx?Scripflag=105', {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      Referer: 'https://m.bseindia.com/',
+      'User-Agent': 'Mozilla/5.0',
+    },
+  });
+  if (!html) return null;
+
+  const capture = (pattern) => {
+    const match = html.match(pattern);
+    return match?.[1] ? String(match[1]).replace(/,/g, '').trim() : null;
+  };
+
+  const price = toNum(capture(/id="UcHeaderMenu1_sensexLtp"[^>]*>([^<]+)</i));
+  const change = toNum(capture(/id="UcHeaderMenu1_sensexChange"[^>]*>([^<]+)</i));
+  const changePercent = toPercentNum(capture(/id="UcHeaderMenu1_sensexPerChange"[^>]*>([^<]+)</i));
+  if (price == null) return null;
+
+  const previousClose = change != null ? (price - change) : null;
+  return {
+    success: true,
+    symbol: '^BSESN',
+    pid: null,
+    name: 'S&P BSE SENSEX',
+    price,
+    previousClose,
+    change,
+    changePercent,
+    exchange: 'BSE',
+    source: 'bse_mobile',
   };
 };
 

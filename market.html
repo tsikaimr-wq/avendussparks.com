@@ -12198,6 +12198,12 @@
             setInterval(renderMajorIndices, 1000);
             setTimeout(renderMajorIndices, 500);
 
+            if (window.MarketEngine && typeof window.MarketEngine.addListener === 'function') {
+                window.MarketEngine.addListener(() => {
+                    renderMajorIndices();
+                });
+            }
+
             // Periodic live indices update (display only)
             if (window.MarketEngine && typeof window.MarketEngine.syncIndicesWithYahoo === 'function') {
                 let indexSyncInFlight = false;
