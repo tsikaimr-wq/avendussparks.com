@@ -8028,6 +8028,43 @@
             return { qty, price, baseTotal, tax, txnCharge, total: finalTotal };
         }
 
+        async function ensureLiveBuyCalc(type, symbol, stockName, calc) {
+            const normalizedType = normalizeTradeExecutionType(type);
+            if (normalizedType === 'ipo') return calc;
+            const currentCalc = calc || updateBuyCalculations();
+            const qty = Math.max(0, parseInt(document.getElementById('buyQuantityInput')?.value || currentCalc?.qty || 0, 10) || 0);
+            const visibleBuyText = document.getElementById('detBuyPrice')?.innerText || '';
+            const visiblePrice = toFiniteNumber(visibleBuyText)
+                ?? toFiniteNumber(document.getElementById('detPrice')?.innerText)
+                ?? toFiniteNumber(currentCalc?.price);
+
+            const shouldRefresh = !Number.isFinite(visiblePrice) || visiblePrice <= 0 || /loading/i.test(visibleBuyText);
+            if (!shouldRefresh) return { ...currentCalc, qty, price: visiblePrice };
+
+            try {
+                const liveQuote = await window.DB?.getMarketPrice?.(symbol, stockName);
+                const livePrice = toFiniteNumber(liveQuote?.price);
+                if (livePrice !== null && livePrice > 0) {
+                    const BUY_TAX_RATE = window.TradePricing?.BUY_TAX_RATE ?? 0.0012;
+                    const BUY_TXN_RATE = window.TradePricing?.BUY_TXN_RATE ?? 0.0003;
+                    const baseTotal = qty * livePrice;
+                    const tax = baseTotal * BUY_TAX_RATE;
+                    const txnCharge = baseTotal * BUY_TXN_RATE;
+                    const total = baseTotal + tax + txnCharge;
+                    const detBuyPriceEl = document.getElementById('detBuyPrice');
+                    const detPriceEl = document.getElementById('detPrice');
+                    const formatted = `₹${livePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    if (detBuyPriceEl) detBuyPriceEl.innerText = formatted;
+                    if (detPriceEl && /loading/i.test(detPriceEl.innerText || '')) detPriceEl.innerText = formatted;
+                    return { qty, price: livePrice, baseTotal, tax, txnCharge, total };
+                }
+            } catch (error) {
+                console.warn('ensureLiveBuyCalc failed to refresh live price:', error);
+            }
+
+            return currentCalc;
+        }
+
         async function setMaxQuantity() {
             const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
             if (!user) { alert("Please login first."); syncBuySliderState(0); return; }
@@ -8120,7 +8157,7 @@
             const stockName = document.getElementById('detName').innerText;
             const exchangeText = document.getElementById('detExchange').innerText;
 
-            const calc = updateBuyCalculations();
+            const calc = await ensureLiveBuyCalc(type, symbol, stockName, updateBuyCalculations());
 
             if (type === 'ipo') {
                 const product = window.MarketEngine ? window.MarketEngine.getProduct(currentProductId) : null;

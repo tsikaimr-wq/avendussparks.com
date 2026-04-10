@@ -1319,6 +1319,43 @@
             return { qty, price: effectiveBuyPrice, baseTotal, tax, txnCharge, total: finalTotal };
         }
 
+        async function ensureLiveBuyTotal(symbol, stockName, calc) {
+            const currentCalc = calc || updateBuyTotal();
+            const qty = Math.max(0, parseInt(document.getElementById('bpQuantity')?.value || currentCalc?.qty || 0, 10) || 0);
+            const visibleBuyText = document.getElementById('detBuyPrice')?.innerText || '';
+            const visiblePrice = parseFloat(String(visibleBuyText).replace(/[^\d.]/g, '')) || 0;
+            const visibleCurrentPrice = parseFloat(String(document.getElementById('detPrice')?.innerText || '').replace(/[^\d.]/g, '')) || 0;
+            const candidatePrice = visiblePrice > 0 ? visiblePrice : visibleCurrentPrice;
+
+            const shouldRefresh = !(candidatePrice > 0) || /loading/i.test(visibleBuyText);
+            if (!shouldRefresh) {
+                const baseTotal = qty * candidatePrice;
+                const tax = baseTotal * 0.0012;
+                const txnCharge = baseTotal * 0.0003;
+                return { qty, price: candidatePrice, baseTotal, tax, txnCharge, total: baseTotal + tax + txnCharge };
+            }
+
+            try {
+                const liveQuote = await window.DB?.getMarketPrice?.(symbol, stockName);
+                const livePrice = parseFloat(liveQuote?.price) || 0;
+                if (livePrice > 0) {
+                    const baseTotal = qty * livePrice;
+                    const tax = baseTotal * 0.0012;
+                    const txnCharge = baseTotal * 0.0003;
+                    const detBuyPriceEl = document.getElementById('detBuyPrice');
+                    const detPriceEl = document.getElementById('detPrice');
+                    const formatted = `₹${livePrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    if (detBuyPriceEl) detBuyPriceEl.innerText = formatted;
+                    if (detPriceEl && /loading/i.test(detPriceEl.innerText || '')) detPriceEl.innerText = formatted;
+                    return { qty, price: livePrice, baseTotal, tax, txnCharge, total: baseTotal + tax + txnCharge };
+                }
+            } catch (error) {
+                console.warn('ensureLiveBuyTotal failed to refresh live price:', error);
+            }
+
+            return currentCalc;
+        }
+
         function closeOrderConfirm() {
             const modal = document.getElementById('orderConfirmModal');
             if (modal) modal.style.display = 'none';
@@ -1405,7 +1442,7 @@
             const qty = parseInt(document.getElementById('bpQuantity').value) || 0;
             if (qty <= 0) { alert("Invalid quantity"); return; }
 
-            const calc = updateBuyTotal();
+            const calc = await ensureLiveBuyTotal(currentActiveSymbol, currentStockName, updateBuyTotal());
             const symbol = currentActiveSymbol;
             const stockName = currentStockName;
 
