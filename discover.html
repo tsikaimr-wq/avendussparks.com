@@ -7869,8 +7869,12 @@
             const isOTC = type === 'OTC';
 
             let qty = parseInt(qtyInput.value) || 0;
-            const priceText = priceEl.innerText.replace(/[^\d.]/g, '');
-            const price = parseFloat(priceText) || 0;
+            const price = toFiniteNumber(priceEl.innerText)
+                ?? toFiniteNumber(document.getElementById('detPrice')?.innerText)
+                ?? toFiniteNumber(window.MarketEngine?.getProduct?.(currentProductId)?.priceLocked
+                    ? (window.MarketEngine?.getProduct?.(currentProductId)?.locked_price)
+                    : (window.MarketEngine?.getProduct?.(currentProductId)?.price))
+                ?? 0;
 
             const BUY_TAX_RATE = window.TradePricing?.BUY_TAX_RATE ?? 0.0012;
             const BUY_TXN_RATE = window.TradePricing?.BUY_TXN_RATE ?? 0.0003;
@@ -8117,7 +8121,9 @@
                 return buildCalc(lockedExecutionPrice, BUY_TAX_RATE, BUY_TXN_RATE);
             }
 
-            let livePrice = toFiniteNumber(calc?.price);
+            let livePrice = toFiniteNumber(document.getElementById('detBuyPrice')?.innerText)
+                ?? toFiniteNumber(document.getElementById('detPrice')?.innerText)
+                ?? toFiniteNumber(calc?.price);
             if (!Number.isFinite(livePrice) || livePrice <= 0) {
                 try {
                     const liveQuote = await window.DB?.getMarketPrice?.(symbol, stockName);
@@ -8142,7 +8148,9 @@
             }
 
             if (!Number.isFinite(livePrice) || livePrice <= 0) {
-                livePrice = toFiniteNumber(calc?.price)
+                livePrice = toFiniteNumber(document.getElementById('detBuyPrice')?.innerText)
+                    ?? toFiniteNumber(document.getElementById('detPrice')?.innerText)
+                    ?? toFiniteNumber(calc?.price)
                     ?? toFiniteNumber(product?.price)
                     ?? 0;
             }

@@ -1282,11 +1282,17 @@
             const lockedBuyPrice = (detailProduct?.priceLocked || detailProduct?.locked)
                 ? (parseFloat(detailProduct?.locked_price ?? detailProduct?.subscription_price ?? detailProduct?.price) || 0)
                 : 0;
+            const visibleBuyPrice = parseFloat(String(document.getElementById('detBuyPrice')?.innerText || '').replace(/[^\d.]/g, '')) || 0;
+            const visibleCurrentPrice = parseFloat(String(document.getElementById('detPrice')?.innerText || '').replace(/[^\d.]/g, '')) || 0;
             const effectiveBuyPrice = lockedBuyPrice > 0
                 ? lockedBuyPrice
-                : (currentProductType === 'OTC' || currentProductType === 'IPO')
-                ? (currentBuyPrice || currentPrice)
-                : currentPrice;
+                : (
+                    (visibleBuyPrice > 0 ? visibleBuyPrice : 0)
+                    || (visibleCurrentPrice > 0 ? visibleCurrentPrice : 0)
+                    || ((currentProductType === 'OTC' || currentProductType === 'IPO')
+                        ? (currentBuyPrice || currentPrice)
+                        : currentPrice)
+                );
 
             if (currentProductType === 'IPO') {
                 // FIXED LOT LOGIC FOR IPO
