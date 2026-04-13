@@ -74,3 +74,130 @@ if (window.DB) {
 
     console.log("Patched DB with updateLoanStatus (timestamps) and getBorrowedFunds (SUM logic)");
 }
+
+// Patch admin live chat loading so the backend support list does not perform a full-table
+// messages scan that intermittently 500s on production.
+(function installAdminLiveChatPatch() {
+    function tryPatch() {
+        if (!/admin_customer_management\.html/i.test(window.location.pathname || '')) return false;
+        if (typeof window.initLiveChat !== 'function') return false;
+        if (window.__adminLiveChatPatched) return true;
+
+        const originalInitLiveChat = window.initLiveChat;
+
+        window.initLiveChat = async function patchedInitLiveChat() {
+            const client = window.DB?.getClient?.();
+            if (!client) return;
+            if (typeof startAdminChatPolling === 'function') {
+                startAdminChatPolling();
+            }
+
+            const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
+            const isCsr = auth.role === 'csr';
+            const userIds = (Array.isArray(allUsers) ? allUsers : [])
+                .map(user => user && user.id)
+                .filter(id => id !== null && id !== undefined && id !== '');
+
+            if (userIds.length === 0) {
+                chatUsers = [];
+                if (typeof refreshAdminChatBadge === 'function') refreshAdminChatBadge();
+                if (typeof renderChatUserList === 'function') renderChatUserList();
+                return;
+            }
+
+            let msgs = [];
+            try {
+                const primaryLimit = isCsr ? 300 : 400;
+                const { data: primaryMsgs, error: primaryError } = await client
+                    .from('messages')
+                    .select('id, user_id, message, sender, is_read, created_at')
+                    .in('user_id', userIds)
+                    .neq('sender', 'System')
+                    .order('created_at', { ascending: false })
+                    .limit(primaryLimit);
+
+                if (primaryError) {
+                    console.warn('Patched admin live chat primary query failed, falling back to batches.', primaryError);
+                    const batchSize = 20;
+                    for (let start = 0; start < userIds.length; start += batchSize) {
+                        const batchUserIds = userIds.slice(start, start + batchSize);
+                        if (!batchUserIds.length) continue;
+                        try {
+                            const { data: batchMsgs, error: batchError } = await client
+                                .from('messages')
+                                .select('id, user_id, message, sender, is_read, created_at')
+                                .in('user_id', batchUserIds)
+                                .neq('sender', 'System')
+                                .order('created_at', { ascending: false })
+                                .limit(80);
+                            if (batchError) {
+                                console.warn('Patched admin live chat batch query failed:', batchError);
+                                continue;
+                            }
+                            if (Array.isArray(batchMsgs) && batchMsgs.length) {
+                                msgs.push(...batchMsgs);
+                            }
+                        } catch (batchFetchError) {
+                            console.warn('Patched admin live chat batch query threw:', batchFetchError);
+                        }
+                    }
+                    if (msgs.length) {
+                        msgs.sort((left, right) => new Date(right?.created_at || 0).getTime() - new Date(left?.created_at || 0).getTime());
+                    }
+                } else {
+                    msgs = Array.isArray(primaryMsgs) ? primaryMsgs : [];
+                }
+            } catch (error) {
+                console.warn('Patched admin live chat failed, falling back to original initLiveChat.', error);
+                return originalInitLiveChat();
+            }
+
+            const uids = [...new Set((msgs || []).map(messageRow => messageRow.user_id))];
+            const scopedUsers = (Array.isArray(allUsers) ? allUsers : []).filter(user => uids.includes(user.id));
+            if (typeof buildAdminChatUsersFromMessages === 'function') {
+                buildAdminChatUsersFromMessages(scopedUsers, msgs || []);
+            }
+            if (typeof refreshAdminChatBadge === 'function') refreshAdminChatBadge();
+            if (typeof renderChatUserList === 'function') renderChatUserList();
+
+            if (!window.isAdminChatSubscribed && client.channel) {
+                const chatChannel = client.channel('admin-chat-broadcaster')
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, payload => {
+                        const newMsg = payload.new;
+                        if (isCsr && !userIds.includes(newMsg.user_id)) return;
+
+                        if (typeof isAdminUserChatSender === 'function' && isAdminUserChatSender(newMsg.sender)) {
+                            if (typeof playNotificationSound === 'function') playNotificationSound();
+                        }
+
+                        if (currentChatUser && String(newMsg.user_id) === String(currentChatUser.id)) {
+                            if (typeof appendChatMessage === 'function') appendChatMessage(newMsg);
+                            if (typeof isLivechatPageVisible === 'function' && isLivechatPageVisible() && typeof isAdminUserChatSender === 'function' && isAdminUserChatSender(newMsg.sender)) {
+                                const openedUser = chatUsers.find(user => String(user.id) === String(newMsg.user_id));
+                                if (openedUser) openedUser.unreadCount = 0;
+                                if (typeof markAdminConversationRead === 'function') {
+                                    markAdminConversationRead(newMsg.user_id);
+                                }
+                            }
+                        }
+                        if (typeof updateChatUserList === 'function') updateChatUserList(newMsg);
+                    })
+                    .subscribe();
+                window.isAdminChatSubscribed = true;
+                window.__adminLiveChatChannel = chatChannel;
+            }
+        };
+
+        window.__adminLiveChatPatched = true;
+        console.log('Patched admin live chat loader for scoped message queries.');
+        return true;
+    }
+
+    let attempts = 0;
+    const timer = setInterval(() => {
+        attempts += 1;
+        if (tryPatch() || attempts > 40) {
+            clearInterval(timer);
+        }
+    }, 500);
+})();
