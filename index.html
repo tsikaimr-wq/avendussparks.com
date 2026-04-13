@@ -1464,7 +1464,7 @@
                 if (typeof syncUserData === 'function') syncUserData();
                 setTimeout(() => {
                     if (typeof startChatListener === 'function') startChatListener();
-                    updateCSRVisibility();
+                    if (typeof window.updateCSRVisibility === 'function') window.updateCSRVisibility();
                 }, 1000);
             }
         }
@@ -1481,14 +1481,15 @@
             } catch (e) { }
         }
 
+        window.updateCSRVisibility = window.updateCSRVisibility || function () {
+            const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
+            const btn = document.getElementById('floatingCSR');
+            if (btn) btn.style.display = user ? 'flex' : 'none';
+        };
+
         // Page specific initialization
         window.addEventListener('load', () => {
-            const updateCSRVisibility = () => {
-                const user = window.DB && window.DB.getCurrentUser ? window.DB.getCurrentUser() : null;
-                const btn = document.getElementById('floatingCSR');
-                if (btn) btn.style.display = user ? 'flex' : 'none';
-            };
-            updateCSRVisibility();
+            window.updateCSRVisibility();
             // Matrix Hero Animation
             // Matrix Hero Animation (Slow & Cinematic)
             (function () {
