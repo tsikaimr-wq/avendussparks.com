@@ -789,6 +789,10 @@ const fetchUserLoanRestriction = async (userId, options = {}) => {
             if (!status || ['REJECTED', 'REPAID', 'FULLY_REPAID'].includes(status)) return false;
             const remainingBalance = tradeToFiniteNumber(loan?.remaining_balance);
             if (remainingBalance !== null) return remainingBalance > 0;
+            const principalAmount = tradeToFiniteNumber(loan?.amount);
+            if (principalAmount !== null && principalAmount > 0) {
+                return ['APPROVED', 'ACTIVE', 'DISBURSED', 'OVERDUE'].includes(status);
+            }
             if (loan?.loan_disbursed === true) return true;
             return ['APPROVED', 'ACTIVE', 'DISBURSED', 'OVERDUE'].includes(status);
         });
@@ -796,8 +800,12 @@ const fetchUserLoanRestriction = async (userId, options = {}) => {
         if (!activeLoan) return null;
 
         const remainingBalance = tradeToFiniteNumber(activeLoan.remaining_balance);
-        const amountText = remainingBalance !== null && remainingBalance > 0
-            ? ` Outstanding loan balance: ₹${remainingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`
+        const fallbackAmount = tradeToFiniteNumber(activeLoan.amount);
+        const displayedOutstanding = (remainingBalance !== null && remainingBalance > 0)
+            ? remainingBalance
+            : ((fallbackAmount !== null && fallbackAmount > 0) ? fallbackAmount : null);
+        const amountText = displayedOutstanding !== null && displayedOutstanding > 0
+            ? ` Outstanding loan balance: ₹${displayedOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`
             : '';
         return {
             loanId: activeLoan.id,
@@ -809,24 +817,14 @@ const fetchUserLoanRestriction = async (userId, options = {}) => {
     try {
         const { data, error } = await client
             .from('loans')
-            .select('id, status, remaining_balance, loan_disbursed')
+            .select('id, status, amount, loan_disbursed')
             .eq('user_id', numericUserId)
             .order('created_at', { ascending: false });
         if (error) throw error;
         restriction = buildLoanRestriction(data);
-    } catch (error) {
-        try {
-            const { data, error: fallbackError } = await client
-                .from('loans')
-                .select('id, status, amount')
-                .eq('user_id', numericUserId)
-                .order('created_at', { ascending: false });
-            if (fallbackError) throw fallbackError;
-            restriction = buildLoanRestriction(data);
-        } catch (fallbackErr) {
-            console.warn("Failed to load active loan restriction:", fallbackErr);
-            restriction = null;
-        }
+    } catch (fallbackErr) {
+        console.warn("Failed to load active loan restriction:", fallbackErr);
+        restriction = null;
     }
 
     userLoanRestrictionCache[numericUserId] = { ts: now, data: restriction };
