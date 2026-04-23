@@ -14,7 +14,7 @@
     <script src="js/db.js?v=1.0.24"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.18"></script>
-    <script src="js/trading.js?v=1.0.19"></script>
+    <script src="js/trading.js?v=1.0.20"></script>
     <script src="script.js?v=20260408a"></script>
 
     <link rel="stylesheet" href="styles.css">
@@ -10095,14 +10095,10 @@
         function openTradeDetails(tradeId) { return openHoldingDetail(tradeId); }
         function openHoldingDetail(tradeId) {
             const queuedNotice = document.getElementById('hdQueuedNotice');
-            const outstandingNotice = document.getElementById('hdOutstandingNotice');
-            const settleBtn = document.getElementById('settleBtnContainer');
             const saleValueRow = document.getElementById('hdSaleValueRow');
             const timelineTitle = document.getElementById('hdTimelineTitle');
 
             if (queuedNotice) queuedNotice.style.display = 'none';
-            if (outstandingNotice) outstandingNotice.style.display = 'none';
-            if (settleBtn) settleBtn.style.display = 'none';
 
             // Reset Expandable Sections
             document.querySelectorAll('.expand-content').forEach(c => c.classList.remove('open'));
@@ -10337,71 +10333,9 @@
                 document.getElementById('hdProfit').style.color = profitValue >= 0 ? '#10b981' : '#ef4444';
                 document.getElementById('hdCurrPrice').style.color = profitValue >= 0 ? '#10b981' : '#ef4444';
 
-                if (isLockedUnpaid || isOutstandingLegacy) {
-                    if (outstandingNotice) {
-                        const total = parseFloat(trade.total_amount);
-                        let paid = parseFloat(trade.paid_amount) || 0;
-                        let outstanding = parseFloat(trade.outstanding_amount) || 0;
-
-                        // Legacy fallback for old records if they exist
-                        if (isOutstandingLegacy && !trade.outstanding_amount) {
-                            if (note.startsWith('OUTSTANDING:')) {
-                                paid = parseFloat(note.split(':')[1]) || 0;
-                            } else {
-                                paid = total * 0.85;
-                            }
-                            outstanding = total - paid;
-                        }
-
-                        document.getElementById('hdTotalVal').innerText = '₹' + total.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-                        outstandingNotice.style.display = 'block';
-
-                        // Professional Warning styling matching requirements
-                        outstandingNotice.innerHTML = `
-                            <div style="font-weight: 800; margin-bottom: 0.8rem; display: flex; align-items: center; gap: 0.5rem; color: #ef4444; font-size: 1rem;">
-                                <i data-lucide="alert-triangle" size="20"></i>
-                                <span>Action Required: Outstanding Balance</span>
-                            </div>
-                            <div style="font-size: 0.85rem; margin-bottom: 1.25rem; color: #fecaca; line-height: 1.5;">
-                                This IPO position is <span style="font-weight: 700;">LOCKED</span> due to an unsettled balance. 
-                                Total Value: <span style="color: #fff; font-weight: 700;">₹${total.toLocaleString('en-IN')}</span>. 
-                                You have paid <span style="color: #fca5a5; font-weight: 700;">₹${paid.toLocaleString('en-IN')}</span>.
-                            </div>
-                            <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-                                <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.8rem;">
-                                    <span style="color: #94a3b8;">Outstanding Amount:</span>
-                                    <span style="color: #ef4444; font-weight: 800;">₹${outstanding.toLocaleString('en-IN')}</span>
-                                </div>
-                            </div>
-                            <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.75rem; color: #94a3b8; line-height: 1.6;">
-                                <li>Trading functionality is restricted for this asset.</li>
-                                <li>Account trust score may be affected.</li>
-                                <li>Failure to settle may lead to position liquidation.</li>
-                            </ul>
-                        `;
-
-                        if (settleBtn) {
-                            settleBtn.style.display = 'block';
-                            settleBtn.innerHTML = `
-                                <div style="width: 100%; background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); padding: 1rem; border-radius: 12px; font-size: 0.85rem; margin-top: 1rem; text-align: center; line-height: 1.5; font-family: 'Outfit', sans-serif;">
-                                    <div style="font-weight: 800; margin-bottom: 0.25rem;">ACTION REQUIRED</div>
-                                    To settle this balance, please deposit funds into your account. This trade will automatically settle upon deposit approval.
-                                </div>
-                            `;
-                        }
-                    }
-                    if (saleValueRow) saleValueRow.style.display = 'none';
-
-                    // Disable Sell/Close Buttons behavior is handled by hiding them or disabling based on status
-                    const closeOrderBtn = document.querySelector('.close-order-btn');
-                    if (closeOrderBtn) {
-                        closeOrderBtn.style.display = 'none'; // Better to hide for restricted positions
-                    }
-                } else {
-                    if (saleValueRow) {
-                        saleValueRow.style.display = 'table-row';
-                        document.getElementById('hdTotalSaleVal').innerText = '₹' + mockSaleVal.toLocaleString('en-IN', { minimumFractionDigits: 2 });
-                    }
+                if (saleValueRow) {
+                    saleValueRow.style.display = 'table-row';
+                    document.getElementById('hdTotalSaleVal').innerText = '₹' + mockSaleVal.toLocaleString('en-IN', { minimumFractionDigits: 2 });
                 }
 
                 if (trade.type === 'ipo') {
@@ -11232,27 +11166,6 @@
                     <div style="font-size: 2.5rem; font-weight: 800; color: #10b981; margin-bottom: 0.25rem;"
                         id="hdPremiumYield">300%</div>
                     <div style="font-size: 0.85rem; color: #94a3b8; font-weight: 600;">Estimated Profit</div>
-                </div>
-
-                <div id="hdOutstandingNotice"
-                    style="display: none; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 12px; padding: 1.25rem; margin: 1.5rem 0; color: #ef4444; font-size: 0.9rem; line-height: 1.6;">
-                    <div
-                        style="font-weight: 800; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
-                        Outstanding Balance Detected
-                    </div>
-                    <div style="font-size: 0.85rem; margin-bottom: 1rem;">
-                        You have an unpaid order. <br>
-                        You have paid <span id="hdPaidAmt" style="color:#d4af37; font-weight:700;">₹0.00</span> already
-                        and the outstanding balance is <span id="hdOutstandingAmt"
-                            style="color:#ef4444; font-weight:700;">-₹0.00</span>. Please settle immediately to avoid
-                        impacts.
-                    </div>
-                    <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.8rem; color: #94a3b8;">
-                        <li>Suspension of future trading activity</li>
-                        <li>Reduced Trust Score</li>
-                        <li>Delays in execution/settlement</li>
-                    </ul>
-                    <div id="settleBtnContainer" style="display: none; margin-top: 1rem;"></div>
                 </div>
 
                 <div style="font-weight: 700; color: #f8fafc; margin-bottom: 1rem; font-size: 1.05rem;"

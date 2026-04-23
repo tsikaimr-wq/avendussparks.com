@@ -843,6 +843,11 @@ const getTradeSellRestrictionMessage = async (trade, user, options = {}) => {
     }
 
     if (normalizeTradeType(trade?.type) === 'ipo') {
+        const balance = tradeToFiniteNumber(user?.balance);
+        const listingRaw = trade?.products?.listing_date || trade?.listing_date || null;
+        if (balance !== null && balance < 0 && listingRaw && hasListingStarted(listingRaw)) {
+            return 'Selling is disabled because your account has a negative balance. Please settle the outstanding amount to resume selling.';
+        }
         const loanRestriction = await fetchUserLoanRestriction(user?.id, options);
         if (loanRestriction?.message) {
             return loanRestriction.message;
@@ -904,10 +909,6 @@ const buildSellExecutionDraft = async (trade, options = {}) => {
 // Attach to window for global access
 window.openCloseOrderModal = async function (tradeOrId) {
     const user = window.DB ? window.DB.getCurrentUser() : null;
-    if (user && parseFloat(user.balance) < 0) {
-        alert("Selling is disabled because your account has a negative balance. Please repay the outstanding amount to resume selling.");
-        return;
-    }
 
     let trade;
     if (typeof tradeOrId === 'object') {
