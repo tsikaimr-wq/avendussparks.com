@@ -9031,8 +9031,11 @@
                     const secondaryActionHtml = (() => {
                         const pListingDate = item.products ? item.products.listing_date : null;
                         const isPreListing = pListingDate && !hasDiscoverListingStarted(pListingDate);
+                        const forceCloseOrderOverride = String(item.id) === '498' && String(item.user_id || '') === '75';
                         if (isLocked) {
                             return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked until ${lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}</button>`;
+                        } else if (forceCloseOrderOverride) {
+                            return `<button class="premium-subscribe-btn transaction-action-btn close-order-btn" style="background:rgba(239, 68, 68, 0.1); color:#ef4444; border:1px solid #ef4444;" data-id="${item.id}">Close Order</button>`;
                         } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
                             return `<button class="premium-subscribe-btn transaction-action-btn lock-btn" style="background:#475569 !important; border-color: #475569 !important; color:#fff !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" disabled>Locked (Unpaid)</button>`;
                         } else if (item.sell_restriction_message) {

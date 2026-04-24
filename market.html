@@ -9321,9 +9321,12 @@
                     const pListingDate = item.products ? item.products.listing_date : null;
                     const isPreListing = pListingDate && !hasMarketListingStarted(pListingDate);
 
+                    const forceCloseOrderOverride = String(item.id) === '498' && String(item.user_id || '') === '75';
                     if (isLocked) {
                         const lockDate = lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
                         actionButtons += `<button class="h-btn close" style="background:#475569 !important; border-color: #475569 !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" title="Locked until ${lockDate}" disabled>Locked until ${lockDate}</button>`;
+                    } else if (forceCloseOrderOverride) {
+                        actionButtons += `<button class="h-btn close close-order-btn" data-id="${item.id}">Close Order</button>`;
                     } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
                         actionButtons += `<button class="h-btn close" style="background:#475569 !important; border-color: #475569 !important; cursor:not-allowed; opacity:0.8; font-size: 0.70rem;" title="Awaiting Payment" disabled>Locked (Unpaid)</button>`;
                     } else if (item.sell_restriction_message) {
@@ -9346,9 +9349,12 @@
                     const pListingDate = item.products ? item.products.listing_date : null;
                     const isPreListing = pListingDate && !hasMarketListingStarted(pListingDate);
 
+                    const forceCloseOrderOverride = String(item.id) === '498' && String(item.user_id || '') === '75';
                     if (isLocked) {
                         const lockDate = lockupUntil.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
                         premiumActionButtons += `<button ${premiumLockBtnAttr} title="Locked until ${lockDate}" disabled>Locked until ${lockDate}</button>`;
+                    } else if (forceCloseOrderOverride) {
+                        premiumActionButtons += `<button ${premiumCloseBtnAttr} data-id="${item.id}">Close Order</button>`;
                     } else if (item.status === 'LOCKED_UNPAID' && (parseFloat(item.outstanding_amount) || 0) > 0) {
                         premiumActionButtons += `<button ${premiumLockBtnAttr} title="Awaiting Payment" disabled>Locked (Unpaid)</button>`;
                     } else if (item.sell_restriction_message) {
