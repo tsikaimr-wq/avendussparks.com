@@ -4211,6 +4211,95 @@
             }
         }
 
+        function isMissingIpoLockupRpcError(error) {
+            const message = String(error?.message || error?.details || error || '').toLowerCase();
+            return error?.code === 'PGRST202'
+                || (message.includes('manage_ipo_lockup') && message.includes('schema cache'))
+                || message.includes('could not find the function public.manage_ipo_lockup');
+        }
+
+        function buildForceSellOverrideNote(existingNote, auth) {
+            const marker = `FORCE_SELL_OVERRIDE:${new Date().toISOString()}:admin:${auth?.id || 'unknown'}`;
+            const note = String(existingNote || '').trim();
+            if (note.includes('FORCE_SELL_OVERRIDE')) return note;
+            return note ? `${note}\n${marker}` : marker;
+        }
+
+        async function applyIpoForceUnlockFields(client, tradeId, auth) {
+            const { data: trade, error: getErr } = await client
+                .from('trades')
+                .select('id, admin_note')
+                .eq('id', tradeId)
+                .single();
+            if (getErr) throw getErr;
+
+            const { error: updateErr } = await client
+                .from('trades')
+                .update({
+                    status: 'Holding',
+                    order_status: 'FILLED',
+                    lockup_until: null,
+                    outstanding_amount: 0,
+                    admin_note: buildForceSellOverrideNote(trade?.admin_note, auth)
+                })
+                .eq('id', tradeId);
+            if (updateErr) throw updateErr;
+        }
+
+        async function manageIpoLockupDirectFallback(client, payload, auth) {
+            const tradeId = parseInt(payload.p_trade_id);
+            const action = String(payload.p_action || '').toUpperCase();
+            const { data: trade, error: tradeErr } = await client
+                .from('trades')
+                .select('id, user_id, lockup_until, users!inner(id, csr_id, invitation_code)')
+                .eq('id', tradeId)
+                .single();
+            if (tradeErr || !trade) throw tradeErr || new Error('Trade not found.');
+
+            if (auth?.role === 'csr') {
+                const ownsByCsrId = String(trade.users?.csr_id || '') === String(auth.id || '');
+                const ownsByInvitation = auth.invitation_code && String(trade.users?.invitation_code || '') === String(auth.invitation_code);
+                if (!ownsByCsrId && !ownsByInvitation) {
+                    throw new Error('Unauthorized: You can only manage lock-ups for your assigned users.');
+                }
+            } else if (auth?.role !== 'super_admin') {
+                throw new Error('Permission denied: only super admin or assigned CSR can manage IPO lock-ups.');
+            }
+
+            let nextLockup = null;
+            if (action === 'OVERRIDE') {
+                await applyIpoForceUnlockFields(client, tradeId, auth);
+            } else if (action === 'EXTEND') {
+                const base = trade.lockup_until ? new Date(trade.lockup_until) : new Date();
+                if (Number.isNaN(base.getTime())) throw new Error('Invalid existing lock-up date.');
+                base.setDate(base.getDate() + (parseInt(payload.p_extra_days) || 0));
+                nextLockup = base.toISOString();
+                const { error } = await client.from('trades').update({ lockup_until: nextLockup }).eq('id', tradeId);
+                if (error) throw error;
+            } else if (action === 'MODIFY') {
+                nextLockup = payload.p_new_date ? new Date(payload.p_new_date).toISOString() : null;
+                const { error } = await client.from('trades').update({ lockup_until: nextLockup }).eq('id', tradeId);
+                if (error) throw error;
+            } else {
+                throw new Error('Invalid Management Action: ' + action);
+            }
+
+            try {
+                await client.from('lockup_logs').insert({
+                    trade_id: tradeId,
+                    admin_id: parseInt(auth.id),
+                    admin_role: auth.role,
+                    action,
+                    prev_lockup_until: trade.lockup_until || null,
+                    new_lockup_until: nextLockup
+                });
+            } catch (logErr) {
+                console.warn('Lock-up audit log skipped:', logErr);
+            }
+
+            return { success: true, action, new_lockup_until: nextLockup };
+        }
+
         async function manageIpoLockup(action) {
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
             const tradeId = document.getElementById('otm_trade_id').value;
@@ -4232,17 +4321,27 @@
                 showLoader(true);
                 const client = DB.getClient();
                 try {
-                    const { data, error } = await client.rpc('manage_ipo_lockup', {
+                    const rpcPayload = {
                         p_trade_id: parseInt(tradeId),
                         p_admin_id: parseInt(auth.id),
                         p_admin_role: auth.role,
                         p_action: action,
                         p_new_date: preciseDate ? new Date(preciseDate).toISOString() : null,
                         p_extra_days: parseInt(extraDays)
-                    });
+                    };
+                    let { data, error } = await client.rpc('manage_ipo_lockup', rpcPayload);
+
+                    if (error && isMissingIpoLockupRpcError(error)) {
+                        console.warn('manage_ipo_lockup RPC missing; using direct fallback.', error);
+                        data = await manageIpoLockupDirectFallback(client, rpcPayload, auth);
+                        error = null;
+                    }
 
                     if (error) throw error;
                     if (data && !data.success) throw new Error(data.error);
+                    if (action === 'OVERRIDE') {
+                        await applyIpoForceUnlockFields(client, parseInt(tradeId), auth);
+                    }
 
                     showAlert('success', "Lock-up updated successfully");
                     closeTradeOperateModal();
@@ -6792,13 +6891,6 @@
         }
 
         async function submitDeposit() {
-            // --- CSR BALANCE PROTECTION ---
-            if (window.AdminRole === 'csr' && type === 'set') {
-                console.warn("Unauthorized attempt to update balance by CSR.");
-                showAlert('error', "Access Denied: CSR cannot manage account balances.", "Unauthorized Scope Violation");
-                return;
-            }
-
             const depId = document.getElementById('dep_id').value;
             const uid = document.getElementById('dep_user_id').value;
             const amount = parseFloat(document.getElementById('dep_amount').value);
@@ -6806,8 +6898,15 @@
             const status = document.getElementById('dep_status').value;
             const note = document.getElementById('dep_note').value;
 
-            if (isNaN(amount) || amount < 0) {
-                showAlert('warning', "Please enter a valid amount (0 or more).");
+            // --- CSR BALANCE PROTECTION ---
+            if (window.AdminRole === 'csr' && type === 'set') {
+                console.warn("Unauthorized attempt to update balance by CSR.");
+                showAlert('error', "Access Denied: CSR cannot manage account balances.", "Unauthorized Scope Violation");
+                return;
+            }
+
+            if (isNaN(amount) || !Number.isFinite(amount) || (type !== 'set' && amount < 0)) {
+                showAlert('warning', type === 'set' ? "Please enter a valid balance amount." : "Please enter a valid amount (0 or more).");
                 return;
             }
 
@@ -8268,8 +8367,9 @@
 
             const currentMap = await loadProductPriceLockMap(true);
             const nextMap = removeMatchingProductPriceLockEntries(currentMap, product);
+            let normalizedPrice = 0;
             if (locked) {
-                const normalizedPrice = Number(lockedPrice);
+                normalizedPrice = Number(lockedPrice);
                 if (!Number.isFinite(normalizedPrice) || normalizedPrice <= 0) {
                     return { success: false, error: { message: 'Locked price must be greater than 0.' } };
                 }
@@ -8290,8 +8390,43 @@
             }
 
             const result = await window.DB.updatePlatformSettings(ADMIN_PRODUCT_PRICE_LOCKS_KEY, nextMap);
-            if (result.success) cachedProductPriceLockMap = nextMap;
-            return result;
+            if (!result.success) return result;
+
+            cachedProductPriceLockMap = nextMap;
+
+            const verifyMap = await loadProductPriceLockMap(true);
+            const verifyEntry = getProductPriceLockEntry(product, verifyMap);
+
+            if (locked) {
+                const verifiedPrice = parseAdminNumericValue(verifyEntry?.locked_price);
+                if (verifyEntry?.locked && Number.isFinite(verifiedPrice) && Math.abs(verifiedPrice - normalizedPrice) < 0.0001) {
+                    return result;
+                }
+                return {
+                    success: false,
+                    error: { message: 'Board price lock verification failed after save.' }
+                };
+            }
+
+            if (!verifyEntry?.locked) {
+                return result;
+            }
+
+            const forcedMap = removeMatchingProductPriceLockEntries(verifyMap, product);
+            const forcedResult = await window.DB.updatePlatformSettings(ADMIN_PRODUCT_PRICE_LOCKS_KEY, forcedMap);
+            if (!forcedResult.success) return forcedResult;
+
+            cachedProductPriceLockMap = forcedMap;
+            const recheckedMap = await loadProductPriceLockMap(true);
+            const recheckedEntry = getProductPriceLockEntry(product, recheckedMap);
+            if (recheckedEntry?.locked) {
+                return {
+                    success: false,
+                    error: { message: 'Board price lock removal did not persist after save.' }
+                };
+            }
+
+            return forcedResult;
         }
 
         async function loadUserSellLockMap(force = false) {

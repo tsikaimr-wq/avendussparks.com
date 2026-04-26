@@ -14,7 +14,7 @@
     <script src="js/db.js?v=1.0.24"></script>
     <script src="js/user.js?v=1.0.4"></script>
     <script src="js/market_data.js?v=1.0.18"></script>
-    <script src="js/trading.js?v=1.0.20"></script>
+    <script src="js/trading.js?v=1.0.21"></script>
     <script src="script.js?v=20260408a"></script>
 
     <link rel="stylesheet" href="styles.css">
@@ -6909,11 +6909,6 @@
             const user = window.DB ? window.DB.getCurrentUser() : null;
             if (!user || !symbol) return;
 
-            if (user && parseFloat(user.balance) < 0) {
-                alert("Selling is disabled because your account has a negative balance. Please repay the outstanding amount to resume selling.");
-                return;
-            }
-
             const originalText = btn.innerText;
             btn.innerText = "Checking...";
             btn.disabled = true;
@@ -6929,6 +6924,12 @@
 
                 if (myTrades.length === 0) {
                     alert("You do not have any active holdings for " + symbol + " to sell.");
+                    return;
+                }
+
+                const hasForceSellOverride = myTrades.some(t => window.TradePricing?.hasAdminForceSellOverride?.(t));
+                if (parseFloat(user.balance) < 0 && !hasForceSellOverride) {
+                    alert("Selling is disabled because your account has a negative balance. Please repay the outstanding amount to resume selling.");
                     return;
                 }
 

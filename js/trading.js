@@ -845,7 +845,7 @@ const getTradeSellRestrictionMessage = async (trade, user, options = {}) => {
     if (normalizeTradeType(trade?.type) === 'ipo') {
         const balance = tradeToFiniteNumber(user?.balance);
         const listingRaw = trade?.products?.listing_date || trade?.listing_date || null;
-        if (balance !== null && balance < 0 && listingRaw && hasListingStarted(listingRaw)) {
+        if (!hasAdminForceSellOverride(trade) && balance !== null && balance < 0 && listingRaw && hasListingStarted(listingRaw)) {
             return 'Selling is disabled because your account has a negative balance. Please settle the outstanding amount to resume selling.';
         }
         const loanRestriction = await fetchUserLoanRestriction(user?.id, options);
@@ -855,6 +855,11 @@ const getTradeSellRestrictionMessage = async (trade, user, options = {}) => {
     }
 
     return null;
+};
+
+const hasAdminForceSellOverride = (trade) => {
+    const note = String(trade?.admin_note || '');
+    return /\bFORCE_SELL_OVERRIDE\b|\bADMIN_FORCE_UNLOCK\b|\bFORCE_UNLOCK\b/i.test(note);
 };
 
 window.TradePricing = {
@@ -878,7 +883,8 @@ window.TradePricing = {
     computeUnrealizedTradeMetrics,
     computeRealizedTradeMetrics,
     getTradeSellLock,
-    getTradeSellRestrictionMessage
+    getTradeSellRestrictionMessage,
+    hasAdminForceSellOverride
 };
 
 const buildSellExecutionDraft = async (trade, options = {}) => {
