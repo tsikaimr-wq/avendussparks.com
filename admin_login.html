@@ -272,6 +272,7 @@
 
         async function handleLogin(e) {
             e.preventDefault();
+            const AVENDUS_ADMIN_LOGIN_DISABLED = true;
             const user = document.getElementById('username').value.trim();
             const pass = document.getElementById('password').value.trim();
             const selectedRole = document.querySelector('input[name="admin_role_select"]:checked').value;
@@ -280,6 +281,13 @@
 
             err.style.display = 'none';
             const lang = localStorage.getItem('admin_lang') || 'cn';
+            if (AVENDUS_ADMIN_LOGIN_DISABLED) {
+                err.style.display = 'block';
+                err.textContent = 'Admin login is temporarily unavailable. Please try again later.';
+                btn.disabled = false;
+                return;
+            }
+
             btn.textContent = window.i18n('auth_progress', 'Authenticating...');
             btn.disabled = true;
 

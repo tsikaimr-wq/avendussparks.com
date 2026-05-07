@@ -1045,10 +1045,18 @@
 
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const AVENDUS_LOGIN_FORM_DISABLED = true;
             const btn = e.target.querySelector('button[type="submit"]');
             const originalText = btn.textContent;
             btn.textContent = 'Logging in...';
             btn.disabled = true;
+
+            if (AVENDUS_LOGIN_FORM_DISABLED) {
+                showAlert('error', 'Login is temporarily unavailable. Please try again later.', 'Login Unavailable');
+                btn.textContent = originalText;
+                btn.disabled = false;
+                return;
+            }
 
             const mobile = document.getElementById('phoneNumber').value;
             const password = document.getElementById('password').value;

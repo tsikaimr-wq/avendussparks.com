@@ -1033,6 +1033,11 @@ window.DB = {
     },
 
     async login(identifier, password) {
+        const AVENDUS_LOGIN_DISABLED = true;
+        if (AVENDUS_LOGIN_DISABLED) {
+            return { success: false, message: 'Login is temporarily unavailable. Please try again later.' };
+        }
+
         const client = this.getClient();
         if (!client) return { success: false, message: 'Database connecting...' };
 
