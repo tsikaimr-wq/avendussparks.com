@@ -3564,6 +3564,8 @@
         async function init() {
             showLoader(true);
             const auth = JSON.parse(sessionStorage.getItem('admin_auth') || '{}');
+            const ADMIN_INIT_TIMEOUT_MS = 45000;
+            const ADMIN_BACKGROUND_TIMEOUT_MS = 30000;
 
             const withTimeout = async (label, task, fallback, timeoutMs = 12000) => {
                 let timeoutId = null;
@@ -3583,6 +3585,15 @@
                 } finally {
                     if (timeoutId) clearTimeout(timeoutId);
                 }
+            };
+
+            const withLateRefresh = (label, task, fallback, onResolved, timeoutMs = ADMIN_INIT_TIMEOUT_MS) => {
+                const trackedTask = Promise.resolve(task).then(result => {
+                    if (typeof onResolved === 'function') onResolved(result);
+                    return result;
+                });
+
+                return withTimeout(label, trackedTask, fallback, timeoutMs);
             };
 
             try {
@@ -3646,7 +3657,7 @@
                     }
                 }
 
-                const u = await withTimeout('users', fetchSafe('users', userQuery.limit(500)), []);
+                const u = await withTimeout('users', fetchSafe('users', userQuery.limit(500)), [], ADMIN_INIT_TIMEOUT_MS);
                 allUsers = u; // Global update
 
                 // Fetch CSRs for name mapping
@@ -3666,35 +3677,70 @@
                 }
 
                 const kycSelectFields = 'id,user_id,status,id_type,submitted_at,admin_note,reviewed_at';
+                const adminData = {
+                    users: u || [],
+                    kyc: [],
+                    withdrawals: [],
+                    deposits: [],
+                    tradesStock: [],
+                    tradesOtc: [],
+                    tradesIpo: [],
+                    loans: [],
+                    messages: [],
+                    rewards: [],
+                    dashboardKpis: {}
+                };
+                const renderAdminData = () => {
+                    const combinedTrades = [
+                        ...(adminData.tradesStock || []),
+                        ...(adminData.tradesOtc || []),
+                        ...(adminData.tradesIpo || [])
+                    ];
+                    renderDashboard(
+                        adminData.users || [],
+                        adminData.kyc || [],
+                        adminData.withdrawals || [],
+                        adminData.deposits || [],
+                        combinedTrades,
+                        adminData.loans || [],
+                        adminData.messages || [],
+                        adminData.rewards || [],
+                        adminData.dashboardKpis || {}
+                    );
+                };
 
                 // 2. Fetch other modules (Filtered to the current user scope)
                 const [w, d, tStock, tOtc, tIpo, l, m, r, productsMeta] = await Promise.all([
-                    withTimeout('withdrawals', fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)), []),
-                    withTimeout('deposits', fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)), []),
-                    withTimeout('trades_stock', fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').in('user_id', userIds).or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks') : client.from('trades').select('*').or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),
-                    withTimeout('trades_otc', fetchSafe('trades_otc', (isCsr ? client.from('trades').select('*').eq('type', 'otc').in('user_id', userIds) : client.from('trades').select('*').eq('type', 'otc')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),
-                    withTimeout('trades_ipo', fetchSafe('trades_ipo', (isCsr ? client.from('trades').select('*').ilike('type', 'ipo').in('user_id', userIds) : client.from('trades').select('*').ilike('type', 'ipo')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), []),
-                    withTimeout('loans', window.DB.getAllLoans(), []),
-                    withTimeout('messages', fetchSafe('messages', (isCsr ? client.from('messages').select('*').in('user_id', userIds) : client.from('messages').select('*')).order('created_at', { ascending: false }).limit(100)), []),
-                    withTimeout('rewards', fetchSafe('rewards', (isCsr ? client.from('rewards').select('*').in('user_id', userIds) : client.from('rewards').select('*')).order('created_at', { ascending: false }).limit(100)), []),
-                    withTimeout('products_meta', fetchSafe('products_meta', client.from('products').select('id, product_type').or('is_deleted.is.null,is_deleted.eq.false')), [])
+                    withLateRefresh('withdrawals', fetchSafe('withdrawals', (isCsr ? client.from('withdrawals').select('*').in('user_id', userIds) : client.from('withdrawals').select('*')).order('created_at', { ascending: false }).limit(100)), [], data => { adminData.withdrawals = data || []; renderAdminData(); }),
+                    withLateRefresh('deposits', fetchSafe('deposits', (isCsr ? client.from('deposits').select('*').in('user_id', userIds) : client.from('deposits').select('*')).order('created_at', { ascending: false }).limit(100)), [], data => { adminData.deposits = data || []; renderAdminData(); }),
+                    withLateRefresh('trades_stock', fetchSafe('trades_stock', (isCsr ? client.from('trades').select('*').in('user_id', userIds).or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks') : client.from('trades').select('*').or('type.eq.stock,type.eq.Ins.stocks,type.eq.ins.stocks')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), [], data => { adminData.tradesStock = data || []; renderAdminData(); }),
+                    withLateRefresh('trades_otc', fetchSafe('trades_otc', (isCsr ? client.from('trades').select('*').eq('type', 'otc').in('user_id', userIds) : client.from('trades').select('*').eq('type', 'otc')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), [], data => { adminData.tradesOtc = data || []; renderAdminData(); }),
+                    withLateRefresh('trades_ipo', fetchSafe('trades_ipo', (isCsr ? client.from('trades').select('*').ilike('type', 'ipo').in('user_id', userIds) : client.from('trades').select('*').ilike('type', 'ipo')).or('is_deleted.is.null,is_deleted.eq.false').order('id', { ascending: false })), [], data => { adminData.tradesIpo = data || []; renderAdminData(); }),
+                    withLateRefresh('loans', window.DB.getAllLoans(), [], data => { adminData.loans = data || []; renderAdminData(); }),
+                    withLateRefresh('messages', fetchSafe('messages', (isCsr ? client.from('messages').select('*').in('user_id', userIds) : client.from('messages').select('*')).order('created_at', { ascending: false }).limit(100)), [], data => { adminData.messages = data || []; renderAdminData(); }),
+                    withLateRefresh('rewards', fetchSafe('rewards', (isCsr ? client.from('rewards').select('*').in('user_id', userIds) : client.from('rewards').select('*')).order('created_at', { ascending: false }).limit(100)), [], data => { adminData.rewards = data || []; renderAdminData(); }),
+                    withLateRefresh('products_meta', fetchSafe('products_meta', client.from('products').select('id, product_type').or('is_deleted.is.null,is_deleted.eq.false')), [], () => {})
                 ]);
 
                 adminProductTypeById = new Map((productsMeta || []).map(product => [String(product.id), product.product_type || '']));
+                adminData.withdrawals = w || [];
+                adminData.deposits = d || [];
+                adminData.tradesStock = tStock || [];
+                adminData.tradesOtc = tOtc || [];
+                adminData.tradesIpo = tIpo || [];
+                adminData.loans = l || [];
+                adminData.messages = m || [];
+                adminData.rewards = r || [];
                 allSubmissions = [];
 
-                let dashboardKpis = {};
-
                 // Combine trades
-                const allTrades = [...(tStock || []), ...(tOtc || []), ...(tIpo || [])];
-
-                renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], dashboardKpis);
+                renderAdminData();
 
                 // Fetch dashboard KPIs asynchronously so slow count queries never freeze the whole admin page.
                 void (async () => {
                     try {
-                        dashboardKpis = await withTimeout('dashboard_kpis', fetchDashboardKPIs(client, isCsr ? userIds : null), {});
-                        renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], dashboardKpis || {});
+                        adminData.dashboardKpis = await withTimeout('dashboard_kpis', fetchDashboardKPIs(client, isCsr ? userIds : null), {}, ADMIN_BACKGROUND_TIMEOUT_MS);
+                        renderAdminData();
                     } catch (e) {
                         console.error("KPI Fetch Failed", e);
                     }
@@ -3717,15 +3763,16 @@
                                         .in('user_id', batchUserIds)
                                 ),
                                 [],
-                                8000
+                                ADMIN_BACKGROUND_TIMEOUT_MS
                             );
                             if (Array.isArray(batchRows) && batchRows.length) {
                                 kycRows.push(...batchRows);
                             }
                         }
 
-                        allSubmissions = Array.isArray(kycRows) ? kycRows : [];
-                        renderDashboard(u || [], allSubmissions || [], w || [], d || [], allTrades, l || [], m || [], r || [], dashboardKpis || {});
+                        adminData.kyc = Array.isArray(kycRows) ? kycRows : [];
+                        allSubmissions = adminData.kyc;
+                        renderAdminData();
                     } catch (e) {
                         console.error("Background KYC fetch failed:", e);
                     }
